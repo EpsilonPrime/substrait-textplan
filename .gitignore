@@ -1,0 +1,73 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# IDE files
+*~
+.vscode/
+.idea/
+**/.idea/
+*.iml
+.idea_modules/
+
+# Common CMake Build directory
+build/
+
+# Generated code
+src/proto/substrait
+
+# Rust-specific
+/target/
+/*/target/
+**/*.rs.bk
+Cargo.lock
+!Cargo.lock
+
+# OS-specific
+.DS_Store
+.directory
+Thumbs.db
+
+# Antlr4 artifacts
+*.interp
+*.tokens
+
+vendor/
+build-tools/
+
+# Tree-sitter build artifacts
+**/node_modules/
+**/build/
+**/src/parser.c
+**/src/tree_sitter/
+tree-sitter-*/bindings/rust/binding.gyp
+tree-sitter-*/bindings/rust/binding.rs
