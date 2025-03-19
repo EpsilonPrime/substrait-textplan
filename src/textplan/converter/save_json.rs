@@ -55,3 +55,26 @@ pub fn symbol_table_to_json(symbol_table: &SymbolTable) -> Result<String, TextPl
     // Convert the Plan to JSON
     save_to_json(&plan)
 }
+
+/// Converts a textplan to JSON format.
+///
+/// # Arguments
+///
+/// * `text` - The textplan to convert.
+///
+/// # Returns
+///
+/// The JSON representation of the plan.
+pub fn save_to_json_from_text(text: &str) -> Result<String, TextPlanError> {
+    // Parse the textplan to a symbol table
+    let parse_result = crate::textplan::parser::parse_text::parse_stream(text);
+    
+    if !parse_result.successful() {
+        let errors = parse_result.all_errors();
+        let error_msg = errors.join("\n");
+        return Err(TextPlanError::ParseError(error_msg));
+    }
+    
+    // Convert the symbol table to JSON
+    symbol_table_to_json(parse_result.symbol_table())
+}

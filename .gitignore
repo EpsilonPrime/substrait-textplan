@@ -64,10 +64,8 @@ Thumbs.db
 vendor/
 build-tools/
 
-# Tree-sitter build artifacts
-**/node_modules/
-**/build/
-**/src/parser.c
-**/src/tree_sitter/
-tree-sitter-*/bindings/rust/binding.gyp
-tree-sitter-*/bindings/rust/binding.rs
+# Generated proto visitor code
+src/textplan/converter/generated
+
+# Reference code
+src/substrait/textplan

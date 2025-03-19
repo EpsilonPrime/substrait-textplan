@@ -5,6 +5,7 @@
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::hash::{Hash, Hasher, DefaultHasher};
 use std::sync::Arc;
 
 use crate::textplan::common::location::Location;
@@ -521,5 +522,232 @@ impl fmt::Display for SymbolTable {
             first = false;
         }
         write!(f, "}}")
+    }
+}
+
+// TODO -- Consider moving these into the converter.
+
+// Extension methods for converter functionality
+impl SymbolTable {
+    /// Adds a root relation to the symbol table.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the root relation.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the newly created symbol.
+    pub fn add_root_relation(&mut self, name: &str) -> Arc<SymbolInfo> {
+        let location = Location::UNKNOWN_LOCATION;
+        let rel_type = Box::new(RelationType::Unknown);
+        self.define_symbol(
+            name.to_string(), 
+            location, 
+            SymbolType::Root, 
+            Some(rel_type),
+            None
+        )
+    }
+
+    /// Adds a relation to the symbol table.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the relation.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the newly created symbol.
+    pub fn add_relation(&mut self, name: &str) -> Arc<SymbolInfo> {
+        let location = Location::UNKNOWN_LOCATION;
+        let rel_type = Box::new(RelationType::Unknown);
+        self.define_symbol(
+            name.to_string(), 
+            location, 
+            SymbolType::Relation, 
+            Some(rel_type),
+            None
+        )
+    }
+
+    /// Adds a relation with a specific type to the symbol table.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the relation.
+    /// * `rel_type` - The type of the relation.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the newly created symbol.
+    pub fn add_relation_with_type(&mut self, name: &str, rel_type: RelationType) -> Arc<SymbolInfo> {
+        let location = Location::UNKNOWN_LOCATION;
+        let rel_type_box = Box::new(rel_type);
+        self.define_symbol(
+            name.to_string(), 
+            location, 
+            SymbolType::Relation, 
+            Some(rel_type_box),
+            None
+        )
+    }
+
+    /// Adds a field mapping to the symbol table.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation the field belongs to.
+    /// * `field_index` - The index of the field in the relation.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the newly created symbol, or None if the relation was not found.
+    pub fn add_field_mapping(&mut self, relation_name: &str, field_index: i32) -> Option<Arc<SymbolInfo>> {
+        // Look up the relation symbol
+        let _relation = self.lookup_symbol_by_name(relation_name)?;
+        
+        // Create a field name
+        let field_name = format!("{}.field_{}", relation_name, field_index);
+        let location = Location::UNKNOWN_LOCATION;
+        
+        // Define the field symbol
+        let field = self.define_symbol(
+            field_name, 
+            location, 
+            SymbolType::Field, 
+            None,
+            Some(Box::new(field_index))
+        );
+        
+        Some(field)
+    }
+
+    /// Adds a named table to the symbol table.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation the table belongs to.
+    /// * `table_names` - The names of the table (usually catalog, schema, table).
+    ///
+    /// # Returns
+    ///
+    /// A reference to the newly created symbol, or None if the relation was not found.
+    pub fn add_named_table(&mut self, relation_name: &str, table_names: &[String]) -> Option<Arc<SymbolInfo>> {
+        // Look up the relation symbol
+        let _relation = self.lookup_symbol_by_name(relation_name)?;
+        
+        // Create a full table name
+        let table_name = if table_names.is_empty() {
+            format!("{}.table", relation_name)
+        } else {
+            format!("{}.{}", relation_name, table_names.join("."))
+        };
+        
+        let location = Location::UNKNOWN_LOCATION;
+        
+        // Define the table symbol
+        let table = self.define_symbol(
+            table_name, 
+            location, 
+            SymbolType::Table, 
+            None,
+            Some(Box::new(table_names.to_vec()))
+        );
+        
+        Some(table)
+    }
+
+    /// Adds a file source to the symbol table.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation the source belongs to.
+    /// * `uri` - The URI of the file.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the newly created symbol, or None if the relation was not found.
+    pub fn add_file_source(&mut self, relation_name: &str, uri: &str) -> Option<Arc<SymbolInfo>> {
+        // Look up the relation symbol
+        let _relation = self.lookup_symbol_by_name(relation_name)?;
+        
+        // Create a source name
+        let source_name = format!("{}.file", relation_name);
+        let location = Location::UNKNOWN_LOCATION;
+        
+        // Define the source symbol
+        let source = self.define_symbol(
+            source_name, 
+            location, 
+            SymbolType::Source, 
+            None,
+            Some(Box::new(uri.to_string()))
+        );
+        
+        Some(source)
+    }
+
+    /// Adds a folder source to the symbol table.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation the source belongs to.
+    /// * `uri` - The URI of the folder.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the newly created symbol, or None if the relation was not found.
+    pub fn add_folder_source(&mut self, relation_name: &str, uri: &str) -> Option<Arc<SymbolInfo>> {
+        // Look up the relation symbol
+        let _relation = self.lookup_symbol_by_name(relation_name)?;
+        
+        // Create a source name
+        let source_name = format!("{}.folder", relation_name);
+        let location = Location::UNKNOWN_LOCATION;
+        
+        // Define the source symbol
+        let source = self.define_symbol(
+            source_name, 
+            location, 
+            SymbolType::Source, 
+            None,
+            Some(Box::new(uri.to_string()))
+        );
+        
+        Some(source)
+    }
+
+    /// Adds a string literal to the symbol table.
+    ///
+    /// # Arguments
+    ///
+    /// * `relation_name` - The name of the relation the literal belongs to.
+    /// * `value` - The string value.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the newly created symbol, or None if the relation was not found.
+    pub fn add_string_literal(&mut self, relation_name: &str, value: &str) -> Option<Arc<SymbolInfo>> {
+        // Look up the relation symbol
+        let _relation = self.lookup_symbol_by_name(relation_name)?;
+        
+        // Create a literal name (use a hash of the value for uniqueness)
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        let hash = format!("{:x}", hasher.finish());
+        let literal_name = format!("{}.string_{}", relation_name, hash);
+        let location = Location::UNKNOWN_LOCATION;
+        
+        // Define the literal symbol
+        let literal = self.define_symbol(
+            literal_name, 
+            location, 
+            SymbolType::Field, 
+            None,
+            Some(Box::new(value.to_string()))
+        );
+        
+        Some(literal)
     }
 }

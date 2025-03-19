@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 use std::fmt::Debug;
 
 // Import everything we need from antlr_rust
-use antlr_rust::parser::Parser;
 use antlr_rust::atn_config_set::ATNConfigSet;
 use antlr_rust::dfa::DFA;
 use antlr_rust::token_factory::{TokenAware, TokenFactory};
@@ -54,8 +53,8 @@ pub struct ErrorListener {
 impl ErrorListener {
     /// Creates a new error listener.
     pub fn new() -> Self {
-        Self { 
-            errors: Arc::new(Mutex::new(Vec::new())) 
+        Self {
+            errors: Arc::new(Mutex::new(Vec::new()))
         }
     }
 
@@ -89,14 +88,14 @@ impl AntlrErrorListener {
     pub fn new(error_listener: Arc<ErrorListener>) -> Self {
         Self { error_listener }
     }
-    
+
     /// Reports a syntax error.
     pub fn syntax_error(&self, line: isize, column: isize, msg: &str) {
         // Convert line/column to our Location type and add the error
         let location = Location::new(line as i32, column as i32);
         self.error_listener.add_error(msg.to_string(), location);
     }
-    
+
     /// Gets the underlying ErrorListener
     pub fn get_error_listener(&self) -> Arc<ErrorListener> {
         self.error_listener.clone()
@@ -105,9 +104,9 @@ impl AntlrErrorListener {
 
 // The error listener interface has changed with the antlr-rust 0.3.0-beta version.
 // We need to provide a generic implementation that works with ANTLR's recognizer types.
-impl<'input, T> antlr_rust::error_listener::ErrorListener<'input, T> for AntlrErrorListener 
-where 
-    T: Parser<'input>,
+impl<'input, T> antlr_rust::error_listener::ErrorListener<'input, T> for AntlrErrorListener
+where
+    T: TokenAware<'input> + antlr_rust::recognizer::Recognizer<'input>,
 {
     fn syntax_error(
         &self,
@@ -121,7 +120,7 @@ where
         // Forward to our internal method
         self.syntax_error(line, column, msg);
     }
-    
+
     fn report_ambiguity(
         &self,
         _recognizer: &T,
@@ -138,7 +137,7 @@ where
             Location::new(start_index as i32, stop_index as i32)
         );
     }
-    
+
     fn report_attempting_full_context(
         &self,
         _recognizer: &T,
@@ -154,7 +153,7 @@ where
             Location::new(start_index as i32, stop_index as i32)
         );
     }
-    
+
     fn report_context_sensitivity(
         &self,
         _recognizer: &T,
@@ -166,7 +165,7 @@ where
     ) {
         // Log context sensitivity
         self.error_listener.add_error(
-            format!("Context sensitivity detected at indices {}-{} with prediction {}", 
+            format!("Context sensitivity detected at indices {}-{} with prediction {}",
                   start_index, stop_index, prediction),
             Location::new(start_index as i32, stop_index as i32)
         );

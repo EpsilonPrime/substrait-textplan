@@ -72,7 +72,7 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
     let lexer_result = create_lexer(text, error_listener.clone(), &tf);
     
     // If lexer creation fails, return the error
-    let mut lexer = match lexer_result {
+    let lexer = match lexer_result {
         Ok(mut lexer) => {
             // Create an ANTLR error listener
             let boxed_error_listener = create_boxed_error_listener(error_listener.clone());

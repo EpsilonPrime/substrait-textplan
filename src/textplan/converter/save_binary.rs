@@ -5,7 +5,7 @@
 use std::boxed::Box;
 use crate::proto::{Plan, substrait, save_plan_to_binary};
 use crate::proto::substrait::{
-    PlanRel, Rel, plan_rel,
+    PlanRel, Rel, plan_rel, RelRoot,
     ReadRel, FilterRel, ProjectRel, JoinRel, AggregateRel, SortRel,
     read_rel
 };
@@ -50,7 +50,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
     // If we found root names, add a root relation
     if !root_names.is_empty() {
         plan.relations.push(PlanRel {
-            rel_type: Some(plan_rel::RelType::Root(substrait::RelRoot {
+            rel_type: Some(plan_rel::RelType::Root(RelRoot {
                 names: root_names,
                 input: None,
             })),
@@ -175,5 +175,19 @@ pub fn save_to_binary(symbol_table: &SymbolTable) -> Result<Vec<u8>, TextPlanErr
     let plan = create_plan_from_symbol_table(symbol_table)?;
     
     // Serialize the plan to bytes
-    save_plan_to_binary(&plan)
+    serialize_plan_to_binary(&plan)
+}
+
+/// Serializes a Plan to binary protobuf using prost.
+///
+/// # Arguments
+///
+/// * `plan` - The plan to serialize.
+///
+/// # Returns
+///
+/// The binary protobuf representation of the plan.
+fn serialize_plan_to_binary(plan: &Plan) -> Result<Vec<u8>, TextPlanError> {
+    // Use the existing function if available, otherwise implement with prost
+     save_plan_to_binary(plan)
 }

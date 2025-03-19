@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! Tests for the parser.
+//! Tests for the parser and printer.
 
 #[cfg(test)]
 mod tests {
-    use crate::textplan::parser::{load_from_text, parse_stream};
+    use crate::textplan::parser::{load_from_text, parse_stream, parse_text};
+    use crate::textplan::printer::plan_printer::TextPlanFormat;
 
     #[test]
     fn test_simple_plan() {
@@ -206,5 +207,69 @@ plan {
         
         // Print the symbols for debugging
         println!("Symbols in plan with complex types: {:?}", symbol_table);
+    }
+
+    #[test]
+    fn test_parse_and_print_simple_plan() {
+        // A simple textplan string
+        let text_plan = r#"
+ROOT {
+    NAMES = ["rel1"]
+}
+
+READ RELATION rel1 {
+    SOURCE = NAMED_TABLE {
+        NAMES = ["catalog", "schema", "table"]
+    }
+}
+"#;
+
+        // Parse the textplan to get a symbol table
+        let parse_result = parse_stream(text_plan);
+        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
+        
+        // Get the symbol table from the parse result
+        let symbol_table = parse_result.symbol_table();
+        
+        // Convert the symbol table back to a textplan string
+        let result = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Standard).unwrap();
+        
+        // Verify the result contains the essential elements
+        assert!(result.contains("ROOT {"));
+        assert!(result.contains("NAMES = ["));
+        assert!(result.to_lowercase().contains("relation"));
+    }
+
+    #[test]
+    fn test_parse_and_print_with_different_formats() {
+        // A simple textplan string
+        let text_plan = r#"
+ROOT {
+    NAMES = ["rel1"]
+}
+
+READ RELATION rel1 {
+    SOURCE = NAMED_TABLE {
+        NAMES = ["catalog", "schema", "table"]
+    }
+}
+"#;
+
+        // Parse the textplan to get a symbol table
+        let parse_result = parse_stream(text_plan);
+        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
+        
+        // Get the symbol table from the parse result
+        let symbol_table = parse_result.symbol_table();
+        
+        // Test different formats
+        let standard = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Standard).unwrap();
+        let compact = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Compact).unwrap();
+        let verbose = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Verbose).unwrap();
+        
+        // Verify we get different outputs with different formats
+        assert!(standard.contains("ROOT {"));
+        assert_ne!(standard, compact);
+        assert_ne!(standard, verbose);
     }
 }

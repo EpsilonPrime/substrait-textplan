@@ -9,6 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Tell Cargo to re-run this build script if the protos or grammars change
     println!("cargo:rerun-if-changed=third_party/substrait/proto");
     println!("cargo:rerun-if-changed=src/substrait/textplan/parser/grammar");
+    println!("cargo:rerun-if-changed=src/textplan/converter/visitor_generator.rs");
     println!("cargo:rerun-if-changed=build.rs");
     
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -17,10 +18,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     generate_proto_code(&out_dir)?;
     
     // Configure parser
-    // If using ANTLR4
+    // Using ANTLR4
     println!("cargo:rustc-cfg=use_antlr4");
-    // Also keep tree-sitter for compatibility during transition
-    println!("cargo:rustc-cfg=use_tree_sitter");
     
     // Generate ANTLR code if requested
     // You can use this by setting the GENERATE_ANTLR env var:
@@ -29,6 +28,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match generate_antlr_code() {
             Ok(_) => println!("cargo:warning=ANTLR code generation completed successfully"),
             Err(e) => println!("cargo:warning=ANTLR code generation failed: {}", e),
+        }
+    }
+    
+    // Generate visitor code if requested
+    // You can use this by setting the GENERATE_PROTO_VISITORS env var:
+    // GENERATE_PROTO_VISITORS=true cargo build
+    if env::var("GENERATE_PROTO_VISITORS").is_ok() {
+        match generate_visitor_code() {
+            Ok(_) => println!("cargo:warning=Visitor code generation completed successfully"),
+            Err(e) => println!("cargo:warning=Visitor code generation failed: {}", e),
         }
     }
     
@@ -255,5 +264,53 @@ fn copy_grammar_files(out_dir: &Path) -> Result<(), Box<dyn std::error::Error>> 
     let parser_dst = out_grammar_dir.join("SubstraitPlanParser.g4");
     fs::copy(parser_src, parser_dst)?;
     
+    Ok(())
+}
+
+/// Generate visitor code using our generator
+fn generate_visitor_code() -> Result<(), Box<dyn std::error::Error>> {
+    // Path to the Substrait proto files
+    let proto_dir = PathBuf::from("third_party/substrait/proto");
+    
+    // Path to the output file
+    let output_dir = PathBuf::from("src/textplan/converter/generated");
+    let output_path = output_dir.join("plan_visitor.rs");
+    
+    // Create the output directory if it doesn't exist
+    fs::create_dir_all(&output_dir)?;
+    
+    println!("cargo:warning=Generating visitor code from Substrait protobuf schema");
+    println!("cargo:warning=Proto directory: {}", proto_dir.display());
+    println!("cargo:warning=Output path: {}", output_path.display());
+    
+    // There are two ways to run the generator:
+    
+    // TODO: Implement option 1 and remove the standalone binary.
+    // Option 1: Import the generator module and use it directly (preferred approach)
+    // This requires adding the crate as a build dependency
+    if let Ok(_) = env::var("USE_DIRECT_PROTO_VISITOR_GENERATOR") {
+        println!("cargo:warning=Using direct proto visitor generator");
+        
+        // Import the module (would need to be modified to work with build script)
+        // This would require moving the visitor_generator to a separate crate that's
+        // usable from both the main code and build script
+        
+        // For now, just document this option
+        println!("cargo:warning=Direct visitor generator not yet implemented");
+    }
+    
+    // Option 2: Run the generator as a binary process
+    // This is simpler but less efficient
+    let status = Command::new("cargo")
+        .args(["run", "--bin", "generate_visitor", "--", 
+              proto_dir.to_str().unwrap(), 
+              output_path.to_str().unwrap()])
+        .status()?;
+    
+    if !status.success() {
+        return Err("Failed to generate visitor code".into());
+    }
+    
+    println!("cargo:warning=Visitor code generation completed successfully");
     Ok(())
 }

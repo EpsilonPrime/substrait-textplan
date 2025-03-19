@@ -10,6 +10,52 @@ pub mod proto;
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
 
+// Re-export key types
+pub use textplan::common::error::TextPlanError;
+pub use textplan::common::parse_result::ParseResult;
+pub use textplan::printer::plan_printer::TextPlanFormat;
+pub use textplan::symbol_table::SymbolTable;
+
+/// Parses a textplan string and returns a ParseResult.
+///
+/// # Arguments
+///
+/// * `text` - The textplan string to parse.
+///
+/// # Returns
+///
+/// A ParseResult containing the resulting SymbolTable and any errors.
+pub fn parse_text_plan(text: &str) -> ParseResult {
+    textplan::parser::parse_text::parse_stream(text)
+}
+
+/// Loads a binary Substrait plan and converts it to a textplan string.
+///
+/// # Arguments
+///
+/// * `bytes` - The binary plan to load.
+///
+/// # Returns
+///
+/// The textplan representation of the plan, or an error.
+pub fn binary_to_text_plan(bytes: &[u8]) -> Result<String, TextPlanError> {
+    textplan::converter::load_binary::load_from_binary(bytes)
+}
+
+/// Serializes a symbol table to a textplan string.
+///
+/// # Arguments
+///
+/// * `symbol_table` - The symbol table to serialize.
+/// * `format` - The format to use for the output.
+///
+/// # Returns
+///
+/// The textplan string representation of the symbol table, or an error.
+pub fn symbol_table_to_text_plan(symbol_table: &SymbolTable, format: TextPlanFormat) -> Result<String, TextPlanError> {
+    textplan::parser::parse_text::serialize_to_text(symbol_table, format)
+}
+
 /// FFI API for loading a textplan from a string and converting it to binary protobuf
 #[no_mangle]
 pub extern "C" fn load_from_text(text_ptr: *const c_char) -> *mut u8 {

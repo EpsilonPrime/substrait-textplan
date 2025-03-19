@@ -4,11 +4,11 @@
 //! 
 //! This module contains visitor implementations that process
 //! the ANTLR parse tree and build a symbol table following the
-//! multi-phase approach used in the C++ implementation.
+//! multiphase approach used in the C++ implementation.
 
 use std::sync::Arc;
 
-use antlr_rust::token::{Token, GenericToken};
+use antlr_rust::token::{GenericToken};
 use antlr_rust::tree::{ParseTree, ParseTreeVisitor};
 use antlr_rust::parser_rule_context::ParserRuleContext;
 
@@ -96,7 +96,7 @@ impl<'input> PlanVisitor<'input> for BasePlanVisitor {
 
 /// The TypeVisitor processes and validates types in the parse tree.
 ///
-/// This visitor is the first phase in the multi-phase parsing approach, focusing on 
+/// This visitor is the first phase in the multiphase parsing approach, focusing on 
 /// basic and complex types. It builds on the BasePlanVisitor to provide common
 /// symbol table and error handling functionality.
 pub struct TypeVisitor<'input> {
@@ -127,9 +127,9 @@ impl<'input> TypeVisitor<'input> {
         };
         
         let nullability = if nullable {
-            crate::proto::substrait::r#type::Nullability::NullabilityNullable
+            crate::proto::substrait::r#type::Nullability::Nullable
         } else {
-            crate::proto::substrait::r#type::Nullability::NullabilityRequired
+            crate::proto::substrait::r#type::Nullability::Required
         };
         
         // Parse complex types
@@ -139,7 +139,7 @@ impl<'input> TypeVisitor<'input> {
             let mut list_type = crate::proto::substrait::r#type::List::default();
             list_type.nullability = nullability.into();
             list_type.r#type = Some(Box::new(element_type));
-            proto_type.kind = Some(crate::proto::substrait::r#type::Kind::List(list_type));
+            proto_type.kind = Some(crate::proto::substrait::r#type::Kind::List(Box::new(list_type)));
             return proto_type;
         } else if let Some(struct_content) = base_type_str.strip_prefix("struct<").and_then(|s| s.strip_suffix(">")) {
             // Struct type - format: struct<field1_type, field2_type, ...>
@@ -167,7 +167,7 @@ impl<'input> TypeVisitor<'input> {
                 map_type.key = Some(Box::new(key_type));
                 map_type.value = Some(Box::new(value_type));
                 
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Map(map_type));
+                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Map(Box::new(map_type)));
                 return proto_type;
             } else {
                 // Use the start() method properly
@@ -430,7 +430,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for TypeVisitor<'input> {
 
 /// The PlanVisitor processes the top-level plan structure.
 ///
-/// This visitor is the second phase in the multi-phase parsing approach,
+/// This visitor is the second phase in the multiphase parsing approach,
 /// building on the TypeVisitor to handle plan-level structures.
 pub struct MainPlanVisitor<'input> {
     type_visitor: TypeVisitor<'input>,
@@ -501,12 +501,8 @@ impl<'input> MainPlanVisitor<'input> {
     /// Process a function definition and add it to the symbol table.
     fn process_function(&mut self, ctx: &FunctionContext<'input>) -> Option<Arc<SymbolInfo>> {
         // Get the name of the function using the function context trait
-        let name = if let Some(name_node) = ctx.as_ref().get_function_name() {
-            name_node.get_text().to_string()
-        } else {
-            "unnamed_function".to_string()
-        };
-        
+        let name = ctx.id()?.get_text();
+
         // Create a location from the context's start token
         // Get the start token directly - it's not an Option
         let token = ctx.start();
@@ -581,12 +577,8 @@ impl<'input> MainPlanVisitor<'input> {
     /// Process a pipeline and add it to the symbol table.
     fn process_pipeline(&mut self, ctx: &PipelineContext<'input>) -> Option<Arc<SymbolInfo>> {
         // Access the context as a trait object to use pipeline-specific methods
-        let name = if let Some(id_node) = ctx.as_ref().get_pipeline_id() {
-            id_node.get_text().to_string()
-        } else {
-            "unnamed_pipeline".to_string()
-        };
-        
+        let name = ctx.relation_ref()?.id(0)?.get_text();
+
         // Create a location from the context's start token
         // Get the start token directly - it's not an Option
         let token = ctx.start();
@@ -634,11 +626,7 @@ impl<'input> MainPlanVisitor<'input> {
     /// Process a schema item and add it to the symbol table.
     fn process_schema_item(&mut self, ctx: &Schema_itemContext<'input>, parent_schema: &Arc<SymbolInfo>) -> Option<Arc<SymbolInfo>> {
         // Get the name of the column using schema item context trait
-        let name = if let Some(id_node) = ctx.as_ref().get_schema_item_id() {
-            id_node.get_text().to_string()
-        } else {
-            "unnamed_column".to_string()
-        };
+        let name  = ctx.id(0)?.get_text();
         
         // Create a location from the context's start token
         // Get the start token directly - it's not an Option
@@ -792,7 +780,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
 
 /// The PipelineVisitor processes pipeline definitions.
 ///
-/// This visitor is the third phase in the multi-phase parsing approach,
+/// This visitor is the third phase in the multiphase parsing approach,
 /// focusing on pipeline structures.
 pub struct PipelineVisitor<'input> {
     plan_visitor: MainPlanVisitor<'input>,
@@ -889,7 +877,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
 
 /// The RelationVisitor processes relations and expressions.
 ///
-/// This visitor is the fourth phase in the multi-phase parsing approach,
+/// This visitor is the fourth phase in the multiphase parsing approach,
 /// handling relation structures and their expressions.
 pub struct RelationVisitor<'input> {
     plan_visitor: MainPlanVisitor<'input>,
@@ -1274,7 +1262,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
 
 /// The SubqueryRelationVisitor processes subquery relations.
 ///
-/// This visitor is the fifth and final phase in the multi-phase parsing approach,
+/// This visitor is the fifth and final phase in the multiphase parsing approach,
 /// specifically handling subquery relationships.
 pub struct SubqueryRelationVisitor<'input> {
     relation_visitor: RelationVisitor<'input>,

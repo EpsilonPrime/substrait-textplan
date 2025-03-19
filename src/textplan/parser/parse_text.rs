@@ -7,8 +7,10 @@ use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::textplan::common::error::TextPlanError;
 use crate::textplan::common::parse_result::ParseResult;
 use crate::textplan::parser::error_listener::ErrorListener;
+use crate::textplan::printer::plan_printer::{PlanPrinter, TextPlanFormat};
 use crate::textplan::symbol_table::SymbolTable;
 use crate::textplan::parser::grammar;
 use crate::textplan::parser::antlr::substraitplanparser::PlanContext;
@@ -87,7 +89,7 @@ pub fn parse_stream(text: &str) -> ParseResult {
 
 /// Processes an ANTLR parse tree using our visitors.
 /// 
-/// This function implements the multi-phase parsing approach used in the C++ code:
+/// This function implements the multiphase parsing approach used in the C++ code:
 /// 1. Process types with TypeVisitor
 /// 2. Process plan structure with MainPlanVisitor
 /// 3. Process pipelines with PipelineVisitor
@@ -122,6 +124,24 @@ fn process_parse_tree(
     
     // Return the parse result with the updated symbol table and any errors
     ParseResult::new(symbol_table, error_messages, Vec::new())
+}
+
+/// Serializes a symbol table back to a textplan string.
+///
+/// # Arguments
+///
+/// * `symbol_table` - The symbol table to serialize.
+/// * `format` - The format to use for the output.
+///
+/// # Returns
+///
+/// The serialized textplan as a string, or an error.
+pub fn serialize_to_text(symbol_table: &SymbolTable, format: TextPlanFormat) -> Result<String, TextPlanError> {
+    // Create a plan printer with the specified format
+    let mut printer = PlanPrinter::new(format);
+    
+    // Use the printer to convert the symbol table to a textplan
+    printer.print_plan(symbol_table)
 }
 
 /// Phase 1: Applies the TypeVisitor to the parse tree

@@ -45,7 +45,7 @@ The ANTLR code generation will create several Rust files:
 
 ## Integration with Existing Code
 
-The parser implementation follows the same multi-phase approach as the C++ implementation:
+The parser implementation follows the same multiphase approach as the C++ implementation:
 
 1. First phase: Basic parsing and symbol table creation (TypeVisitor + PlanVisitor)
 2. Second phase: Pipeline processing (PipelineVisitor)

@@ -7,8 +7,6 @@ pub mod grammar;
 pub mod load_text;
 pub mod parse_text;
 pub mod plan_visitor;
-// Keep tree_sitter_visitor module for now but it will be replaced by ANTLR visitors
-pub mod tree_sitter_visitor;
 // ANTLR visitors
 pub mod antlr_visitor;
 // Generated ANTLR code
