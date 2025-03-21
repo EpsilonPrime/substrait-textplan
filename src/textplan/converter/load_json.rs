@@ -5,11 +5,10 @@
 use std::fs;
 use std::path::Path;
 
-use crate::proto::{Plan, load_plan_from_json};
+use crate::proto::{self, Plan};
 use crate::textplan::common::error::TextPlanError;
-use crate::textplan::converter::load_binary::load_from_binary;
 
-/// Loads a JSON Substrait plan and converts it to a Plan protobuf.
+/// Loads a JSON Substrait plan from a string and converts it to a Plan protobuf.
 ///
 /// # Arguments
 ///
@@ -19,7 +18,7 @@ use crate::textplan::converter::load_binary::load_from_binary;
 ///
 /// The Plan protobuf representation of the JSON.
 pub fn load_plan_from_json_str(json_str: &str) -> Result<Plan, TextPlanError> {
-    load_plan_from_json(json_str)
+    proto::load_plan_from_json(json_str)
 }
 
 /// Loads a JSON Substrait plan from a file and converts it to a Plan protobuf.
@@ -38,24 +37,4 @@ pub fn load_from_json_file<P: AsRef<Path>>(file_path: P) -> Result<Plan, TextPla
     
     // Parse the JSON
     load_plan_from_json_str(&json_str)
-}
-
-/// Loads a JSON Substrait plan and converts it to a textplan.
-///
-/// # Arguments
-///
-/// * `json` - The JSON plan to load.
-///
-/// # Returns
-///
-/// The textplan representation of the plan.
-pub fn load_from_json(json: &str) -> Result<String, TextPlanError> {
-    // Deserialize the JSON data to a Plan
-    let plan = load_plan_from_json_str(json)?;
-    
-    // Convert the plan to binary
-    let binary = crate::proto::save_plan_to_binary(&plan)?;
-    
-    // Use the binary to textplan converter
-    load_from_binary(&binary)
 }

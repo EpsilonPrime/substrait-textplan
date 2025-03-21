@@ -3,9 +3,9 @@
 //! Save a Substrait plan to binary format.
 
 use std::boxed::Box;
-use crate::proto::{Plan, substrait, save_plan_to_binary};
-use crate::proto::substrait::{
-    PlanRel, Rel, plan_rel, RelRoot,
+use crate::proto::{Plan, PlanRel, Rel, save_plan_to_binary};
+use ::substrait::proto::{
+    plan_rel, RelRoot,
     ReadRel, FilterRel, ProjectRel, JoinRel, AggregateRel, SortRel,
     read_rel
 };
@@ -24,7 +24,7 @@ use crate::textplan::symbol_table::{RelationType as SymbolRelationType, SymbolTa
 pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan, TextPlanError> {
     // Create a plan with the appropriate version
     let mut plan = Plan {
-        version: Some(substrait::Version {
+        version: Some(::substrait::proto::Version {
             major_number: 0,
             minor_number: 1,
             patch_number: 0,
@@ -36,6 +36,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
         relations: Vec::new(),
         expected_type_urls: Vec::new(),
         advanced_extensions: None,
+        parameter_bindings: Vec::new(),
     };
     
     // Find the root symbol if present
@@ -80,7 +81,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             )),
                         };
                         Rel {
-                            rel_type: Some(substrait::rel::RelType::Read(Box::new(read_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Read(Box::new(read_rel))),
                         }
                     },
                     SymbolRelationType::Filter => {
@@ -92,7 +93,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             advanced_extension: None,
                         };
                         Rel {
-                            rel_type: Some(substrait::rel::RelType::Filter(Box::new(filter_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Filter(Box::new(filter_rel))),
                         }
                     },
                     SymbolRelationType::Project => {
@@ -104,7 +105,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             advanced_extension: None,
                         };
                         Rel {
-                            rel_type: Some(substrait::rel::RelType::Project(Box::new(project_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Project(Box::new(project_rel))),
                         }
                     },
                     SymbolRelationType::Join => {
@@ -119,7 +120,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             advanced_extension: None,
                         };
                         Rel {
-                            rel_type: Some(substrait::rel::RelType::Join(Box::new(join_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Join(Box::new(join_rel))),
                         }
                     },
                     SymbolRelationType::Aggregate => {
@@ -130,9 +131,10 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             measures: Vec::new(),
                             common: None,
                             advanced_extension: None,
+                            grouping_expressions: Vec::new(),
                         };
                         Rel {
-                            rel_type: Some(substrait::rel::RelType::Aggregate(Box::new(agg_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Aggregate(Box::new(agg_rel))),
                         }
                     },
                     SymbolRelationType::Sort => {
@@ -144,7 +146,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             advanced_extension: None,
                         };
                         Rel {
-                            rel_type: Some(substrait::rel::RelType::Sort(Box::new(sort_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Sort(Box::new(sort_rel))),
                         }
                     },
                     _ => continue, // Skip unknown relation types

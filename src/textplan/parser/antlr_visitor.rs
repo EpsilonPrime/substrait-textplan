@@ -12,7 +12,13 @@ use antlr_rust::token::{GenericToken};
 use antlr_rust::tree::{ParseTree, ParseTreeVisitor};
 use antlr_rust::parser_rule_context::ParserRuleContext;
 
-use crate::proto::substrait::Type;
+use ::substrait::proto::Type;
+use ::substrait::proto::r#type::{
+    Nullability, List, Struct, Map, Decimal, I32, I8, I16, I64,
+    Fp32, Fp64, FixedChar, VarChar, FixedBinary, Binary, Boolean,
+    String as StringType, Timestamp, TimestampTz, Date, Time,
+    Uuid, IntervalDay, IntervalYear, Kind
+};
 use crate::textplan::common::location::Location;
 use crate::textplan::parser::antlr::substraitplanparser::*;
 use crate::textplan::parser::antlr::substraitplanparser::RelationContextAttrs;
@@ -127,23 +133,23 @@ impl<'input> TypeVisitor<'input> {
         };
         
         let nullability = if nullable {
-            crate::proto::substrait::r#type::Nullability::Nullable
+            Nullability::Nullable
         } else {
-            crate::proto::substrait::r#type::Nullability::Required
+            Nullability::Required
         };
         
         // Parse complex types
         if let Some(list_content) = base_type_str.strip_prefix("list<").and_then(|s| s.strip_suffix(">")) {
             // List type - format: list<element_type>
             let element_type = self.text_to_type_proto(ctx, list_content);
-            let mut list_type = crate::proto::substrait::r#type::List::default();
+            let mut list_type = List::default();
             list_type.nullability = nullability.into();
             list_type.r#type = Some(Box::new(element_type));
-            proto_type.kind = Some(crate::proto::substrait::r#type::Kind::List(Box::new(list_type)));
+            proto_type.kind = Some(Kind::List(Box::new(list_type)));
             return proto_type;
         } else if let Some(struct_content) = base_type_str.strip_prefix("struct<").and_then(|s| s.strip_suffix(">")) {
             // Struct type - format: struct<field1_type, field2_type, ...>
-            let mut struct_type = crate::proto::substrait::r#type::Struct::default();
+            let mut struct_type = Struct::default();
             struct_type.nullability = nullability.into();
             
             // Split the struct content by commas, respecting nesting
@@ -154,7 +160,7 @@ impl<'input> TypeVisitor<'input> {
                 struct_type.types.push(field_type);
             }
             
-            proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Struct(struct_type));
+            proto_type.kind = Some(Kind::Struct(struct_type));
             return proto_type;
         } else if let Some(map_content) = base_type_str.strip_prefix("map<").and_then(|s| s.strip_suffix(">")) {
             // Map type - format: map<key_type, value_type>
@@ -162,12 +168,12 @@ impl<'input> TypeVisitor<'input> {
                 let key_type = self.text_to_type_proto(ctx, key_type_str.trim());
                 let value_type = self.text_to_type_proto(ctx, value_type_str.trim());
                 
-                let mut map_type = crate::proto::substrait::r#type::Map::default();
+                let mut map_type = Map::default();
                 map_type.nullability = nullability.into();
                 map_type.key = Some(Box::new(key_type));
                 map_type.value = Some(Box::new(value_type));
                 
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Map(Box::new(map_type)));
+                proto_type.kind = Some(Kind::Map(Box::new(map_type)));
                 return proto_type;
             } else {
                 // Use the start() method properly
@@ -179,12 +185,12 @@ impl<'input> TypeVisitor<'input> {
             // Decimal type - format: decimal<precision, scale>
             if let Some((precision_str, scale_str)) = decimal_content.split_once(',') {
                 if let (Ok(precision), Ok(scale)) = (precision_str.trim().parse::<i32>(), scale_str.trim().parse::<i32>()) {
-                    let mut decimal_type = crate::proto::substrait::r#type::Decimal::default();
+                    let mut decimal_type = Decimal::default();
                     decimal_type.nullability = nullability.into();
                     decimal_type.precision = precision;
                     decimal_type.scale = scale;
                     
-                    proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Decimal(decimal_type));
+                    proto_type.kind = Some(Kind::Decimal(decimal_type));
                     return proto_type;
                 } else {
                     // Get the start token directly - it's not an Option
@@ -199,11 +205,11 @@ impl<'input> TypeVisitor<'input> {
         } else if let Some(fixed_char_content) = base_type_str.strip_prefix("fixedchar<").and_then(|s| s.strip_suffix(">")) {
             // Fixed char type - format: fixedchar<length>
             if let Ok(length) = fixed_char_content.trim().parse::<i32>() {
-                let mut fixed_char_type = crate::proto::substrait::r#type::FixedChar::default();
+                let mut fixed_char_type = FixedChar::default();
                 fixed_char_type.nullability = nullability.into();
                 fixed_char_type.length = length;
                 
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::FixedChar(fixed_char_type));
+                proto_type.kind = Some(Kind::FixedChar(fixed_char_type));
                 return proto_type;
             } else {
                 // Get the start token directly - it's not an Option
@@ -213,11 +219,11 @@ impl<'input> TypeVisitor<'input> {
         } else if let Some(varchar_content) = base_type_str.strip_prefix("varchar<").and_then(|s| s.strip_suffix(">")) {
             // Varchar type - format: varchar<length>
             if let Ok(length) = varchar_content.trim().parse::<i32>() {
-                let mut varchar_type = crate::proto::substrait::r#type::VarChar::default();
+                let mut varchar_type = VarChar::default();
                 varchar_type.nullability = nullability.into();
                 varchar_type.length = length;
                 
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Varchar(varchar_type));
+                proto_type.kind = Some(Kind::Varchar(varchar_type));
                 return proto_type;
             } else {
                 // Get the start token directly - it's not an Option
@@ -227,11 +233,11 @@ impl<'input> TypeVisitor<'input> {
         } else if let Some(fixed_binary_content) = base_type_str.strip_prefix("fixedbinary<").and_then(|s| s.strip_suffix(">")) {
             // Fixed binary type - format: fixedbinary<length>
             if let Ok(length) = fixed_binary_content.trim().parse::<i32>() {
-                let mut fixed_binary_type = crate::proto::substrait::r#type::FixedBinary::default();
+                let mut fixed_binary_type = FixedBinary::default();
                 fixed_binary_type.nullability = nullability.into();
                 fixed_binary_type.length = length;
                 
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::FixedBinary(fixed_binary_type));
+                proto_type.kind = Some(Kind::FixedBinary(fixed_binary_type));
                 return proto_type;
             } else {
                 // Get the start token directly - it's not an Option
@@ -243,84 +249,84 @@ impl<'input> TypeVisitor<'input> {
         // Handle basic types
         match base_type_str {
             "boolean" | "bool" => {
-                let mut boolean = crate::proto::substrait::r#type::Boolean::default();
+                let mut boolean = Boolean::default();
                 boolean.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Bool(boolean));
+                proto_type.kind = Some(Kind::Bool(boolean));
             },
             "i8" | "int8" | "tinyint" => {
-                let mut i8_type = crate::proto::substrait::r#type::I8::default();
+                let mut i8_type = I8::default();
                 i8_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::I8(i8_type));
+                proto_type.kind = Some(Kind::I8(i8_type));
             },
             "i16" | "int16" | "smallint" => {
-                let mut i16_type = crate::proto::substrait::r#type::I16::default();
+                let mut i16_type = I16::default();
                 i16_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::I16(i16_type));
+                proto_type.kind = Some(Kind::I16(i16_type));
             },
             "i32" | "int32" | "int" => {
-                let mut i32_type = crate::proto::substrait::r#type::I32::default();
+                let mut i32_type = I32::default();
                 i32_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::I32(i32_type));
+                proto_type.kind = Some(Kind::I32(i32_type));
             },
             "i64" | "int64" | "bigint" => {
-                let mut i64_type = crate::proto::substrait::r#type::I64::default();
+                let mut i64_type = I64::default();
                 i64_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::I64(i64_type));
+                proto_type.kind = Some(Kind::I64(i64_type));
             },
             "fp32" | "float" => {
-                let mut fp32_type = crate::proto::substrait::r#type::Fp32::default();
+                let mut fp32_type = Fp32::default();
                 fp32_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Fp32(fp32_type));
+                proto_type.kind = Some(Kind::Fp32(fp32_type));
             },
             "fp64" | "double" => {
-                let mut fp64_type = crate::proto::substrait::r#type::Fp64::default();
+                let mut fp64_type = Fp64::default();
                 fp64_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Fp64(fp64_type));
+                proto_type.kind = Some(Kind::Fp64(fp64_type));
             },
             "string" => {
-                let mut string_type = crate::proto::substrait::r#type::String::default();
+                let mut string_type = StringType::default();
                 string_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::String(string_type));
+                proto_type.kind = Some(Kind::String(string_type));
             },
             "binary" => {
-                let mut binary_type = crate::proto::substrait::r#type::Binary::default();
+                let mut binary_type = Binary::default();
                 binary_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Binary(binary_type));
+                proto_type.kind = Some(Kind::Binary(binary_type));
             },
             "timestamp" => {
-                let mut timestamp_type = crate::proto::substrait::r#type::Timestamp::default();
+                let mut timestamp_type = Timestamp::default();
                 timestamp_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Timestamp(timestamp_type));
+                proto_type.kind = Some(Kind::Timestamp(timestamp_type));
             },
             "timestamp_tz" => {
-                let mut timestamp_tz_type = crate::proto::substrait::r#type::TimestampTz::default();
+                let mut timestamp_tz_type = TimestampTz::default();
                 timestamp_tz_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::TimestampTz(timestamp_tz_type));
+                proto_type.kind = Some(Kind::TimestampTz(timestamp_tz_type));
             },
             "date" => {
-                let mut date_type = crate::proto::substrait::r#type::Date::default();
+                let mut date_type = Date::default();
                 date_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Date(date_type));
+                proto_type.kind = Some(Kind::Date(date_type));
             },
             "time" => {
-                let mut time_type = crate::proto::substrait::r#type::Time::default();
+                let mut time_type = Time::default();
                 time_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Time(time_type));
+                proto_type.kind = Some(Kind::Time(time_type));
             },
             "interval_year" | "interval_year_to_month" => {
-                let mut interval_year_type = crate::proto::substrait::r#type::IntervalYear::default();
+                let mut interval_year_type = IntervalYear::default();
                 interval_year_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::IntervalYear(interval_year_type));
+                proto_type.kind = Some(Kind::IntervalYear(interval_year_type));
             },
             "interval_day" | "interval_day_to_second" => {
-                let mut interval_day_type = crate::proto::substrait::r#type::IntervalDay::default();
+                let mut interval_day_type = IntervalDay::default();
                 interval_day_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::IntervalDay(interval_day_type));
+                proto_type.kind = Some(Kind::IntervalDay(interval_day_type));
             },
             "uuid" => {
-                let mut uuid_type = crate::proto::substrait::r#type::Uuid::default();
+                let mut uuid_type = Uuid::default();
                 uuid_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::Uuid(uuid_type));
+                proto_type.kind = Some(Kind::Uuid(uuid_type));
             },
             // For unknown types, log an error and use i32 as a fallback
             _ => {
@@ -328,9 +334,9 @@ impl<'input> TypeVisitor<'input> {
                 let token = ctx.start();
                 self.add_error(&token, &format!("Unsupported or unknown type: {}", type_text));
                 // Set a default type for now
-                let mut unknown_type = crate::proto::substrait::r#type::I32::default();
+                let mut unknown_type = I32::default();
                 unknown_type.nullability = nullability.into();
-                proto_type.kind = Some(crate::proto::substrait::r#type::Kind::I32(unknown_type));
+                proto_type.kind = Some(Kind::I32(unknown_type));
             }
         }
         

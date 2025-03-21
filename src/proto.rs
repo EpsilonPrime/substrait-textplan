@@ -1,60 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! This module includes generated protobuf code and utilities for working with Substrait plans.
+//! This module provides utilities for working with Substrait plans using the substrait crate.
 
-// Import prost for Message trait
 use prost::Message;
 use crate::textplan::common::error::TextPlanError;
-use serde::{Deserializer, Serializer};
 
-// Helper functions for serializing/deserializing bytes with serde_bytes
-pub fn serialize_bytes<S>(bytes: &prost::bytes::Bytes, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serde_bytes::serialize(&bytes.as_ref(), serializer)
-}
-
-pub fn deserialize_bytes<'de, D>(deserializer: D) -> Result<prost::bytes::Bytes, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let bytes: Vec<u8> = serde_bytes::deserialize(deserializer)?;
-    Ok(prost::bytes::Bytes::from(bytes))
-}
-
-// Create google.protobuf module structure for Empty and Any
-pub mod google {
-    pub mod protobuf {
-        #[derive(Clone, PartialEq, ::prost::Message, serde::Serialize, serde::Deserialize)]
-        pub struct Empty {}
-        
-        // Define a serializable version of Any
-        #[derive(Clone, PartialEq, ::prost::Message, serde::Serialize, serde::Deserialize)]
-        pub struct Any {
-            #[prost(string, tag = "1")]
-            pub type_url: String,
-            
-            #[prost(bytes, tag = "2")]
-            #[serde(with = "serde_bytes")]
-            pub value: Vec<u8>,
-        }
-    }
-}
-
-// Include and expose the generated protobuf code
-pub mod substrait {
-    // Make the extensions module available at the substrait level
-    pub mod extensions {
-        include!(concat!(env!("OUT_DIR"), "/substrait.extensions.rs"));
-    }
-    
-    // Include the main substrait protobuf code
-    include!(concat!(env!("OUT_DIR"), "/substrait.rs"));
-}
-
-/// A simplified Plan type for easier access
-pub type Plan = substrait::Plan;
+// Define type aliases to make migration easier and code cleaner
+pub type Plan = ::substrait::proto::Plan;
+pub type Rel = ::substrait::proto::Rel;
+pub type PlanRel = ::substrait::proto::PlanRel;
+pub type RelCommon = ::substrait::proto::RelCommon;
+pub type RelType = ::substrait::proto::rel::RelType;
 
 /// Load a binary protobuf into a Plan
 pub fn load_plan_from_binary(bytes: &[u8]) -> Result<Plan, TextPlanError> {
@@ -72,29 +28,11 @@ pub fn save_plan_to_binary(plan: &Plan) -> Result<Vec<u8>, TextPlanError> {
     Ok(buf)
 }
 
-/// Namespace for prost-serde compatibility functions since prost-serde doesn't
-/// actually provide these functions directly.
-pub mod prost_serde {
-    use crate::textplan::common::error::TextPlanError;
-    use serde::de::DeserializeOwned;
-    use serde::Serialize;
-
-    /// Deserialize from a JSON string to a type that implements DeserializeOwned
-    pub fn from_str<T: DeserializeOwned>(json_str: &str) -> Result<T, TextPlanError> {
-        serde_json::from_str(json_str)
-            .map_err(|e| TextPlanError::ProtobufError(format!("JSON deserialization error: {}", e)))
-    }
-
-    /// Serialize to a JSON string from a type that implements Serialize
-    pub fn to_string<T: Serialize>(value: &T) -> Result<String, TextPlanError> {
-        serde_json::to_string(value)
-            .map_err(|e| TextPlanError::ProtobufError(format!("JSON serialization error: {}", e)))
-    }
-}
-
-/// Load a Plan from JSON string using our serde compatibility module
+/// Load a Plan from JSON string using standard Protobuf JSON format.
+/// With the serde feature enabled on the substrait crate, this should handle 
+/// the standard Protobuf JSON format correctly.
 pub fn load_plan_from_json(json_str: &str) -> Result<Plan, TextPlanError> {
-    // Skip any leading comment lines that start with #
+    // Skip an initial leading comment line that starts with #
     let usable_json = if json_str.starts_with('#') {
         match json_str.find('\n') {
             Some(idx) => &json_str[idx + 1..],
@@ -104,86 +42,51 @@ pub fn load_plan_from_json(json_str: &str) -> Result<Plan, TextPlanError> {
         json_str
     };
     
-    // Try to deserialize the JSON directly to a Plan
-    match prost_serde::from_str::<Plan>(usable_json) {
+    // Use serde_json directly to parse the JSON
+    match serde_json::from_str::<Plan>(usable_json) {
         Ok(plan) => Ok(plan),
-        Err(json_err) => {
-            // If direct deserialization fails, try to parse as a generic JSON value
-            // and construct a minimal valid plan
+        Err(err) => {
+            // If it fails, try to get more information about the failure
             match serde_json::from_str::<serde_json::Value>(usable_json) {
                 Ok(json_value) => {
-                    log::warn!("Failed to deserialize JSON directly to Plan: {}", json_err);
-                    log::info!("Creating a simplified Plan from the JSON value");
+                    // Log the structure for debugging
+                    log::debug!("JSON structure: {}", serde_json::to_string_pretty(&json_value).unwrap_or_default());
                     
-                    // Create a simple plan with a read relation and a root
-                    let mut plan = Plan::default();
-                    
-                    // Set version info
-                    plan.version = Some(substrait::Version {
-                        major_number: 0,
-                        minor_number: 1,
-                        patch_number: 0,
-                        git_hash: String::new(),
-                        producer: "Substrait TextPlan Rust".to_string(),
-                    });
-                    
-                    // Extract a name for our relation
-                    let relation_name = json_value.get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("test_relation")
-                        .to_string();
-                    
-                    // Create a minimal read relation - update fields based on generated structure
-                    let read_rel_obj = substrait::ReadRel {
-                        common: None,
-                        base_schema: None,
-                        filter: None,
-                        best_effort_filter: None,
-                        projection: None,
-                        advanced_extension: None,
-                        read_type: Some(substrait::read_rel::ReadType::NamedTable(
-                            substrait::read_rel::NamedTable {
-                                names: vec![relation_name.clone()],
-                                advanced_extension: None,
-                            }
-                        )),
-                    };
-                    
-                    let rel = substrait::Rel {
-                        rel_type: Some(substrait::rel::RelType::Read(Box::new(read_rel_obj))),
-                    };
-                    
-                    // Add the relation
-                    plan.relations.push(substrait::PlanRel {
-                        rel_type: Some(substrait::plan_rel::RelType::Rel(rel)),
-                    });
-                    
-                    // Add a root relation
-                    plan.relations.push(substrait::PlanRel {
-                        rel_type: Some(substrait::plan_rel::RelType::Root(substrait::RelRoot {
-                            names: vec![relation_name],
-                            input: None,
-                        })),
-                    });
-                    
-                    Ok(plan)
+                    if let serde_json::Value::Object(map) = &json_value {
+                        let available_fields = map.keys().map(|k| k.to_string()).collect::<Vec<_>>().join(", ");
+                        
+                        Err(TextPlanError::ProtobufError(format!(
+                            "Failed to deserialize JSON to Substrait Plan. Error: {}. Available fields: {}",
+                            err, available_fields
+                        )))
+                    } else {
+                        Err(TextPlanError::ProtobufError(format!(
+                            "Failed to deserialize JSON to Substrait Plan. Error: {}.",
+                            err
+                        )))
+                    }
                 },
-                Err(e) => Err(TextPlanError::ProtobufError(format!(
-                    "Failed to parse JSON: {}. Original error: {}", e, json_err
-                ))),
+                Err(parse_err) => {
+                    Err(TextPlanError::ProtobufError(format!(
+                        "Invalid JSON syntax: {}", parse_err
+                    )))
+                }
             }
         }
     }
 }
 
-/// Save a Plan to JSON format
+/// Save a Plan to JSON format using the standard Protobuf JSON format
 pub fn save_plan_to_json(plan: &Plan) -> Result<String, TextPlanError> {
-    prost_serde::to_string(plan)
+    // Using serde_json to convert to standard Protobuf JSON format
+    serde_json::to_string(plan)
+        .map_err(|e| TextPlanError::ProtobufError(format!("Failed to serialize Plan to JSON: {}", e)))
 }
 
+// TODO: Move this to a more appropriate location.
 /// Get the relation type as a string
-pub fn relation_type_to_string(rel: &substrait::Rel) -> &'static str {
-    use substrait::rel::RelType;
+pub fn relation_type_to_string(rel: &Rel) -> &'static str {
+    use ::substrait::proto::rel::RelType;
     
     match &rel.rel_type {
         Some(RelType::Read(_)) => "read",
@@ -208,5 +111,6 @@ pub fn relation_type_to_string(rel: &substrait::Rel) -> &'static str {
         Some(RelType::Window(_)) => "window",
         Some(RelType::Exchange(_)) => "exchange",
         Some(RelType::Expand(_)) => "expand",
+        Some(RelType::Update(_)) => "update",
     }
 }

@@ -62,10 +62,10 @@ Thumbs.db
 *.tokens
 
 vendor/
-build-tools/
+build-tools/antlr*
 
 # Generated proto visitor code
-src/textplan/converter/generated
+src/textplan/converter/generated/base_plan_visitor.rs
 
 # Reference code
 src/substrait/textplan
