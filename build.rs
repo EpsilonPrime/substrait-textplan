@@ -31,14 +31,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     
-    // Generate visitor code if requested
-    // You can use this by setting the GENERATE_PROTO_VISITORS env var:
-    // GENERATE_PROTO_VISITORS=true cargo build
-    if env::var("GENERATE_PROTO_VISITORS").is_ok() {
-        match generate_visitor_code() {
-            Ok(_) => println!("cargo:warning=Visitor code generation completed successfully"),
-            Err(e) => println!("cargo:warning=Visitor code generation failed: {}", e),
-        }
+    // Always generate visitor code
+    match generate_visitor_code() {
+        Ok(_) => println!("cargo:warning=Visitor code generation completed successfully"),
+        Err(e) => println!("cargo:warning=Visitor code generation failed: {}", e),
     }
     
     Ok(())
@@ -267,6 +263,11 @@ fn copy_grammar_files(out_dir: &Path) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
+// Include the visitor generator module
+mod visitor_generator {
+    include!("build-tools/visitor_generator.rs");
+}
+
 /// Generate visitor code using our generator
 fn generate_visitor_code() -> Result<(), Box<dyn std::error::Error>> {
     // Path to the Substrait proto files
@@ -283,33 +284,8 @@ fn generate_visitor_code() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:warning=Proto directory: {}", proto_dir.display());
     println!("cargo:warning=Output path: {}", output_path.display());
     
-    // There are two ways to run the generator:
-    
-    // TODO: Implement option 1 and remove the standalone binary.
-    // Option 1: Import the generator module and use it directly (preferred approach)
-    // This requires adding the crate as a build dependency
-    if let Ok(_) = env::var("USE_DIRECT_PROTO_VISITOR_GENERATOR") {
-        println!("cargo:warning=Using direct proto visitor generator");
-        
-        // Import the module (would need to be modified to work with build script)
-        // This would require moving the visitor_generator to a separate crate that's
-        // usable from both the main code and build script
-        
-        // For now, just document this option
-        println!("cargo:warning=Direct visitor generator not yet implemented");
-    }
-    
-    // Option 2: Run the generator as a binary process
-    // This is simpler but less efficient
-    let status = Command::new("cargo")
-        .args(["run", "--bin", "generate_visitor", "--", 
-              proto_dir.to_str().unwrap(), 
-              output_path.to_str().unwrap()])
-        .status()?;
-    
-    if !status.success() {
-        return Err("Failed to generate visitor code".into());
-    }
+    // Run the visitor generator directly
+    visitor_generator::generate(&proto_dir, &output_path)?;
     
     println!("cargo:warning=Visitor code generation completed successfully");
     Ok(())

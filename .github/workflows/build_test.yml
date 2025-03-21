@@ -62,9 +62,6 @@ jobs:
     - name: Cache cargo dependencies
       uses: Swatinem/rust-cache@v2
 
-    - name: Generate Proto Visitors
-      run: GENERATE_PROTO_VISITORS=true cargo check
-
     - name: Build
       run: cargo build --verbose
 
@@ -125,9 +122,6 @@ jobs:
 
     - name: Cache cargo dependencies
       uses: Swatinem/rust-cache@v2
-
-    - name: Generate Proto Visitors
-      run: GENERATE_PROTO_VISITORS=true cargo check
 
     - name: Build in release mode
       run: cargo build --release --verbose
