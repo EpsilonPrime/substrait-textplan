@@ -32,12 +32,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-jre
+          sudo apt-get install -y default-jre protobuf-compiler
 
-      - name: Install Java for ANTLR (macOS)
+      - name: Install Java for ANTLR and Protobuf (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install openjdk@11
+          brew install openjdk@11 protobuf
       
       - name: Cache ANTLR JAR
         id: cache-antlr
@@ -64,6 +64,9 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
       
+      - name: Generate Proto Visitors
+        run: GENERATE_PROTO_VISITORS=true cargo check
+      
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
@@ -75,7 +78,7 @@ jobs:
           python setup.py bdist_wheel
       
       - name: Upload wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
           path: python/dist/*.whl
@@ -101,7 +104,7 @@ jobs:
           pip install twine
       
       - name: Download all wheels
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: dist
       

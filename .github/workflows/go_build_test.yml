@@ -38,12 +38,12 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y default-jre
+        sudo apt-get install -y default-jre protobuf-compiler
 
-    - name: Install Java for ANTLR (macOS)
+    - name: Install Java for ANTLR and Protobuf (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install openjdk@11
+        brew install openjdk@11 protobuf
 
     - name: Cache ANTLR JAR
       id: cache-antlr
@@ -69,6 +69,9 @@ jobs:
 
     - name: Cache cargo dependencies
       uses: Swatinem/rust-cache@v2
+
+    - name: Generate Proto Visitors
+      run: GENERATE_PROTO_VISITORS=true cargo check
 
     - name: Build Rust library
       run: cargo build
