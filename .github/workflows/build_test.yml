@@ -21,7 +21,7 @@ jobs:
         rust: [stable]
 
     steps:
-    - uses: actions/checkout
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
 
@@ -38,7 +38,7 @@ jobs:
 
     - name: Cache ANTLR JAR
       id: cache-antlr
-      uses: actions/cache
+      uses: actions/cache@v4
       with:
         path: build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar
         key: antlr-jar-${{ env.ANTLR_JAR_VERSION }}
@@ -86,7 +86,7 @@ jobs:
         rust: [stable]
 
     steps:
-    - uses: actions/checkout
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
 
@@ -103,7 +103,7 @@ jobs:
 
     - name: Cache ANTLR JAR
       id: cache-antlr
-      uses: actions/cache
+      uses: actions/cache@v4
       with:
         path: build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar
         key: antlr-jar-${{ env.ANTLR_JAR_VERSION }}
