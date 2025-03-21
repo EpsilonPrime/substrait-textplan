@@ -25,7 +25,7 @@ jobs:
         go-version: ['1.19', '1.20']
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout
       with:
         submodules: recursive
 
@@ -47,7 +47,7 @@ jobs:
 
     - name: Cache ANTLR JAR
       id: cache-antlr
-      uses: actions/cache@v3
+      uses: actions/cache
       with:
         path: build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar
         key: antlr-jar-${{ env.ANTLR_JAR_VERSION }}
