@@ -29,12 +29,12 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y default-jre
+        sudo apt-get install -y default-jre protobuf-compiler
 
-    - name: Install Java for ANTLR (macOS)
+    - name: Install Java for ANTLR and Protobuf (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install openjdk@11
+        brew install openjdk@11 protobuf
 
     - name: Cache ANTLR JAR
       id: cache-antlr
@@ -91,12 +91,12 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y default-jre
+        sudo apt-get install -y default-jre protobuf-compiler
 
-    - name: Install Java for ANTLR (macOS)
+    - name: Install Java for ANTLR and Protobuf (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install openjdk@11
+        brew install openjdk@11 protobuf
 
     - name: Cache ANTLR JAR
       id: cache-antlr
@@ -128,7 +128,7 @@ jobs:
 
     - name: Upload library artifact (macOS)
       if: matrix.os == 'macos-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: libsubstrait_textplan-macos
         path: |
@@ -137,7 +137,7 @@ jobs:
 
     - name: Upload library artifact (Linux)
       if: matrix.os == 'ubuntu-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: libsubstrait_textplan-linux
         path: |
