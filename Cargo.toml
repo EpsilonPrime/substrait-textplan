@@ -17,13 +17,13 @@ serde_bytes = "0.11"
 antlr-rust = "0.3.0-beta"
 
 [dependencies.bit-set]
-version = "0.5.3"
+version = "0.8.0"
 
 [workspace]
 resolver = "2"
 
 [workspace.dependencies]
-bit-set = "0.5.3"
+bit-set = "0.8.0"
 
 [build-dependencies]
 prost-build = "0.13.5"
