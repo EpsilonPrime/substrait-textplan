@@ -7,12 +7,14 @@
 
 use phf::phf_map;
 use prost_types::{DescriptorProto, FileDescriptorSet};
+use serde::Serialize;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use tinytemplate::TinyTemplate;
 
 /// Error type for visitor generator operations
 #[derive(Debug)]
@@ -50,9 +52,14 @@ pub struct VisitorGenerator {
     // Categories of message types (for generating visitor methods)
     top_level_messages: BTreeSet<String>, // full_names of top-level messages (like Plan)
     all_message_types: BTreeSet<String>,  // full_names of all message types
+}
 
-    // Visitor method tracking
-    generated_methods: HashSet<String>, // Methods we've already generated
+#[derive(Serialize)]
+struct MethodContext {
+    indent: String,
+    top_level: bool,
+    name: String,
+    type_path: String,
 }
 
 impl VisitorGenerator {
@@ -64,7 +71,6 @@ impl VisitorGenerator {
             message_types: HashMap::new(),
             top_level_messages: BTreeSet::new(),
             all_message_types: BTreeSet::new(),
-            generated_methods: HashSet::new(),
         }
     }
 
@@ -131,36 +137,134 @@ impl VisitorGenerator {
         // Generate the base visitor trait
         self.generate_visitor_trait(&mut output);
 
+        // Generate the traversable trait
+        self.generate_traversable_trait(&mut output);
+
         Ok(output)
     }
 
     /// Generate file header with imports
     fn generate_header(&self, output: &mut String) {
-        output.push_str("// SPDX-License-Identifier: Apache-2.0\n\n");
-        output.push_str("//! GENERATED CODE - DO NOT MODIFY\n");
-        output.push_str("//! Generated visitor for Substrait protocol buffers.\n\n");
+        output.push_str(
+            r#"
+// SPDX-License-Identifier: Apache-2.0
 
-        output.push_str("use ::substrait::proto as substrait;\n");
-        output.push_str("use ::substrait::proto::extensions;\n\n");
+//! GENERATED CODE - DO NOT MODIFY
+//! Generated visitor for Substrait protocol buffers.
 
-        output.push_str("#[allow(deprecated,unused_variables,unreachable_patterns)]\n\n");
+use ::substrait::proto as substrait;
+use ::substrait::proto::extensions;
+use crate::textplan::common::ProtoLocation;
+
+#[allow(deprecated,unused_variables,unreachable_patterns)]
+
+"#,
+        );
     }
 
     /// Generate the visitor trait
     fn generate_visitor_trait(&mut self, output: &mut String) {
-        output.push_str("/// Base visitor trait for Substrait plans.\n");
-        output.push_str("/// \n");
-        output.push_str("/// This trait defines the visit methods for all protobuf message types in the Substrait schema.\n");
-        output.push_str("/// It's intended to be implemented by concrete visitors that need to traverse and process\n");
-        output.push_str("/// Substrait plans.\n");
-        output.push_str("pub trait BasePlanProtoVisitor {\n\n");
+        output.push_str(
+            r#"
+/// Base visitor trait for Substrait plans.
+///
+/// This trait defines the visit methods for all protobuf message types in the Substrait schema.
+/// It's intended to be implemented by concrete visitors that need to traverse and process
+/// Substrait plans.
+///
+/// The trait automatically tracks the current location in the protocol buffer structure
+/// using ProtoLocation, which can be used for detailed error reporting and symbol resolution.
+pub trait PlanProtoVisitor {
+    /// Get the current location in the protocol buffer being visited
+    fn current_location(&self) -> &ProtoLocation;
+
+    /// Set the current location in the protocol buffer being visited
+    fn set_location(&mut self, location: ProtoLocation);
+
+    /// Create a location for a specific field of the current object
+    fn field_location(&self, field_name: &str) -> ProtoLocation {
+        self.current_location().field(field_name)
+    }
+
+    /// Create a location for an indexed field of the current object
+    fn indexed_field_location(&self, field_name: &str, index: usize) -> ProtoLocation {
+        self.current_location().indexed_field(field_name, index)
+    }
+
+"#,
+        );
+
+        for full_name in &self.top_level_messages {
+            if let Some(_message) = self.message_types.get(full_name) {
+                self.generate_start_point(full_name, output, 4);
+            }
+        }
+
+        output.push_str("\n");
+
+        for full_name in &self.top_level_messages {
+            if let Some(_message) = self.message_types.get(full_name) {
+                self.generate_preprocess_method(full_name, output, 4);
+            }
+        }
+
+        // Generate visit methods for all other message types
+        // Use a queue to ensure we process all types that could be discovered
+        let mut to_process: Vec<String> = self
+            .all_message_types
+            .iter()
+            .filter(|name| !self.top_level_messages.contains(*name))
+            .cloned()
+            .collect();
+
+        while let Some(full_name) = to_process.pop() {
+            if let Some(_message) = self.message_types.get(&full_name) {
+                self.generate_preprocess_method(&full_name, output, 4);
+            }
+        }
+
+        output.push_str("\n");
+
+        for full_name in &self.top_level_messages {
+            if let Some(_message) = self.message_types.get(full_name) {
+                self.generate_postprocess_method(full_name, output, 4);
+            }
+        }
+
+        // Generate visit methods for all other message types
+        // Use a queue to ensure we process all types that could be discovered
+        let mut to_process: Vec<String> = self
+            .all_message_types
+            .iter()
+            .filter(|name| !self.top_level_messages.contains(*name))
+            .cloned()
+            .collect();
+
+        while let Some(full_name) = to_process.pop() {
+            if let Some(_message) = self.message_types.get(&full_name) {
+                self.generate_postprocess_method(&full_name, output, 4);
+            }
+        }
+
+        // Close trait
+        output.push_str("}\n\n");
+    }
+
+    /// Generate the traversable trait
+    fn generate_traversable_trait(&mut self, output: &mut String) {
+        output.push_str(
+            r#"
+// Define the traversable trait for each proto type
+pub trait Traversable {
+    fn traverse<V: PlanProtoVisitor>(&self, visitor: &mut V);
+}
+"#,
+        );
 
         // Generate visit methods for top-level messages first
         for full_name in &self.top_level_messages {
             if let Some(message) = self.message_types.get(full_name) {
                 self.generate_visit_method(full_name, message, output, 4);
-                self.generated_methods
-                    .insert(self.get_method_name(message.name()));
             }
         }
 
@@ -175,26 +279,27 @@ impl VisitorGenerator {
 
         while let Some(full_name) = to_process.pop() {
             if let Some(message) = self.message_types.get(&full_name) {
-                let method_name = self.get_method_name(&full_name);
-
-                if !self.generated_methods.contains(&method_name) {
-                    self.generate_visit_method(&full_name, message, output, 4);
-                    self.generated_methods.insert(method_name);
-                }
+                self.generate_visit_method(&full_name, message, output, 4);
             }
         }
-
-        // Close trait
-        output.push_str("}\n\n");
     }
 
-    /// Get the method name for a message type
-    fn get_method_name(&self, message_name: &str) -> String {
+    /// Get the portion of a method name for a message type
+    fn get_method_name_fragment(&self, message_name: &str) -> String {
         static NAME_OVERRIDES: phf::Map<&'static str, &'static str> = phf_map! {
-            "substrait.Expression.Literal.Struct" => "visit_expression_literal_struct",
-            "substrait.Expression.Subquery.Scalar" => "visit_expression_subquery_scalar",
-            "substrait.Expression.MaskExpression.MapSelect.MapKey" => "visit_mask_expression_map_select_mapkey",
-            "substrait.Expression.MaskExpression.ListSelect.ListSelectItem.ListElement" => "visit_mask_expression_list_select_item_element",
+            "substrait.Expression.Literal.Decimal" => "expression_literal_decimal",
+            "substrait.Expression.Literal.List" => "expression_literal_list",
+            "substrait.Expression.Literal.Map" => "expression_literal_map",
+            "substrait.Expression.Literal.Struct" => "expression_literal_struct",
+            "substrait.Expression.Literal.VarChar" => "expression_literal_varchar",
+            "substrait.Expression.Literal.UserDefined" => "expression_literal_user_defined",
+            "substrait.Expression.Subquery.Scalar" => "expression_subquery_scalar",
+            "substrait.Expression.MaskExpression.MapSelect.MapKey" => "mask_expression_map_select_mapkey",
+            "substrait.Expression.MaskExpression.ListSelect.ListSelectItem.ListElement" => "mask_expression_list_select_item_element",
+            "substrait.Expression.Nested.Struct" => "expression_nested_struct",
+            "substrait.Expression.Nested.Map.KeyValue" => "expression_nested_map_key_value",
+            "substrait.Expression.Nested.Map" => "expression_nested_map",
+            "substrait.Expression.Nested.List" => "expression_nested_list",
         };
         if message_name.starts_with(".") && NAME_OVERRIDES.contains_key(&message_name[1..]) {
             return NAME_OVERRIDES[&message_name[1..]].to_string();
@@ -206,7 +311,7 @@ impl VisitorGenerator {
             None => message_name, // Return the entire string if no period is found
         };
         // Convert camel case to snake case for method name
-        format!("visit_{}", to_snake_case(&method_name))
+        to_snake_case(&method_name)
     }
 
     /// Get the Rust path for a message type
@@ -243,6 +348,90 @@ impl VisitorGenerator {
         )
     }
 
+    /// Generate an implementation for a preprocess method
+    fn generate_start_point(&self, full_name: &str, output: &mut String, indent: usize) {
+        let indent_str = " ".repeat(indent);
+        let method_name = self.get_method_name_fragment(full_name);
+        let rust_type_path = self.get_rust_type_path(full_name);
+
+        static METHOD_TEMPLATE: &'static str = r#"
+{-indent}fn visit_{name}(&mut self, obj: &{type_path}) \{}
+"#;
+        let mut tt = TinyTemplate::new();
+        let result = tt.add_template("method", METHOD_TEMPLATE);
+        if result.is_err() {
+            panic!("{}", result.unwrap_err());
+        }
+        let context = MethodContext {
+            indent: indent_str.clone(),
+            top_level: full_name == "substrait.Plan" || full_name == "substrait.ExtendedExpression",
+            name: method_name,
+            type_path: rust_type_path.clone(),
+        };
+
+        let rendered = tt.render("method", &context);
+        if rendered.is_err() {
+            panic!("{}", rendered.unwrap_err());
+        }
+        output.push_str(&rendered.unwrap());
+    }
+
+    /// Generate an implementation for a preprocess method
+    fn generate_preprocess_method(&self, full_name: &str, output: &mut String, indent: usize) {
+        let indent_str = " ".repeat(indent);
+        let method_name = self.get_method_name_fragment(full_name);
+        let rust_type_path = self.get_rust_type_path(full_name);
+
+        static METHOD_TEMPLATE: &'static str = r#"
+{-indent}fn pre_process_{name}(&mut self, obj: &{type_path}) \{}
+"#;
+        let mut tt = TinyTemplate::new();
+        let result = tt.add_template("method", METHOD_TEMPLATE);
+        if result.is_err() {
+            panic!("{}", result.unwrap_err());
+        }
+        let context = MethodContext {
+            indent: indent_str.clone(),
+            top_level: full_name == "substrait.Plan" || full_name == "substrait.ExtendedExpression",
+            name: method_name,
+            type_path: rust_type_path.clone(),
+        };
+
+        let rendered = tt.render("method", &context);
+        if rendered.is_err() {
+            panic!("{}", rendered.unwrap_err());
+        }
+        output.push_str(&rendered.unwrap());
+    }
+
+    /// Generate an implementation for a postprocess method
+    fn generate_postprocess_method(&self, full_name: &str, output: &mut String, indent: usize) {
+        let indent_str = " ".repeat(indent);
+        let method_name = self.get_method_name_fragment(full_name);
+        let rust_type_path = self.get_rust_type_path(full_name);
+
+        static METHOD_TEMPLATE: &'static str = r#"
+{-indent}fn post_process_{name}(&mut self, obj: &{type_path}) \{}
+"#;
+        let mut tt = TinyTemplate::new();
+        let result = tt.add_template("method", METHOD_TEMPLATE);
+        if result.is_err() {
+            panic!("{}", result.unwrap_err());
+        }
+        let context = MethodContext {
+            indent: indent_str.clone(),
+            top_level: full_name == "substrait.Plan" || full_name == "substrait.ExtendedExpression",
+            name: method_name,
+            type_path: rust_type_path.clone(),
+        };
+
+        let rendered = tt.render("method", &context);
+        if rendered.is_err() {
+            panic!("{}", rendered.unwrap_err());
+        }
+        output.push_str(&rendered.unwrap());
+    }
+
     /// Generate an implementation for a visit method
     fn generate_visit_method(
         &self,
@@ -252,13 +441,39 @@ impl VisitorGenerator {
         indent: usize,
     ) {
         let indent_str = " ".repeat(indent);
-        let method_name = self.get_method_name(full_name);
+        let method_name = self.get_method_name_fragment(full_name);
         let rust_type_path = self.get_rust_type_path(full_name);
 
-        output.push_str(&format!(
-            "{}fn {}(&mut self, obj: &{}) -> impl std::any::Any {{\n",
-            indent_str, method_name, rust_type_path
-        ));
+        static METHOD_TEMPLATE: &'static str = r#"
+impl Traversable for {type_path} \{
+{indent}fn traverse<V: PlanProtoVisitor>(&self, visitor: &mut V) \{
+{indent}    // Save current location
+{indent}    let prev_location = visitor.current_location().clone();
+
+{{- if top_level }}
+{indent}    // Set location to this object for the first time.
+{indent}    visitor.set_location(ProtoLocation::new(self));
+{{ endif }}
+{indent}    visitor.pre_process_{name}(self);
+
+"#;
+        let mut tt = TinyTemplate::new();
+        let result = tt.add_template("method", METHOD_TEMPLATE);
+        if result.is_err() {
+            panic!("{}", result.unwrap_err());
+        }
+        let context = MethodContext {
+            indent: indent_str.clone(),
+            top_level: full_name == "substrait.Plan" || full_name == "substrait.ExtendedExpression",
+            name: method_name,
+            type_path: rust_type_path.clone(),
+        };
+
+        let rendered = tt.render("method", &context);
+        if rendered.is_err() {
+            panic!("{}", rendered.unwrap_err());
+        }
+        output.push_str(&rendered.unwrap());
 
         // Output
         let mut handled_oneofs = HashSet::new();
@@ -284,34 +499,96 @@ impl VisitorGenerator {
                 // This isn't a message we know about.
                 continue;
             }
-            let rel_method = self.get_method_name(rel_msg.type_name());
             if rel_msg.label() == prost_types::field_descriptor_proto::Label::Repeated {
+                let field_name = to_rust_safe_name(rel_msg.name());
                 output.push_str(&format!(
-                    "{}    for x in &obj.{} {{\n",
-                    indent_str,
-                    to_rust_safe_name(rel_msg.name())
+                    "{}    // Process repeated field: {}\n",
+                    indent_str, field_name
                 ));
-                output.push_str(&format!("{}        self.{}(x);\n", indent_str, rel_method));
+                output.push_str(&format!(
+                    "{}    for (idx, x) in self.{}.iter().enumerate() {{\n",
+                    indent_str, field_name
+                ));
+                output.push_str(&format!(
+                    "{}        // Set location to indexed field\n",
+                    indent_str
+                ));
+                output.push_str(&format!(
+                    "{}        let field_loc = visitor.indexed_field_location(\"{}\", idx);\n",
+                    indent_str, field_name
+                ));
+                output.push_str(&format!(
+                    "{}        visitor.set_location(field_loc);\n",
+                    indent_str
+                ));
+                output.push_str(&format!("{}        x.traverse(visitor);\n", indent_str));
+                output.push_str(&format!(
+                    "{}        visitor.set_location(prev_location.clone());\n",
+                    indent_str
+                ));
                 output.push_str(&format!("{}    }}\n", indent_str));
             } else if rel_msg.label() == prost_types::field_descriptor_proto::Label::Optional {
+                let field_name = to_rust_safe_name(rel_msg.name());
                 output.push_str(&format!(
-                    "{}    if let Some({}) = &obj.{} {{\n",
-                    indent_str,
-                    to_rust_safe_name(rel_msg.name()),
-                    to_rust_safe_name(rel_msg.name()),
+                    "{}    // Process optional field: {}\n",
+                    indent_str, field_name
                 ));
                 output.push_str(&format!(
-                    "{}        self.{}({});\n",
-                    indent_str,
-                    rel_method,
-                    to_rust_safe_name(rel_msg.name())
+                    "{}    if let Some({}) = &self.{} {{\n",
+                    indent_str, field_name, field_name
+                ));
+                output.push_str(&format!("{}        // Set location to field\n", indent_str));
+                output.push_str(&format!(
+                    "{}        let field_loc = visitor.field_location(\"{}\");\n",
+                    indent_str, field_name
+                ));
+                output.push_str(&format!(
+                    "{}        visitor.set_location(field_loc);\n",
+                    indent_str
+                ));
+                output.push_str(&format!(
+                    "{}        {}.traverse(visitor);\n",
+                    indent_str, field_name
+                ));
+                output.push_str(&format!(
+                    "{}        visitor.set_location(prev_location.clone());\n",
+                    indent_str
                 ));
                 output.push_str(&format!("{}    }}\n", indent_str));
             } else {
-                output.push_str(&format!("{}    self.{}(value);\n", indent_str, rel_method));
+                let field_name = to_rust_safe_name(rel_msg.name());
+                output.push_str(&format!(
+                    "{}    // Process field: {}\n",
+                    indent_str, field_name
+                ));
+                output.push_str(&format!(
+                    "{}    let field_loc = visitor.field_location(\"{}\");\n",
+                    indent_str, field_name
+                ));
+                output.push_str(&format!(
+                    "{}    visitor.set_location(field_loc);\n",
+                    indent_str
+                ));
+                output.push_str(&format!(
+                    "{}        {}.traverse(visitor);\n",
+                    indent_str, field_name
+                ));
+                output.push_str(&format!(
+                    "{}        visitor.set_location(prev_location.clone());\n",
+                    indent_str
+                ));
             }
         }
-        output.push_str(&format!("{}}}\n\n", indent_str));
+        // Restore the original location
+        output.push_str(&format!(
+            "\n{}    // Restore previous location\n",
+            indent_str
+        ));
+        output.push_str(&format!(
+            "{}    visitor.set_location(prev_location);\n",
+            indent_str
+        ));
+        output.push_str(&format!("{}}}\n}}\n\n", indent_str));
     }
 
     /// Write the generated code to a file
@@ -342,7 +619,7 @@ impl VisitorGenerator {
         let oneof_name = message.oneof_decl[oneof_index as usize].name();
         let oneof_type_name = to_pascal_case(&oneof_name);
         output.push_str(&format!(
-            "{}    if let Some({}) = &obj.{} {{\n",
+            "{}    if let Some({}) = &self.{} {{\n",
             indent_str,
             to_rust_safe_name(oneof_name),
             to_rust_safe_name(oneof_name)
@@ -359,15 +636,30 @@ impl VisitorGenerator {
             }
             let rel_variant = to_pascal_case(&rel_msg.name());
 
-            let rel_method = self.get_method_name(rel_msg.type_name());
-
             output.push_str(&format!(
                 "{}            {}::{}::{}(value) => {{\n",
                 indent_str, parent_path, oneof_type_name, rel_variant
             ));
             output.push_str(&format!(
-                "{}                self.{}(value);\n",
-                indent_str, rel_method
+                "{}                // Set location to field within oneof\n",
+                indent_str
+            ));
+            output.push_str(&format!(
+                "{}                let field_loc = visitor.field_location(\"{}\");\n",
+                indent_str,
+                to_rust_safe_name(rel_msg.name())
+            ));
+            output.push_str(&format!(
+                "{}                visitor.set_location(field_loc);\n",
+                indent_str
+            ));
+            output.push_str(&format!(
+                "{}                value.traverse(visitor);\n",
+                indent_str
+            ));
+            output.push_str(&format!(
+                "{}                visitor.set_location(prev_location.clone());\n",
+                indent_str
             ));
             output.push_str(&format!("{}            }}\n", indent_str));
         }

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::rc::Rc;
 use std::fs;
-use crate::textplan::common::location::Location;
+use crate::textplan::TextLocation;
 use crate::textplan::parser::error_listener::ErrorListener;
 use antlr_rust::{
     common_token_stream::CommonTokenStream,
@@ -107,7 +107,7 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
             // If we get a parsing error, add it to our error listener
             error_listener.add_error(
                 format!("Parser error: {}", e),
-                Location::new(0, 0) // We don't have specific location for this error
+                TextLocation::new(0, 0) // We don't have specific location for this error
             );
             // Return early with the error
             return Err(format!("Parser error: {}", e));

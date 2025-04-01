@@ -4,3 +4,4 @@
 
 mod parser_test;
 mod converter_test;
+mod base_plan_visitor_test;

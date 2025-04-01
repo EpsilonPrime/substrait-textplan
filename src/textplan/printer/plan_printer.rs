@@ -20,9 +20,9 @@ pub enum TextPlanFormat {
 }
 
 /// A printer for converting a symbol table into a textplan.
-/// 
-/// The PlanPrinter takes a symbol table that has been populated either by 
-/// parsing a textplan or by converting a binary Substrait plan, and 
+///
+/// The PlanPrinter takes a symbol table that has been populated either by
+/// parsing a textplan or by converting a binary Substrait plan, and
 /// generates a textplan string representation.
 pub struct PlanPrinter {
     /// The format to use for the output
@@ -76,7 +76,10 @@ impl PlanPrinter {
         // Add header information if verbose
         if self.format == TextPlanFormat::Verbose {
             result.push_str("// Substrait TextPlan\n");
-            result.push_str(&format!("// Generated symbol count: {}\n\n", symbol_table.len()));
+            result.push_str(&format!(
+                "// Generated symbol count: {}\n\n",
+                symbol_table.len()
+            ));
         }
 
         // Process ROOT relations first
@@ -98,9 +101,14 @@ impl PlanPrinter {
     /// # Returns
     ///
     /// Result indicating success or an error
-    fn process_root_relations(&mut self, symbol_table: &SymbolTable, result: &mut String) -> Result<(), TextPlanError> {
+    fn process_root_relations(
+        &mut self,
+        symbol_table: &SymbolTable,
+        result: &mut String,
+    ) -> Result<(), TextPlanError> {
         // Find all ROOT symbols
-        let root_symbols: Vec<_> = symbol_table.symbols()
+        let root_symbols: Vec<_> = symbol_table
+            .symbols()
             .iter()
             .filter(|s| s.symbol_type() == SymbolType::Root)
             .cloned()
@@ -136,7 +144,12 @@ impl PlanPrinter {
     /// # Returns
     ///
     /// Result indicating success or an error
-    fn print_root_relation(&self, root: &Arc<SymbolInfo>, _symbol_table: &SymbolTable, result: &mut String) -> Result<(), TextPlanError> {
+    fn print_root_relation(
+        &self,
+        root: &Arc<SymbolInfo>,
+        _symbol_table: &SymbolTable,
+        result: &mut String,
+    ) -> Result<(), TextPlanError> {
         // Start the ROOT block
         result.push_str("ROOT {\n");
 
@@ -168,9 +181,14 @@ impl PlanPrinter {
     /// # Returns
     ///
     /// Result indicating success or an error
-    fn process_relations(&mut self, symbol_table: &SymbolTable, result: &mut String) -> Result<(), TextPlanError> {
+    fn process_relations(
+        &mut self,
+        symbol_table: &SymbolTable,
+        result: &mut String,
+    ) -> Result<(), TextPlanError> {
         // Find all relation symbols
-        let relation_symbols: Vec<_> = symbol_table.symbols()
+        let relation_symbols: Vec<_> = symbol_table
+            .symbols()
             .iter()
             .filter(|s| s.symbol_type() == SymbolType::Relation)
             .cloned()
@@ -187,13 +205,14 @@ impl PlanPrinter {
         // First pass: generate text for all relations and cache it
         for relation in &relation_symbols {
             let relation_text = self.generate_relation_text(relation, symbol_table)?;
-            self.relation_text_cache.insert(relation.name().to_string(), relation_text);
+            self.relation_text_cache
+                .insert(relation.name().to_string(), relation_text);
         }
 
         // Second pass: append all relation texts to the result in a meaningful order
         let mut processed = HashSet::new();
-        
-        // Process relations in dependency order (a more complex implementation would perform 
+
+        // Process relations in dependency order (a more complex implementation would perform
         // topological sorting here)
         for relation in relation_symbols {
             if !processed.contains(relation.name()) {
@@ -218,11 +237,16 @@ impl PlanPrinter {
     /// # Returns
     ///
     /// The relation text or an error
-    fn generate_relation_text(&self, relation: &Arc<SymbolInfo>, symbol_table: &SymbolTable) -> Result<String, TextPlanError> {
+    fn generate_relation_text(
+        &self,
+        relation: &Arc<SymbolInfo>,
+        symbol_table: &SymbolTable,
+    ) -> Result<String, TextPlanError> {
         let mut result = String::new();
 
         // Get the relation type
-        let rel_type = relation.subtype::<RelationType>()
+        let rel_type = relation
+            .subtype::<RelationType>()
             .cloned()
             .unwrap_or(RelationType::Unknown);
 
@@ -249,7 +273,11 @@ impl PlanPrinter {
         };
 
         // Start the relation definition
-        result.push_str(&format!("{} RELATION {} {{\n", rel_type_str, relation.display_name()));
+        result.push_str(&format!(
+            "{} RELATION {} {{\n",
+            rel_type_str,
+            relation.display_name()
+        ));
 
         // Get the indentation for this level
         let indent = " ".repeat(self.indent_size);
@@ -266,7 +294,10 @@ impl PlanPrinter {
             _ => {
                 // Default case: add a comment for unimplemented relation types
                 if self.include_comments {
-                    result.push_str(&format!("{}// Properties for this relation type are not yet fully implemented\n", indent));
+                    result.push_str(&format!(
+                        "{}// Properties for this relation type are not yet fully implemented\n",
+                        indent
+                    ));
                 }
             }
         }
@@ -289,11 +320,21 @@ impl PlanPrinter {
     /// # Returns
     ///
     /// Result indicating success or an error
-    fn add_read_relation_properties(&self, relation: &Arc<SymbolInfo>, symbol_table: &SymbolTable, indent: &str, result: &mut String) -> Result<(), TextPlanError> {
+    fn add_read_relation_properties(
+        &self,
+        relation: &Arc<SymbolInfo>,
+        symbol_table: &SymbolTable,
+        indent: &str,
+        result: &mut String,
+    ) -> Result<(), TextPlanError> {
         // Look for table information
-        let table_symbols: Vec<_> = symbol_table.symbols()
+        let table_symbols: Vec<_> = symbol_table
+            .symbols()
             .iter()
-            .filter(|s| s.symbol_type() == SymbolType::Table && s.name().starts_with(&format!("{}.", relation.name())))
+            .filter(|s| {
+                s.symbol_type() == SymbolType::Table
+                    && s.name().starts_with(&format!("{}.", relation.name()))
+            })
             .cloned()
             .collect();
 
@@ -301,26 +342,26 @@ impl PlanPrinter {
             // Add BASE_SCHEMA if available
             if let Some(_schema) = relation.schema() {
                 result.push_str(&format!("{}BASE_SCHEMA = {{\n", indent));
-                
+
                 let schema_indent = " ".repeat(indent.len() + self.indent_size);
-                
+
                 // Add schema names if available
                 result.push_str(&format!("{}NAMES = [", schema_indent));
                 // In a real implementation, we would get the column names from the schema
                 result.push_str("\"column1\", \"column2\"");
                 result.push_str("]\n");
-                
+
                 result.push_str(&format!("{}}}\n", indent));
             }
 
             // Process each table
             for table in table_symbols {
                 // Get table names from the blob
-                if let Some(names) = table.blob::<Vec<String>>() {
+                table.with_blob::<Vec<String>, _, _>(|names| {
                     result.push_str(&format!("{}SOURCE = NAMED_TABLE {{\n", indent));
-                    
+
                     let source_indent = " ".repeat(indent.len() + self.indent_size);
-                    
+
                     // Add table names
                     result.push_str(&format!("{}NAMES = [", source_indent));
                     for (i, name) in names.iter().enumerate() {
@@ -330,16 +371,20 @@ impl PlanPrinter {
                         result.push_str(&format!("\"{}\"", name));
                     }
                     result.push_str("]\n");
-                    
+
                     result.push_str(&format!("{}}}\n", indent));
-                }
+                });
             }
         }
 
         // Look for file/folder sources
-        let source_symbols: Vec<_> = symbol_table.symbols()
+        let source_symbols: Vec<_> = symbol_table
+            .symbols()
             .iter()
-            .filter(|s| s.symbol_type() == SymbolType::Source && s.name().starts_with(&format!("{}.", relation.name())))
+            .filter(|s| {
+                s.symbol_type() == SymbolType::Source
+                    && s.name().starts_with(&format!("{}.", relation.name()))
+            })
             .cloned()
             .collect();
 
@@ -347,7 +392,7 @@ impl PlanPrinter {
             for source in source_symbols {
                 if source.name().contains(".file") {
                     // Process file source
-                    if let Some(uri) = source.blob::<String>() {
+                    source.with_blob::<String, _, _>(|uri| {
                         result.push_str(&format!("{}SOURCE = LOCAL_FILES {{\n", indent));
                         let source_indent = " ".repeat(indent.len() + self.indent_size);
                         result.push_str(&format!("{}ITEMS = [\n", source_indent));
@@ -355,18 +400,19 @@ impl PlanPrinter {
                         result.push_str(&format!("{}{{ URI_FILE = \"{}\" }},\n", item_indent, uri));
                         result.push_str(&format!("{}]\n", source_indent));
                         result.push_str(&format!("{}}}\n", indent));
-                    }
+                    });
                 } else if source.name().contains(".folder") {
                     // Process folder source
-                    if let Some(uri) = source.blob::<String>() {
+                    source.with_blob::<String, _, _>(|uri| {
                         result.push_str(&format!("{}SOURCE = LOCAL_FILES {{\n", indent));
                         let source_indent = " ".repeat(indent.len() + self.indent_size);
                         result.push_str(&format!("{}ITEMS = [\n", source_indent));
                         let item_indent = " ".repeat(indent.len() + 2 * self.indent_size);
-                        result.push_str(&format!("{}{{ URI_FOLDER = \"{}\" }},\n", item_indent, uri));
+                        result
+                            .push_str(&format!("{}{{ URI_FOLDER = \"{}\" }},\n", item_indent, uri));
                         result.push_str(&format!("{}]\n", source_indent));
                         result.push_str(&format!("{}}}\n", indent));
-                    }
+                    });
                 }
             }
         }
@@ -386,12 +432,18 @@ impl PlanPrinter {
     /// # Returns
     ///
     /// Result indicating success or an error
-    fn add_filter_relation_properties(&self, _relation: &Arc<SymbolInfo>, _symbol_table: &SymbolTable, indent: &str, result: &mut String) -> Result<(), TextPlanError> {
+    fn add_filter_relation_properties(
+        &self,
+        _relation: &Arc<SymbolInfo>,
+        _symbol_table: &SymbolTable,
+        indent: &str,
+        result: &mut String,
+    ) -> Result<(), TextPlanError> {
         // In a real implementation, we would add the filter condition and input relation
-        
+
         // Add a placeholder for the condition
         result.push_str(&format!("{}CONDITION = /* expression */\n", indent));
-        
+
         // Add a placeholder for the input relation
         result.push_str(&format!("{}INPUT = /* relation reference */\n", indent));
 
@@ -402,34 +454,38 @@ impl PlanPrinter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::textplan::common::location::Location;
+    use crate::textplan::common::unknown_location::UnknownLocation;
 
     #[test]
     fn test_print_simple_plan() {
         // Create a simple symbol table
         let mut symbol_table = SymbolTable::new();
-        
+
         // Add a root relation
         symbol_table.add_root_relation("root1");
 
         // Add a regular relation
         let rel_type = Box::new(RelationType::Read);
         symbol_table.define_symbol(
-            "read1".to_string(), 
-            Location::UNKNOWN_LOCATION, 
+            "read1".to_string(),
+            UnknownLocation::UNKNOWN,
             SymbolType::Relation,
             Some(rel_type),
-            None
+            None,
         );
-        
+
         // Add a named table for the read relation
-        let table_names = vec!["catalog1".to_string(), "schema1".to_string(), "table1".to_string()];
+        let table_names = vec![
+            "catalog1".to_string(),
+            "schema1".to_string(),
+            "table1".to_string(),
+        ];
         symbol_table.add_named_table("read1", &table_names);
-        
+
         // Create a printer and generate the plan
         let mut printer = PlanPrinter::new(TextPlanFormat::Standard);
         let plan = printer.print_plan(&symbol_table).unwrap();
-        
+
         // Verify the plan contains the expected elements
         assert!(plan.contains("ROOT {"));
         assert!(plan.contains("NAMES = [\"root1\"]"));

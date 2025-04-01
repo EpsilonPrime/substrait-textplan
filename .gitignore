@@ -66,6 +66,7 @@ build-tools/antlr*
 
 # Generated proto visitor code
 src/textplan/converter/generated/base_plan_visitor.rs
+src/textplan/converter/generated/proto_descriptor.bin
 
 # Reference code
 src/substrait/textplan

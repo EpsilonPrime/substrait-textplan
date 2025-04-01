@@ -6,7 +6,6 @@ use crate::proto;
 use crate::textplan::common::error::TextPlanError;
 use crate::textplan::converter::initial_plan_visitor::InitialPlanVisitor;
 use crate::textplan::converter::pipeline_visitor::PipelineVisitor;
-use crate::textplan::converter::BasePlanProtoVisitor;
 use crate::textplan::printer::plan_printer::{PlanPrinter, TextPlanFormat};
 use crate::textplan::symbol_table::SymbolTable;
 

@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use antlr_rust::token::{GenericToken};
+use antlr_rust::token::{GenericToken, Token};
 use antlr_rust::tree::{ParseTree, ParseTreeVisitor};
 use antlr_rust::parser_rule_context::ParserRuleContext;
 
@@ -19,18 +19,21 @@ use ::substrait::proto::r#type::{
     String as StringType, Timestamp, TimestampTz, Date, Time,
     Uuid, IntervalDay, IntervalYear, Kind
 };
-use crate::textplan::common::location::Location;
+use crate::textplan::common::text_location::TextLocation;
 use crate::textplan::parser::antlr::substraitplanparser::*;
 use crate::textplan::parser::antlr::substraitplanparser::RelationContextAttrs;
 use crate::textplan::parser::antlr::substraitplanparservisitor::SubstraitPlanParserVisitor;
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::symbol_table::{SymbolTable, SymbolType, SymbolInfo, RelationType};
 
-/// Helper function to convert ANTLR token to Location
-pub fn token_to_location<'a>(token: &impl std::ops::Deref<Target = GenericToken<std::borrow::Cow<'a, str>>>) -> Location {
-    // ANTLR tokens are 0-based, but our Location is 1-based
-    // Access line and column as fields, not methods
-    Location::new(token.line as i32 + 1, token.column as i32 + 1)
+/// Helper function to convert ANTLR token to TextLocation
+pub fn token_to_location<'a>(token: &impl std::ops::Deref<Target = GenericToken<std::borrow::Cow<'a, str>>>) -> TextLocation {
+    // Convert token position to an absolute position
+    // This is a simplified calculation - we're using the token's start column as position
+    // and the token's text length as the length
+    let position = token.column as i32;
+    let length = token.get_text().len() as i32;
+    TextLocation::new(position, length)
 }
 
 /// Helper function to safely apply a visitor to a parse tree node.

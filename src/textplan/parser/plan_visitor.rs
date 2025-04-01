@@ -8,7 +8,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use crate::textplan::common::location::Location;
+use crate::textplan::common::location::{Location, BoxedLocation};
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::symbol_table::{RelationType, SymbolInfo, SymbolTable, SymbolType};
 
@@ -37,18 +37,18 @@ pub struct ParseNode {
     /// The text content of the node
     text: String,
     /// The location in the source text
-    location: Location,
+    location: BoxedLocation,
     /// Any child nodes
     children: Vec<ParseNode>,
 }
 
 impl ParseNode {
     /// Creates a new parse node
-    pub fn new(node_type: NodeType, text: String, location: Location) -> Self {
+    pub fn new<L: Location + 'static>(node_type: NodeType, text: String, location: L) -> Self {
         Self {
             node_type,
             text,
-            location,
+            location: Box::new(location),
             children: Vec::new(),
         }
     }
@@ -68,9 +68,9 @@ impl ParseNode {
         &self.text
     }
 
-    /// Returns the location
-    pub fn location(&self) -> Location {
-        self.location
+    /// Returns a reference to the location
+    pub fn location(&self) -> &BoxedLocation {
+        &self.location
     }
 
     /// Returns the children

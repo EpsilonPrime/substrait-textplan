@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use antlr_rust::atn_config_set::ATNConfigSet;
 use antlr_rust::dfa::DFA;
 use antlr_rust::token_factory::{TokenAware, TokenFactory};
-use crate::textplan::common::location::Location;
+use crate::textplan::common::text_location::TextLocation;
 
 /// Represents an error encountered during parsing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,12 +18,12 @@ pub struct ParseError {
     /// The message describing the error.
     message: String,
     /// The location where the error occurred.
-    location: Location,
+    location: TextLocation,
 }
 
 impl ParseError {
     /// Creates a new parse error.
-    pub fn new(message: String, location: Location) -> Self {
+    pub fn new(message: String, location: TextLocation) -> Self {
         Self { message, location }
     }
 
@@ -33,7 +33,7 @@ impl ParseError {
     }
 
     /// Returns the location where the error occurred.
-    pub fn location(&self) -> Location {
+    pub fn location(&self) -> TextLocation {
         self.location
     }
 }
@@ -59,7 +59,7 @@ impl ErrorListener {
     }
 
     /// Adds an error to the listener.
-    pub fn add_error(&self, message: String, location: Location) {
+    pub fn add_error(&self, message: String, location: TextLocation) {
         let mut errors = self.errors.lock().unwrap();
         errors.push(ParseError::new(message, location));
     }
@@ -92,7 +92,7 @@ impl AntlrErrorListener {
     /// Reports a syntax error.
     pub fn syntax_error(&self, line: isize, column: isize, msg: &str) {
         // Convert line/column to our Location type and add the error
-        let location = Location::new(line as i32, column as i32);
+        let location = TextLocation::new(line as i32, column as i32);
         self.error_listener.add_error(msg.to_string(), location);
     }
 
@@ -134,7 +134,7 @@ where
         // Log the ambiguity as an info message
         self.error_listener.add_error(
             format!("Grammar ambiguity detected at indices {}-{}", start_index, stop_index),
-            Location::new(start_index as i32, stop_index as i32)
+            TextLocation::new(start_index as i32, stop_index as i32)
         );
     }
 
@@ -150,7 +150,7 @@ where
         // Log full context attempt
         self.error_listener.add_error(
             format!("Parser attempting full context parsing at indices {}-{}", start_index, stop_index),
-            Location::new(start_index as i32, stop_index as i32)
+            TextLocation::new(start_index as i32, stop_index as i32)
         );
     }
 
@@ -167,7 +167,7 @@ where
         self.error_listener.add_error(
             format!("Context sensitivity detected at indices {}-{} with prediction {}",
                   start_index, stop_index, prediction),
-            Location::new(start_index as i32, stop_index as i32)
+            TextLocation::new(start_index as i32, stop_index as i32)
         );
     }
 }

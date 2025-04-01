@@ -10,5 +10,7 @@ prost-types = "0.13.5"
 walkdir = "2.5.0"
 bytes = "1.10.1"
 phf = { version = "0.11", features = ["macros"] }
+tinytemplate = "1.2.1"
+serde = { version = "1.0.219", features = ["derive"] }
 
 [workspace]

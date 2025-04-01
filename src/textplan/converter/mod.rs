@@ -20,4 +20,5 @@ pub use save_json::save_to_json_file;
 pub use save_json::save_to_json_from_text;
 
 // Re-export the visitor traits
-pub use generated::BasePlanProtoVisitor;
+pub use generated::PlanProtoVisitor;
+pub use generated::Traversable;
