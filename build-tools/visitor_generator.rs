@@ -194,12 +194,6 @@ pub trait PlanProtoVisitor {
 "#,
         );
 
-        for full_name in &self.top_level_messages {
-            if let Some(_message) = self.message_types.get(full_name) {
-                self.generate_start_point(full_name, output, 4);
-            }
-        }
-
         output.push_str("\n");
 
         for full_name in &self.top_level_messages {
@@ -346,34 +340,6 @@ pub trait Traversable {
             intervening_packages,
             fix_pascal_case(&message_name)
         )
-    }
-
-    /// Generate an implementation for a preprocess method
-    fn generate_start_point(&self, full_name: &str, output: &mut String, indent: usize) {
-        let indent_str = " ".repeat(indent);
-        let method_name = self.get_method_name_fragment(full_name);
-        let rust_type_path = self.get_rust_type_path(full_name);
-
-        static METHOD_TEMPLATE: &'static str = r#"
-{-indent}fn visit_{name}(&mut self, obj: &{type_path}) \{}
-"#;
-        let mut tt = TinyTemplate::new();
-        let result = tt.add_template("method", METHOD_TEMPLATE);
-        if result.is_err() {
-            panic!("{}", result.unwrap_err());
-        }
-        let context = MethodContext {
-            indent: indent_str.clone(),
-            top_level: full_name == "substrait.Plan" || full_name == "substrait.ExtendedExpression",
-            name: method_name,
-            type_path: rust_type_path.clone(),
-        };
-
-        let rendered = tt.render("method", &context);
-        if rendered.is_err() {
-            panic!("{}", rendered.unwrap_err());
-        }
-        output.push_str(&rendered.unwrap());
     }
 
     /// Generate an implementation for a preprocess method

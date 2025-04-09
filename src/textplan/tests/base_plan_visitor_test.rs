@@ -7,6 +7,7 @@ mod tests {
     use crate::textplan::common::ProtoLocation;
     use crate::textplan::converter::load_json;
     use crate::textplan::converter::PlanProtoVisitor;
+    use crate::textplan::converter::Traversable;
 
     // A simple implementation of PlanProtoVisitor for testing
     // This tracker keeps a trace of all the locations visited during traversal
@@ -32,6 +33,10 @@ mod tests {
         // Get the recorded locations in a vector
         fn get_locations(&self) -> &Vec<String> {
             &self.visited_locations
+        }
+
+        fn visit_plan(&mut self, obj: &substrait::proto::Plan) {
+            obj.traverse(self);
         }
     }
 
@@ -118,6 +123,7 @@ mod tests {
         let locations = visitor.get_locations();
 
         // The first location should be the plan itself
+        assert!(!locations.is_empty(), "Should have at least one location");
         let plan_location = &locations[0];
         assert!(plan_location.starts_with("proto type"));
         assert!(!plan_location.contains("."));
