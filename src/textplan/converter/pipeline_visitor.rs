@@ -11,6 +11,8 @@ use crate::textplan::common::ProtoLocation;
 use crate::textplan::converter::generated::base_plan_visitor::Traversable;
 use crate::textplan::converter::generated::PlanProtoVisitor;
 use crate::textplan::SymbolType;
+use scopeguard::guard;
+use std::sync::Arc;
 use ::substrait::proto as substrait;
 
 /// Pipeline visitor implementation that processes a Substrait plan in multiple stages.
@@ -22,7 +24,7 @@ pub struct PipelineVisitor {
     /// Symbol table for storing plan element information
     symbol_table: crate::textplan::symbol_table::SymbolTable,
     /// Current relation context for scope resolution
-    current_relation_scope: Option<String>,
+    current_relation_scope: Option<Arc<crate::textplan::SymbolInfo>>,
     /// Current location in the protocol buffer structure
     current_location: ProtoLocation,
 }
@@ -63,6 +65,229 @@ impl PlanProtoVisitor for PipelineVisitor {
 
     fn set_location(&mut self, location: ProtoLocation) {
         self.current_location = location;
+    }
+
+    fn post_process_rel(&mut self, rel: &substrait::Rel) {
+        let symbol = self
+            .symbol_table()
+            .lookup_symbol_by_location_and_type(self.current_location(), SymbolType::Relation);
+
+        let previous_relation_scope = self.current_relation_scope.clone();
+        self.current_relation_scope = symbol.clone();
+        let _reset_scope = guard((), |_| {
+            self.current_relation_scope = previous_relation_scope;
+        });
+
+        symbol
+            .unwrap()
+            .with_blob::<RelationData, _, _>(|relation_data| match &rel.rel_type {
+                Some(substrait::rel::RelType::Read(_)) => {
+                    // No relations beyond this one.
+                }
+                Some(substrait::rel::RelType::Filter(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("filter").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::Fetch(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("fetch").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::Aggregate(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("aggregate").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::Sort(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("sort").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::Join(_)) => {
+                    let left_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("join").field("left"),
+                        SymbolType::Relation,
+                    );
+                    let right_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("join").field("right"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.new_pipelines.push(left_symbol.unwrap());
+                    relation_data.new_pipelines.push(right_symbol.unwrap());
+                }
+                Some(substrait::rel::RelType::Project(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("project").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::Set(set)) => {
+                    for i in 0..set.inputs.len() {
+                        let input_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                            &self
+                                .current_location()
+                                .field("set")
+                                .indexed_field("inputs", i),
+                            SymbolType::Relation,
+                        );
+                        relation_data.new_pipelines.push(input_symbol.unwrap());
+                    }
+                }
+                Some(substrait::rel::RelType::ExtensionSingle(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self
+                            .current_location()
+                            .field("extension_single")
+                            .field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::ExtensionMulti(multi)) => {
+                    for i in 0..multi.inputs.len() {
+                        let input_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                            &self
+                                .current_location()
+                                .field("extension_multi")
+                                .indexed_field("inputs", i),
+                            SymbolType::Relation,
+                        );
+                        relation_data.new_pipelines.push(input_symbol.unwrap());
+                    }
+                }
+                Some(substrait::rel::RelType::ExtensionLeaf(_)) => {
+                    // No children.
+                }
+                Some(substrait::rel::RelType::Cross(_)) => {
+                    let left_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("cross").field("left"),
+                        SymbolType::Relation,
+                    );
+                    let right_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("cross").field("right"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.new_pipelines.push(left_symbol.unwrap());
+                    relation_data.new_pipelines.push(right_symbol.unwrap());
+                }
+                Some(substrait::rel::RelType::Reference(_)) => {
+                    // TODO -- Add support for references in text plans.
+                    todo!()
+                }
+                Some(substrait::rel::RelType::Write(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("write").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::Ddl(_)) => {
+                    // TODO -- Add support for DDL in text plans.
+                    todo!()
+                }
+                Some(substrait::rel::RelType::Update(_)) => {
+                    // TODO -- Add support for update in text plans.
+                    todo!()
+                }
+                Some(substrait::rel::RelType::HashJoin(_)) => {
+                    let left_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("hash_join").field("left"),
+                        SymbolType::Relation,
+                    );
+                    let right_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("hash_join").field("right"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.new_pipelines.push(left_symbol.unwrap());
+                    relation_data.new_pipelines.push(right_symbol.unwrap());
+                }
+                Some(substrait::rel::RelType::MergeJoin(_)) => {
+                    let left_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("merge_join").field("left"),
+                        SymbolType::Relation,
+                    );
+                    let right_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("merge_join").field("right"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.new_pipelines.push(left_symbol.unwrap());
+                    relation_data.new_pipelines.push(right_symbol.unwrap());
+                }
+                Some(substrait::rel::RelType::NestedLoopJoin(_)) => {
+                    let left_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self
+                            .current_location()
+                            .field("nested_loop_join")
+                            .field("left"),
+                        SymbolType::Relation,
+                    );
+                    let right_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self
+                            .current_location()
+                            .field("nested_loop_join")
+                            .field("right"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.new_pipelines.push(left_symbol.unwrap());
+                    relation_data.new_pipelines.push(right_symbol.unwrap());
+                }
+                Some(substrait::rel::RelType::Window(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("window").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::Exchange(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("exchange").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                Some(substrait::rel::RelType::Expand(_)) => {
+                    let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &self.current_location().field("expand").field("input"),
+                        SymbolType::Relation,
+                    );
+                    relation_data.continuing_pipeline = rel_symbol;
+                }
+                None => {}
+            });
+    }
+
+    fn post_process_plan_rel(&mut self, relation: &substrait::PlanRel) {
+        let symbols = self
+            .symbol_table()
+            .lookup_symbols_by_location(self.current_location());
+        // A symbol is guaranteed as we previously visited the parse tree.
+        symbols[0].with_blob::<RelationData, _, _>(|relation_data| match relation.rel_type {
+            Some(substrait::plan_rel::RelType::Rel(_)) => {
+                let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                    &self.current_location().field("rel"),
+                    SymbolType::Relation,
+                );
+                relation_data.new_pipelines.push(rel_symbol.unwrap());
+            }
+            Some(substrait::plan_rel::RelType::Root(_)) => {
+                let input_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                    &self.current_location().field("rotation"),
+                    SymbolType::Relation,
+                );
+                relation_data.new_pipelines.push(input_symbol.unwrap());
+            }
+            None => {}
+        });
     }
 
     fn post_process_expression(&mut self, expression: &substrait::Expression) {
@@ -117,33 +342,5 @@ impl PlanProtoVisitor for PipelineVisitor {
                 _ => {}
             }
         }
-    }
-
-    fn post_process_rel(&mut self, rel: &substrait::Rel) {
-        todo!()
-    }
-
-    fn post_process_plan_rel(&mut self, relation: &substrait::PlanRel) {
-        let symbols = self
-            .symbol_table()
-            .lookup_symbols_by_location(self.current_location());
-        // A symbol is guaranteed as we previously visited the parse tree.
-        symbols[0].with_blob::<RelationData, _, _>(|relation_data| match relation.rel_type {
-            Some(substrait::plan_rel::RelType::Rel(_)) => {
-                let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
-                    &self.current_location().field("rel"),
-                    SymbolType::Relation,
-                );
-                relation_data.new_pipelines.push(rel_symbol.unwrap());
-            }
-            Some(substrait::plan_rel::RelType::Root(_)) => {
-                let input_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
-                    &self.current_location().field("rotation"),
-                    SymbolType::Relation,
-                );
-                relation_data.new_pipelines.push(input_symbol.unwrap());
-            }
-            None => {}
-        });
     }
 }

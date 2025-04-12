@@ -17,6 +17,7 @@ antlr-rust = "0.3.0-beta"
 prost-types = "0.13.5"
 prost-build = "0.13.5"
 walkdir = "2.5.0"
+scopeguard = "1.2.0"
 
 [dependencies.bit-set]
 version = "0.5.3"

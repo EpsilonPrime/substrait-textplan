@@ -746,6 +746,7 @@ dependencies = [
  "prost",
  "prost-build",
  "prost-types",
+ "scopeguard",
  "serde",
  "serde_json",
  "substrait",
