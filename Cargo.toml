@@ -15,7 +15,7 @@ thiserror = "2.0.12"
 log = "0.4.20"
 antlr-rust = "0.3.0-beta"
 prost-types = "0.13.5"
-prost-build = "0.13.5"
+prost-build = "0.14.1"
 walkdir = "2.5.0"
 
 [dependencies.bit-set]
@@ -23,7 +23,7 @@ version = "0.5.3"
 
 [build-dependencies]
 prost = { version = "0.13.5", features = ["derive", "prost-derive"] }
-prost-build = "0.13.5"
+prost-build = "0.14.1"
 prost-types = "0.13.5"
 walkdir = "2.5.0"
 phf = { version = "0.11", features = ["macros"] }
