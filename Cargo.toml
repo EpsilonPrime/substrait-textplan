@@ -26,7 +26,7 @@ prost = { version = "0.13.5", features = ["derive", "prost-derive"] }
 prost-build = "0.13.5"
 prost-types = "0.13.5"
 walkdir = "2.5.0"
-phf = { version = "0.11", features = ["macros"] }
+phf = { version = "0.12", features = ["macros"] }
 tinytemplate = "1.2.1"
 serde = { version = "1.0.219", features = ["derive"] }
 
