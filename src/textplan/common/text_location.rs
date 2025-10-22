@@ -2,12 +2,12 @@
 
 //! The text_location module provides a way to track source positions in the parsed text.
 
-use std::fmt;
-use std::any::Any;
 use crate::textplan::common::Location;
+use std::any::Any;
+use std::fmt;
 
 /// Represents a position in the source text.
-/// 
+///
 /// This is used to provide context for errors and to reference entities in the source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextLocation {
@@ -19,8 +19,11 @@ pub struct TextLocation {
 
 impl TextLocation {
     /// A special location used to indicate an unknown position.
-    pub const UNKNOWN_LOCATION: TextLocation = TextLocation { position: -1, length: 0 };
-    
+    pub const UNKNOWN_LOCATION: TextLocation = TextLocation {
+        position: -1,
+        length: 0,
+    };
+
     /// Creates a text location corresponding to the global unknown location.
     pub fn unknown() -> Self {
         Self::UNKNOWN_LOCATION
@@ -46,27 +49,27 @@ impl Location for TextLocation {
     fn is_unknown(&self) -> bool {
         self.position < 0
     }
-    
+
     // Implement location_hash
     fn location_hash(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
-        
+        use std::hash::{Hash, Hasher};
+
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
         hasher.finish()
     }
-    
+
     // Create a boxed clone of this location
     fn box_clone(&self) -> Box<dyn Location> {
         Box::new(*self)
     }
-    
+
     // Convert to Any for downcasting
     fn as_any(&self) -> &dyn Any {
         self
     }
-    
+
     // Custom equals implementation
     fn equals(&self, other: &dyn Location) -> bool {
         // First check if other is a TextLocation using Any

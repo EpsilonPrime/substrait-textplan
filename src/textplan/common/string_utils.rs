@@ -6,7 +6,7 @@
 pub fn escape_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len() + 2);
     result.push('"');
-    
+
     for c in s.chars() {
         match c {
             '"' => result.push_str("\\\""),
@@ -20,7 +20,7 @@ pub fn escape_string(s: &str) -> String {
             c => result.push(c),
         }
     }
-    
+
     result.push('"');
     result
 }
@@ -30,11 +30,11 @@ pub fn unescape_string(s: &str) -> String {
     if s.len() < 2 || !s.starts_with('"') || !s.ends_with('"') {
         return s.to_string();
     }
-    
+
     let s = &s[1..s.len() - 1];
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
-    
+
     while let Some(c) = chars.next() {
         if c == '\\' {
             match chars.next() {
@@ -63,7 +63,7 @@ pub fn unescape_string(s: &str) -> String {
             result.push(c);
         }
     }
-    
+
     result
 }
 

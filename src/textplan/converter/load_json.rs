@@ -32,9 +32,8 @@ pub fn load_plan_from_json_str(json_str: &str) -> Result<Plan, TextPlanError> {
 /// The Plan protobuf representation of the JSON file.
 pub fn load_from_json_file<P: AsRef<Path>>(file_path: P) -> Result<Plan, TextPlanError> {
     // Read the file
-    let json_str = fs::read_to_string(&file_path)
-        .map_err(|e| TextPlanError::IoError(e))?;
-    
+    let json_str = fs::read_to_string(&file_path).map_err(|e| TextPlanError::IoError(e))?;
+
     // Parse the JSON
     load_plan_from_json_str(&json_str)
 }

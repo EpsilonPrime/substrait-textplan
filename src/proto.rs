@@ -2,8 +2,8 @@
 
 //! This module provides utilities for working with Substrait plans using the substrait crate.
 
-use prost::Message;
 use crate::textplan::common::error::TextPlanError;
+use prost::Message;
 
 // Define type aliases to make migration easier and code cleaner
 pub type Plan = ::substrait::proto::Plan;
@@ -21,15 +21,15 @@ pub fn load_plan_from_binary(bytes: &[u8]) -> Result<Plan, TextPlanError> {
 /// Save a Plan to binary protobuf format
 pub fn save_plan_to_binary(plan: &Plan) -> Result<Vec<u8>, TextPlanError> {
     let mut buf = Vec::new();
-    
+
     plan.encode(&mut buf)
         .map_err(|e| TextPlanError::ProtobufError(format!("Failed to encode Plan: {}", e)))?;
-    
+
     Ok(buf)
 }
 
 /// Load a Plan from JSON string using standard Protobuf JSON format.
-/// With the serde feature enabled on the substrait crate, this should handle 
+/// With the serde feature enabled on the substrait crate, this should handle
 /// the standard Protobuf JSON format correctly.
 pub fn load_plan_from_json(json_str: &str) -> Result<Plan, TextPlanError> {
     // Skip an initial leading comment line that starts with #
@@ -41,7 +41,7 @@ pub fn load_plan_from_json(json_str: &str) -> Result<Plan, TextPlanError> {
     } else {
         json_str
     };
-    
+
     // Use serde_json directly to parse the JSON
     match serde_json::from_str::<Plan>(usable_json) {
         Ok(plan) => Ok(plan),
@@ -50,11 +50,18 @@ pub fn load_plan_from_json(json_str: &str) -> Result<Plan, TextPlanError> {
             match serde_json::from_str::<serde_json::Value>(usable_json) {
                 Ok(json_value) => {
                     // Log the structure for debugging
-                    log::debug!("JSON structure: {}", serde_json::to_string_pretty(&json_value).unwrap_or_default());
-                    
+                    log::debug!(
+                        "JSON structure: {}",
+                        serde_json::to_string_pretty(&json_value).unwrap_or_default()
+                    );
+
                     if let serde_json::Value::Object(map) = &json_value {
-                        let available_fields = map.keys().map(|k| k.to_string()).collect::<Vec<_>>().join(", ");
-                        
+                        let available_fields = map
+                            .keys()
+                            .map(|k| k.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+
                         Err(TextPlanError::ProtobufError(format!(
                             "Failed to deserialize JSON to Substrait Plan. Error: {}. Available fields: {}",
                             err, available_fields
@@ -65,12 +72,11 @@ pub fn load_plan_from_json(json_str: &str) -> Result<Plan, TextPlanError> {
                             err
                         )))
                     }
-                },
-                Err(parse_err) => {
-                    Err(TextPlanError::ProtobufError(format!(
-                        "Invalid JSON syntax: {}", parse_err
-                    )))
                 }
+                Err(parse_err) => Err(TextPlanError::ProtobufError(format!(
+                    "Invalid JSON syntax: {}",
+                    parse_err
+                ))),
             }
         }
     }
@@ -79,15 +85,16 @@ pub fn load_plan_from_json(json_str: &str) -> Result<Plan, TextPlanError> {
 /// Save a Plan to JSON format using the standard Protobuf JSON format
 pub fn save_plan_to_json(plan: &Plan) -> Result<String, TextPlanError> {
     // Using serde_json to convert to standard Protobuf JSON format
-    serde_json::to_string(plan)
-        .map_err(|e| TextPlanError::ProtobufError(format!("Failed to serialize Plan to JSON: {}", e)))
+    serde_json::to_string(plan).map_err(|e| {
+        TextPlanError::ProtobufError(format!("Failed to serialize Plan to JSON: {}", e))
+    })
 }
 
 // TODO: Move this to a more appropriate location.
 /// Get the relation type as a string
 pub fn relation_type_to_string(rel: &Rel) -> &'static str {
     use ::substrait::proto::rel::RelType;
-    
+
     match &rel.rel_type {
         Some(RelType::Read(_)) => "read",
         Some(RelType::Filter(_)) => "filter",

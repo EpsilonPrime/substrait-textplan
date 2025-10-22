@@ -2,13 +2,13 @@
 
 //! Visitor interface for traversing a Substrait plan.
 //!
-//! This module provides a simplified implementation of the visitor pattern 
+//! This module provides a simplified implementation of the visitor pattern
 //! for traversing parsed textplan data.
 
 use std::any::Any;
 use std::sync::Arc;
 
-use crate::textplan::common::location::{Location, BoxedLocation};
+use crate::textplan::common::location::{BoxedLocation, Location};
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::symbol_table::{RelationType, SymbolInfo, SymbolTable, SymbolType};
 
@@ -120,7 +120,7 @@ impl SymbolTableVisitor {
     fn handle_relation(&mut self, node: &ParseNode) -> Option<Box<dyn Any>> {
         // Extract relation type
         let relation_type = self.extract_relation_type(node);
-        
+
         // Convert relation type string to enum
         let relation_subtype = match relation_type.as_str() {
             "read" => RelationType::Read,
@@ -166,10 +166,10 @@ impl SymbolTableVisitor {
 
         // Clear current relation scope
         self.current_relation_scope = None;
-        
+
         Some(Box::new(symbol))
     }
-    
+
     /// Extracts the relation type from a relation node
     fn extract_relation_type(&self, node: &ParseNode) -> String {
         // Find the first child with type Identifier that represents the relation type
@@ -180,23 +180,24 @@ impl SymbolTableVisitor {
         }
         "unknown".to_string()
     }
-    
+
     /// Extracts the relation name from a relation node
     fn extract_relation_name(&self, node: &ParseNode) -> String {
         // In a real implementation, we would have better parsing
         // For now, just use the text of the node as a fallback
-        node.text().split_whitespace()
+        node.text()
+            .split_whitespace()
             .nth(2) // Skip "RELATION_TYPE RELATION "
             .unwrap_or("unknown_relation")
             .trim_matches(|c| c == '{' || c == '}')
             .to_string()
     }
-    
+
     /// Handles a schema node
     fn handle_schema(&mut self, node: &ParseNode) -> Option<Box<dyn Any>> {
         // Extract schema name
         let schema_name = self.extract_schema_name(node);
-        
+
         // Create symbol for schema
         let symbol = self.symbol_table.define_symbol(
             schema_name,
@@ -205,7 +206,7 @@ impl SymbolTableVisitor {
             None,
             None,
         );
-        
+
         // Process schema columns
         for child in node.children() {
             if let NodeType::Other(ref type_name) = child.node_type() {
@@ -214,29 +215,34 @@ impl SymbolTableVisitor {
                 }
             }
         }
-        
+
         Some(Box::new(symbol))
     }
-    
+
     /// Extracts the schema name from a schema node
     fn extract_schema_name(&self, node: &ParseNode) -> String {
         // In a real implementation, we would have better parsing
         // For now, just use the text of the node as a fallback
-        node.text().split_whitespace()
+        node.text()
+            .split_whitespace()
             .nth(1) // Skip "schema "
             .unwrap_or("unknown_schema")
             .trim_matches(|c| c == '{' || c == '}')
             .to_string()
     }
-    
+
     /// Handles a schema column node
-    fn handle_schema_column(&mut self, node: &ParseNode, _schema: &Arc<SymbolInfo>) -> Option<Box<dyn Any>> {
+    fn handle_schema_column(
+        &mut self,
+        node: &ParseNode,
+        _schema: &Arc<SymbolInfo>,
+    ) -> Option<Box<dyn Any>> {
         // Extract column name and type
         let parts: Vec<&str> = node.text().split_whitespace().collect();
         if parts.len() >= 2 {
             let column_name = parts[0].trim_end_matches(';').to_string();
             let column_type = parts[1].trim_end_matches(';').to_string();
-            
+
             // Create symbol for column
             let column_symbol = self.symbol_table.define_symbol(
                 column_name,
@@ -245,13 +251,13 @@ impl SymbolTableVisitor {
                 Some(Box::new(column_type)),
                 None,
             );
-            
+
             Some(Box::new(column_symbol))
         } else {
             None
         }
     }
-    
+
     /// Handles a source node
     fn handle_source(&mut self, node: &ParseNode) -> Option<Box<dyn Any>> {
         // Extract source type and name
@@ -259,7 +265,7 @@ impl SymbolTableVisitor {
         if parts.len() >= 3 {
             let source_type = parts[1].to_string();
             let source_name = parts[2].trim_matches(|c| c == '{' || c == '}').to_string();
-            
+
             // Create symbol for source
             let source_symbol = self.symbol_table.define_symbol(
                 source_name,
@@ -268,13 +274,13 @@ impl SymbolTableVisitor {
                 Some(Box::new(source_type)),
                 None,
             );
-            
+
             Some(Box::new(source_symbol))
         } else {
             None
         }
     }
-    
+
     /// Handles a root node
     fn handle_root(&mut self, node: &ParseNode) -> Option<Box<dyn Any>> {
         // Create symbol for root
@@ -285,7 +291,7 @@ impl SymbolTableVisitor {
             None,
             None,
         );
-        
+
         Some(Box::new(root_symbol))
     }
 }
@@ -299,7 +305,7 @@ impl Visitor for SymbolTableVisitor {
                     self.visit(child);
                 }
                 None
-            },
+            }
             NodeType::Relation => self.handle_relation(node),
             NodeType::Schema => self.handle_schema(node),
             NodeType::Source => self.handle_source(node),
@@ -308,7 +314,7 @@ impl Visitor for SymbolTableVisitor {
                 // Process the extension space
                 self.num_spaces_seen += 1;
                 let space_name = format!("space{}", self.num_spaces_seen);
-                
+
                 // Create a symbol for the extension space
                 let space_symbol = self.symbol_table.define_symbol(
                     space_name,
@@ -317,25 +323,29 @@ impl Visitor for SymbolTableVisitor {
                     None,
                     None,
                 );
-                
+
                 // Process all children
                 for child in node.children() {
                     self.visit(child);
                 }
-                
+
                 Some(Box::new(space_symbol))
-            },
+            }
             NodeType::Function => {
                 // Process the function
                 self.num_functions_seen += 1;
-                
+
                 // Get the function name (either from a child or generate one)
-                let function_name = if let Some(name_node) = node.children().iter().find(|child| matches!(child.node_type(), NodeType::Identifier)) {
+                let function_name = if let Some(name_node) = node
+                    .children()
+                    .iter()
+                    .find(|child| matches!(child.node_type(), NodeType::Identifier))
+                {
                     name_node.text().to_string()
                 } else {
                     format!("function{}", self.num_functions_seen)
                 };
-                
+
                 // Create a symbol for the function
                 let function_symbol = self.symbol_table.define_symbol(
                     function_name,
@@ -344,9 +354,9 @@ impl Visitor for SymbolTableVisitor {
                     None,
                     None,
                 );
-                
+
                 Some(Box::new(function_symbol))
-            },
+            }
             // Add other node types as needed
             _ => {
                 // Default behavior: visit all children

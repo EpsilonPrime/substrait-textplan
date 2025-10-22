@@ -2,15 +2,13 @@
 
 //! Save a Substrait plan to binary format.
 
-use std::boxed::Box;
-use crate::proto::{Plan, PlanRel, Rel, save_plan_to_binary};
-use ::substrait::proto::{
-    plan_rel, RelRoot,
-    ReadRel, FilterRel, ProjectRel, JoinRel, AggregateRel, SortRel,
-    read_rel
-};
+use crate::proto::{save_plan_to_binary, Plan, PlanRel, Rel};
 use crate::textplan::common::error::TextPlanError;
 use crate::textplan::symbol_table::{RelationType as SymbolRelationType, SymbolTable, SymbolType};
+use ::substrait::proto::{
+    plan_rel, read_rel, AggregateRel, FilterRel, JoinRel, ProjectRel, ReadRel, RelRoot, SortRel,
+};
+use std::boxed::Box;
 
 /// Creates a Plan protobuf from a symbol table.
 ///
@@ -32,13 +30,15 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
             producer: "Substrait TextPlan Rust".to_string(),
         }),
         extension_uris: Vec::new(),
+        extension_urns: Vec::new(),
         extensions: Vec::new(),
         relations: Vec::new(),
         expected_type_urls: Vec::new(),
         advanced_extensions: None,
         parameter_bindings: Vec::new(),
+        type_aliases: Vec::new(),
     };
-    
+
     // Find the root symbol if present
     let mut root_names = Vec::new();
     for symbol in symbol_table.symbols() {
@@ -47,7 +47,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
             root_names.push(symbol.name().to_string());
         }
     }
-    
+
     // If we found root names, add a root relation
     if !root_names.is_empty() {
         plan.relations.push(PlanRel {
@@ -57,7 +57,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
             })),
         });
     }
-    
+
     // Collect relations from the symbol table
     for symbol in symbol_table.symbols() {
         if symbol.symbol_type() == SymbolType::Relation {
@@ -73,17 +73,17 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             best_effort_filter: None,
                             projection: None,
                             advanced_extension: None,
-                            read_type: Some(read_rel::ReadType::NamedTable(
-                                read_rel::NamedTable {
-                                    names: vec![symbol.name().to_string()],
-                                    advanced_extension: None,
-                                }
-                            )),
+                            read_type: Some(read_rel::ReadType::NamedTable(read_rel::NamedTable {
+                                names: vec![symbol.name().to_string()],
+                                advanced_extension: None,
+                            })),
                         };
                         Rel {
-                            rel_type: Some(::substrait::proto::rel::RelType::Read(Box::new(read_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Read(Box::new(
+                                read_rel,
+                            ))),
                         }
-                    },
+                    }
                     SymbolRelationType::Filter => {
                         // Create a filter relation
                         let filter_rel = FilterRel {
@@ -93,9 +93,11 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             advanced_extension: None,
                         };
                         Rel {
-                            rel_type: Some(::substrait::proto::rel::RelType::Filter(Box::new(filter_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Filter(Box::new(
+                                filter_rel,
+                            ))),
                         }
-                    },
+                    }
                     SymbolRelationType::Project => {
                         // Create a project relation
                         let project_rel = ProjectRel {
@@ -105,9 +107,11 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             advanced_extension: None,
                         };
                         Rel {
-                            rel_type: Some(::substrait::proto::rel::RelType::Project(Box::new(project_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Project(Box::new(
+                                project_rel,
+                            ))),
                         }
-                    },
+                    }
                     SymbolRelationType::Join => {
                         // Create a join relation
                         let join_rel = JoinRel {
@@ -120,9 +124,11 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             advanced_extension: None,
                         };
                         Rel {
-                            rel_type: Some(::substrait::proto::rel::RelType::Join(Box::new(join_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Join(Box::new(
+                                join_rel,
+                            ))),
                         }
-                    },
+                    }
                     SymbolRelationType::Aggregate => {
                         // Create an aggregate relation
                         let agg_rel = AggregateRel {
@@ -134,9 +140,11 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             grouping_expressions: Vec::new(),
                         };
                         Rel {
-                            rel_type: Some(::substrait::proto::rel::RelType::Aggregate(Box::new(agg_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Aggregate(Box::new(
+                                agg_rel,
+                            ))),
                         }
-                    },
+                    }
                     SymbolRelationType::Sort => {
                         // Create a sort relation
                         let sort_rel = SortRel {
@@ -146,12 +154,14 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                             advanced_extension: None,
                         };
                         Rel {
-                            rel_type: Some(::substrait::proto::rel::RelType::Sort(Box::new(sort_rel))),
+                            rel_type: Some(::substrait::proto::rel::RelType::Sort(Box::new(
+                                sort_rel,
+                            ))),
                         }
-                    },
+                    }
                     _ => continue, // Skip unknown relation types
                 };
-                
+
                 // Add the relation to the plan
                 plan.relations.push(PlanRel {
                     rel_type: Some(plan_rel::RelType::Rel(rel_obj)),
@@ -159,7 +169,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
             }
         }
     }
-    
+
     Ok(plan)
 }
 
@@ -175,7 +185,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
 pub fn save_to_binary(symbol_table: &SymbolTable) -> Result<Vec<u8>, TextPlanError> {
     // Create the plan from the symbol table
     let plan = create_plan_from_symbol_table(symbol_table)?;
-    
+
     // Serialize the plan to bytes
     serialize_plan_to_binary(&plan)
 }
@@ -191,5 +201,5 @@ pub fn save_to_binary(symbol_table: &SymbolTable) -> Result<Vec<u8>, TextPlanErr
 /// The binary protobuf representation of the plan.
 fn serialize_plan_to_binary(plan: &Plan) -> Result<Vec<u8>, TextPlanError> {
     // Use the existing function if available, otherwise implement with prost
-     save_plan_to_binary(plan)
+    save_plan_to_binary(plan)
 }

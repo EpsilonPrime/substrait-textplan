@@ -81,7 +81,9 @@ fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
     if !PathBuf::from(&antlr_jar).exists() {
         eprintln!("\n");
         eprintln!("ERROR: Could not find ANTLR4 JAR file at '{}'", antlr_jar);
-        eprintln!("\nTo generate ANTLR code, you must download the special ANTLR4 JAR with Rust support.");
+        eprintln!(
+            "\nTo generate ANTLR code, you must download the special ANTLR4 JAR with Rust support."
+        );
         eprintln!("Download it from:");
         eprintln!("  https://github.com/rrevenantt/antlr4rust/releases/download/antlr4-4.8-2-Rust0.3.0-beta/antlr4-4.8-2-SNAPSHOT-complete.jar");
         eprintln!("\nThen either:");

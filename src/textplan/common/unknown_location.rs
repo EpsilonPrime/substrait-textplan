@@ -2,13 +2,13 @@
 
 //! Defines an unknown location implementation.
 
-use std::fmt;
-use std::any::Any;
-use std::hash::{Hash, Hasher};
 use crate::textplan::common::Location;
+use std::any::Any;
+use std::fmt;
+use std::hash::{Hash, Hasher};
 
 /// A type that represents an unknown location.
-/// 
+///
 /// This provides a concrete implementation of Location that represents
 /// an unknown or unspecified location, which can be used across the system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,12 +17,12 @@ pub struct UnknownLocation;
 impl UnknownLocation {
     /// A global constant for the unknown location
     pub const UNKNOWN: UnknownLocation = UnknownLocation;
-    
+
     /// Returns a boxed unknown location that implements the Location trait.
     pub fn boxed() -> Box<dyn Location> {
         Box::new(UnknownLocation)
     }
-    
+
     /// Returns a unique, consistent hash value for the unknown location.
     /// This value is chosen to be unlikely to conflict with other location hashes.
     pub fn unique_hash() -> u64 {
@@ -35,20 +35,20 @@ impl Location for UnknownLocation {
     fn is_unknown(&self) -> bool {
         true
     }
-    
+
     // Override the default hash implementation to use our unique hash
     fn location_hash(&self) -> u64 {
         Self::unique_hash()
     }
-    
+
     fn box_clone(&self) -> Box<dyn Location> {
         Box::new(*self)
     }
-    
+
     fn as_any(&self) -> &dyn Any {
         self
     }
-    
+
     // Custom equals implementation - UnknownLocation is only equal to itself
     fn equals(&self, other: &dyn Location) -> bool {
         other.is_unknown() && other.as_any().is::<UnknownLocation>()

@@ -4,11 +4,11 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::proto::save_plan_to_json;
+    use crate::textplan::converter::load_json;
     use crate::textplan::converter::process_plan_with_visitor;
-use crate::textplan::converter::load_json;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use crate::proto::save_plan_to_json;
 
     /// Find all test data files with a specific extension
     fn find_test_files(extension: &str) -> Vec<PathBuf> {
@@ -50,40 +50,43 @@ use crate::textplan::converter::load_json;
         if let Err(err) = &plan_or_error {
             assert!(false, "Failed to load test file: {}", err);
         }
-        
+
         let plan = plan_or_error.unwrap();
-        
+
         // Verify that all expected protobuf components are present
         assert_eq!(plan.extensions.len(), 7, "Plan should have 7 extensions");
-        
+
         // Check relations array
         assert!(!plan.relations.is_empty(), "Plan should have relations");
-        
+
         // Debug the structure of relations
         println!("Relations: {:#?}", plan.relations);
-        
+
         // Less strict assertions to help diagnose the issue
         if let Some(rel) = plan.relations.first() {
             println!("First relation: {:#?}", rel);
-            
+
             // Check if rel_type exists
             if rel.rel_type.is_none() {
                 assert!(false, "Relation should have a rel_type, but it's None");
             }
-            
+
             // Try to print the relation type information
             if let Some(rel_type) = &rel.rel_type {
                 println!("First relation type: {:#?}", rel_type);
             }
         }
-        
+
         // Convert the plan to a string representation to check its size
         let message_string = format!("{:?}", plan);
         println!("Message length: {}", message_string.len());
-        
+
         // Check the size to make sure we have a substantial plan
-        assert!(message_string.len() > 1300, "Plan representation should be substantial in size");
-        
+        assert!(
+            message_string.len() > 1300,
+            "Plan representation should be substantial in size"
+        );
+
         let result = save_plan_to_json(&plan);
         match result {
             Ok(_) => {
@@ -109,10 +112,13 @@ use crate::textplan::converter::load_json;
             // 1. Load JSON to Plan
             let plan_or_error = load_json::load_from_json_file(&test_file.to_str().unwrap());
             match plan_or_error {
-                Ok(_) => {
-                }
+                Ok(_) => {}
                 Err(_) => {
-                    assert!(false, "Failed to load test file: {}", plan_or_error.unwrap_err());
+                    assert!(
+                        false,
+                        "Failed to load test file: {}",
+                        plan_or_error.unwrap_err()
+                    );
                 }
             }
             let plan = plan_or_error.unwrap();
@@ -145,7 +151,8 @@ use crate::textplan::converter::load_json;
                         add_line_numbers(&normalized_text_plan)
                     );
                     println!("Golden splan:\n{}\n", add_line_numbers(&normalized_golden));
-                    assert!(false,
+                    assert!(
+                        false,
                         "Text output doesn't match golden splan for test file: {:?}",
                         test_file
                     );

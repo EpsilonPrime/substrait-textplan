@@ -12,9 +12,9 @@ pub mod symbol_table;
 mod tests;
 
 // Re-export common types
-pub use common::Location;
-pub use common::TextLocation;
-pub use common::ProtoLocation;
 pub use common::parse_result::ParseResult;
+pub use common::Location;
+pub use common::ProtoLocation;
+pub use common::TextLocation;
 pub use printer::plan_printer::{PlanPrinter, TextPlanFormat};
-pub use symbol_table::{SymbolInfo, SymbolTable, SymbolType, RelationType};
+pub use symbol_table::{RelationType, SymbolInfo, SymbolTable, SymbolType};

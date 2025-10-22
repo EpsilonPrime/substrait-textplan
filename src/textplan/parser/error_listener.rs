@@ -3,14 +3,14 @@
 //! Error listener for the ANTLR4 parser.
 
 use std::fmt;
-use std::sync::{Arc, Mutex};
 use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 
 // Import everything we need from antlr_rust
+use crate::textplan::common::text_location::TextLocation;
 use antlr_rust::atn_config_set::ATNConfigSet;
 use antlr_rust::dfa::DFA;
 use antlr_rust::token_factory::{TokenAware, TokenFactory};
-use crate::textplan::common::text_location::TextLocation;
 
 /// Represents an error encountered during parsing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +54,7 @@ impl ErrorListener {
     /// Creates a new error listener.
     pub fn new() -> Self {
         Self {
-            errors: Arc::new(Mutex::new(Vec::new()))
+            errors: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -111,7 +111,9 @@ where
     fn syntax_error(
         &self,
         _recognizer: &T,
-        _offending_symbol: std::option::Option<&<<T as TokenAware<'input>>::TF as TokenFactory<'input>>::Inner>,
+        _offending_symbol: std::option::Option<
+            &<<T as TokenAware<'input>>::TF as TokenFactory<'input>>::Inner,
+        >,
         line: isize,
         column: isize,
         msg: &str,
@@ -133,8 +135,11 @@ where
     ) {
         // Log the ambiguity as an info message
         self.error_listener.add_error(
-            format!("Grammar ambiguity detected at indices {}-{}", start_index, stop_index),
-            TextLocation::new(start_index as i32, stop_index as i32)
+            format!(
+                "Grammar ambiguity detected at indices {}-{}",
+                start_index, stop_index
+            ),
+            TextLocation::new(start_index as i32, stop_index as i32),
         );
     }
 
@@ -149,8 +154,11 @@ where
     ) {
         // Log full context attempt
         self.error_listener.add_error(
-            format!("Parser attempting full context parsing at indices {}-{}", start_index, stop_index),
-            TextLocation::new(start_index as i32, stop_index as i32)
+            format!(
+                "Parser attempting full context parsing at indices {}-{}",
+                start_index, stop_index
+            ),
+            TextLocation::new(start_index as i32, stop_index as i32),
         );
     }
 
@@ -165,9 +173,11 @@ where
     ) {
         // Log context sensitivity
         self.error_listener.add_error(
-            format!("Context sensitivity detected at indices {}-{} with prediction {}",
-                  start_index, stop_index, prediction),
-            TextLocation::new(start_index as i32, stop_index as i32)
+            format!(
+                "Context sensitivity detected at indices {}-{} with prediction {}",
+                start_index, stop_index, prediction
+            ),
+            TextLocation::new(start_index as i32, stop_index as i32),
         );
     }
 }

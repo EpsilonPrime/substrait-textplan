@@ -3,8 +3,8 @@
 //! Loads a textplan from a string and converts it to a binary protobuf.
 
 use crate::textplan::common::error::TextPlanError;
-use crate::textplan::parser::parse_text::parse_stream;
 use crate::textplan::converter::save_binary::save_to_binary;
+use crate::textplan::parser::parse_text::parse_stream;
 
 /// Loads a textplan from a string and converts it to a binary protobuf.
 ///

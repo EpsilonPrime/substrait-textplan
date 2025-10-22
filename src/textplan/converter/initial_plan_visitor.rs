@@ -14,11 +14,11 @@ use crate::textplan::converter::generated::PlanProtoVisitor;
 use crate::textplan::converter::generated::Traversable;
 use crate::textplan::symbol_table::SourceType;
 use crate::textplan::{ProtoLocation, SymbolInfo, SymbolType};
+use ::substrait::proto as substrait;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
-use ::substrait::proto as substrait;
 
 const ROOT_NAMES: &str = "root.names";
 

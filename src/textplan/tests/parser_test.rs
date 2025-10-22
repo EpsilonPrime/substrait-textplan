@@ -37,7 +37,11 @@ mod tests {
 
         // Test parse_stream
         let parse_result = parse_stream(text);
-        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
+        assert!(
+            parse_result.successful(),
+            "Parse failed: {:?}",
+            parse_result.all_errors()
+        );
 
         // Verify the symbol table
         let symbol_table = parse_result.symbol_table();
@@ -89,16 +93,23 @@ plan {
 }
 "#;
         let result = parse_stream(text);
-        assert!(result.successful(), "Parsing errors: {:?}", result.all_errors());
+        assert!(
+            result.successful(),
+            "Parsing errors: {:?}",
+            result.all_errors()
+        );
         assert!(result.syntax_errors().is_empty());
-        
+
         // Get the symbol table and verify we have symbols for the table and schema
         let symbol_table = result.symbol_table();
-        
+
         // Expect at least a root symbol
         let symbols = symbol_table.symbols();
-        assert!(symbols.len() > 0, "Expected at least one symbol in the symbol table");
-        
+        assert!(
+            symbols.len() > 0,
+            "Expected at least one symbol in the symbol table"
+        );
+
         // Print the symbols for debugging
         println!("Symbols in plan: {:?}", symbol_table);
     }
@@ -148,12 +159,16 @@ plan {
 }
 "#;
         let result = parse_stream(text);
-        assert!(result.successful(), "Parsing errors: {:?}", result.all_errors());
+        assert!(
+            result.successful(),
+            "Parsing errors: {:?}",
+            result.all_errors()
+        );
         assert!(result.syntax_errors().is_empty());
-        
+
         // Get the symbol table and verify we have symbols for the different types
         let symbol_table = result.symbol_table();
-        
+
         // Print the symbols for debugging
         println!("Symbols in plan: {:?}", symbol_table);
     }
@@ -199,12 +214,16 @@ plan {
 }
 "#;
         let result = parse_stream(text);
-        assert!(result.successful(), "Parsing errors: {:?}", result.all_errors());
+        assert!(
+            result.successful(),
+            "Parsing errors: {:?}",
+            result.all_errors()
+        );
         assert!(result.syntax_errors().is_empty());
-        
+
         // Get the symbol table
         let symbol_table = result.symbol_table();
-        
+
         // Print the symbols for debugging
         println!("Symbols in plan with complex types: {:?}", symbol_table);
     }
@@ -226,14 +245,18 @@ READ RELATION rel1 {
 
         // Parse the textplan to get a symbol table
         let parse_result = parse_stream(text_plan);
-        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
-        
+        assert!(
+            parse_result.successful(),
+            "Parse failed: {:?}",
+            parse_result.all_errors()
+        );
+
         // Get the symbol table from the parse result
         let symbol_table = parse_result.symbol_table();
-        
+
         // Convert the symbol table back to a textplan string
         let result = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Standard).unwrap();
-        
+
         // Verify the result contains the essential elements
         assert!(result.contains("ROOT {"));
         assert!(result.contains("NAMES = ["));
@@ -257,16 +280,21 @@ READ RELATION rel1 {
 
         // Parse the textplan to get a symbol table
         let parse_result = parse_stream(text_plan);
-        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
-        
+        assert!(
+            parse_result.successful(),
+            "Parse failed: {:?}",
+            parse_result.all_errors()
+        );
+
         // Get the symbol table from the parse result
         let symbol_table = parse_result.symbol_table();
-        
+
         // Test different formats
-        let standard = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Standard).unwrap();
+        let standard =
+            parse_text::serialize_to_text(symbol_table, TextPlanFormat::Standard).unwrap();
         let compact = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Compact).unwrap();
         let verbose = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Verbose).unwrap();
-        
+
         // Verify we get different outputs with different formats
         assert!(standard.contains("ROOT {"));
         assert_ne!(standard, compact);

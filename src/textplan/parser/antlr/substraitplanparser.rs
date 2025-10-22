@@ -6,289 +6,448 @@
 #![allow(unused_imports)]
 #![allow(unused_mut)]
 #![allow(unused_braces)]
-use antlr_rust::PredictionContextCache;
-use antlr_rust::parser::{Parser, BaseParser, ParserRecog, ParserNodeType};
-use antlr_rust::token_stream::TokenStream;
-use antlr_rust::TokenSource;
-use antlr_rust::parser_atn_simulator::ParserATNSimulator;
-use antlr_rust::errors::*;
-use antlr_rust::rule_context::{BaseRuleContext, CustomRuleContext, RuleContext};
-use antlr_rust::recognizer::{Recognizer,Actions};
-use antlr_rust::atn_deserializer::ATNDeserializer;
-use antlr_rust::dfa::DFA;
-use antlr_rust::atn::{ATN, INVALID_ALT};
-use antlr_rust::error_strategy::{ErrorStrategy, DefaultErrorStrategy};
-use antlr_rust::parser_rule_context::{BaseParserRuleContext, ParserRuleContext,cast,cast_mut};
-use antlr_rust::tree::*;
-use antlr_rust::token::{TOKEN_EOF,OwningToken,Token};
-use antlr_rust::int_stream::EOF;
-use antlr_rust::vocabulary::{Vocabulary,VocabularyImpl};
-use antlr_rust::token_factory::{CommonTokenFactory,TokenFactory, TokenAware};
 use super::substraitplanparserlistener::*;
 use super::substraitplanparservisitor::*;
+use antlr_rust::atn::{ATN, INVALID_ALT};
+use antlr_rust::atn_deserializer::ATNDeserializer;
+use antlr_rust::dfa::DFA;
+use antlr_rust::error_strategy::{DefaultErrorStrategy, ErrorStrategy};
+use antlr_rust::errors::*;
+use antlr_rust::int_stream::EOF;
+use antlr_rust::parser::{BaseParser, Parser, ParserNodeType, ParserRecog};
+use antlr_rust::parser_atn_simulator::ParserATNSimulator;
+use antlr_rust::parser_rule_context::{cast, cast_mut, BaseParserRuleContext, ParserRuleContext};
+use antlr_rust::recognizer::{Actions, Recognizer};
+use antlr_rust::rule_context::{BaseRuleContext, CustomRuleContext, RuleContext};
+use antlr_rust::token::{OwningToken, Token, TOKEN_EOF};
+use antlr_rust::token_factory::{CommonTokenFactory, TokenAware, TokenFactory};
+use antlr_rust::token_stream::TokenStream;
+use antlr_rust::tree::*;
+use antlr_rust::vocabulary::{Vocabulary, VocabularyImpl};
+use antlr_rust::PredictionContextCache;
+use antlr_rust::TokenSource;
 
 use antlr_rust::lazy_static;
-use antlr_rust::{TidAble,TidExt};
+use antlr_rust::{TidAble, TidExt};
 
-use std::marker::PhantomData;
-use std::sync::Arc;
-use std::rc::Rc;
-use std::convert::TryFrom;
+use std::any::{Any, TypeId};
+use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
-use std::ops::{DerefMut, Deref};
-use std::borrow::{Borrow,BorrowMut};
-use std::any::{Any,TypeId};
+use std::convert::TryFrom;
+use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
+use std::sync::Arc;
 
-		pub const SPACES:isize=1; 
-		pub const EXTENSION_SPACE:isize=2; 
-		pub const FUNCTION:isize=3; 
-		pub const AS:isize=4; 
-		pub const NAMED:isize=5; 
-		pub const SCHEMA:isize=6; 
-		pub const RELATION:isize=7; 
-		pub const PIPELINES:isize=8; 
-		pub const COMMON:isize=9; 
-		pub const BASE_SCHEMA:isize=10; 
-		pub const FILTER:isize=11; 
-		pub const PROJECTION:isize=12; 
-		pub const EXPRESSION:isize=13; 
-		pub const ADVANCED_EXTENSION:isize=14; 
-		pub const GROUPING:isize=15; 
-		pub const MEASURE:isize=16; 
-		pub const INVOCATION:isize=17; 
-		pub const SORT:isize=18; 
-		pub const BY:isize=19; 
-		pub const COUNT:isize=20; 
-		pub const TYPE:isize=21; 
-		pub const EMIT:isize=22; 
-		pub const SUBQUERY:isize=23; 
-		pub const EXISTS:isize=24; 
-		pub const UNIQUE:isize=25; 
-		pub const IN:isize=26; 
-		pub const ALL:isize=27; 
-		pub const ANY:isize=28; 
-		pub const COMPARISON:isize=29; 
-		pub const VIRTUAL_TABLE:isize=30; 
-		pub const LOCAL_FILES:isize=31; 
-		pub const NAMED_TABLE:isize=32; 
-		pub const EXTENSION_TABLE:isize=33; 
-		pub const SOURCE:isize=34; 
-		pub const ROOT:isize=35; 
-		pub const ITEMS:isize=36; 
-		pub const NAMES:isize=37; 
-		pub const URI_FILE:isize=38; 
-		pub const URI_PATH:isize=39; 
-		pub const URI_PATH_GLOB:isize=40; 
-		pub const URI_FOLDER:isize=41; 
-		pub const PARTITION_INDEX:isize=42; 
-		pub const START:isize=43; 
-		pub const LENGTH:isize=44; 
-		pub const ORC:isize=45; 
-		pub const PARQUET:isize=46; 
-		pub const NULLVAL:isize=47; 
-		pub const TRUEVAL:isize=48; 
-		pub const FALSEVAL:isize=49; 
-		pub const LIST:isize=50; 
-		pub const MAP:isize=51; 
-		pub const STRUCT:isize=52; 
-		pub const ARROW:isize=53; 
-		pub const COLON:isize=54; 
-		pub const SEMICOLON:isize=55; 
-		pub const LEFTBRACE:isize=56; 
-		pub const RIGHTBRACE:isize=57; 
-		pub const LEFTPAREN:isize=58; 
-		pub const RIGHTPAREN:isize=59; 
-		pub const COMMA:isize=60; 
-		pub const PERIOD:isize=61; 
-		pub const EQUAL:isize=62; 
-		pub const LEFTBRACKET:isize=63; 
-		pub const RIGHTBRACKET:isize=64; 
-		pub const UNDERSCORE:isize=65; 
-		pub const MINUS:isize=66; 
-		pub const LEFTANGLEBRACKET:isize=67; 
-		pub const RIGHTANGLEBRACKET:isize=68; 
-		pub const QUESTIONMARK:isize=69; 
-		pub const ATSIGN:isize=70; 
-		pub const IDENTIFIER:isize=71; 
-		pub const NUMBER:isize=72; 
-		pub const STRING:isize=73; 
-		pub const SINGLE_LINE_COMMENT:isize=74; 
-		pub const URI:isize=75;
-	pub const RULE_plan:usize = 0; 
-	pub const RULE_plan_detail:usize = 1; 
-	pub const RULE_pipelines:usize = 2; 
-	pub const RULE_pipeline:usize = 3; 
-	pub const RULE_relation:usize = 4; 
-	pub const RULE_root_relation:usize = 5; 
-	pub const RULE_relation_type:usize = 6; 
-	pub const RULE_relation_ref:usize = 7; 
-	pub const RULE_relation_filter_behavior:usize = 8; 
-	pub const RULE_measure_detail:usize = 9; 
-	pub const RULE_relation_detail:usize = 10; 
-	pub const RULE_expression:usize = 11; 
-	pub const RULE_expression_list:usize = 12; 
-	pub const RULE_constant:usize = 13; 
-	pub const RULE_literal_basic_type:usize = 14; 
-	pub const RULE_literal_complex_type:usize = 15; 
-	pub const RULE_literal_specifier:usize = 16; 
-	pub const RULE_map_literal:usize = 17; 
-	pub const RULE_map_literal_value:usize = 18; 
-	pub const RULE_struct_literal:usize = 19; 
-	pub const RULE_column_name:usize = 20; 
-	pub const RULE_source_reference:usize = 21; 
-	pub const RULE_file_location:usize = 22; 
-	pub const RULE_file_detail:usize = 23; 
-	pub const RULE_file:usize = 24; 
-	pub const RULE_local_files_detail:usize = 25; 
-	pub const RULE_named_table_detail:usize = 26; 
-	pub const RULE_schema_definition:usize = 27; 
-	pub const RULE_schema_item:usize = 28; 
-	pub const RULE_source_definition:usize = 29; 
-	pub const RULE_read_type:usize = 30; 
-	pub const RULE_extensionspace:usize = 31; 
-	pub const RULE_function:usize = 32; 
-	pub const RULE_sort_field:usize = 33; 
-	pub const RULE_name:usize = 34; 
-	pub const RULE_signature:usize = 35; 
-	pub const RULE_id:usize = 36; 
-	pub const RULE_simple_id:usize = 37;
-	pub const ruleNames: [&'static str; 38] =  [
-		"plan", "plan_detail", "pipelines", "pipeline", "relation", "root_relation", 
-		"relation_type", "relation_ref", "relation_filter_behavior", "measure_detail", 
-		"relation_detail", "expression", "expression_list", "constant", "literal_basic_type", 
-		"literal_complex_type", "literal_specifier", "map_literal", "map_literal_value", 
-		"struct_literal", "column_name", "source_reference", "file_location", 
-		"file_detail", "file", "local_files_detail", "named_table_detail", "schema_definition", 
-		"schema_item", "source_definition", "read_type", "extensionspace", "function", 
-		"sort_field", "name", "signature", "id", "simple_id"
-	];
+pub const SPACES: isize = 1;
+pub const EXTENSION_SPACE: isize = 2;
+pub const FUNCTION: isize = 3;
+pub const AS: isize = 4;
+pub const NAMED: isize = 5;
+pub const SCHEMA: isize = 6;
+pub const RELATION: isize = 7;
+pub const PIPELINES: isize = 8;
+pub const COMMON: isize = 9;
+pub const BASE_SCHEMA: isize = 10;
+pub const FILTER: isize = 11;
+pub const PROJECTION: isize = 12;
+pub const EXPRESSION: isize = 13;
+pub const ADVANCED_EXTENSION: isize = 14;
+pub const GROUPING: isize = 15;
+pub const MEASURE: isize = 16;
+pub const INVOCATION: isize = 17;
+pub const SORT: isize = 18;
+pub const BY: isize = 19;
+pub const COUNT: isize = 20;
+pub const TYPE: isize = 21;
+pub const EMIT: isize = 22;
+pub const SUBQUERY: isize = 23;
+pub const EXISTS: isize = 24;
+pub const UNIQUE: isize = 25;
+pub const IN: isize = 26;
+pub const ALL: isize = 27;
+pub const ANY: isize = 28;
+pub const COMPARISON: isize = 29;
+pub const VIRTUAL_TABLE: isize = 30;
+pub const LOCAL_FILES: isize = 31;
+pub const NAMED_TABLE: isize = 32;
+pub const EXTENSION_TABLE: isize = 33;
+pub const SOURCE: isize = 34;
+pub const ROOT: isize = 35;
+pub const ITEMS: isize = 36;
+pub const NAMES: isize = 37;
+pub const URI_FILE: isize = 38;
+pub const URI_PATH: isize = 39;
+pub const URI_PATH_GLOB: isize = 40;
+pub const URI_FOLDER: isize = 41;
+pub const PARTITION_INDEX: isize = 42;
+pub const START: isize = 43;
+pub const LENGTH: isize = 44;
+pub const ORC: isize = 45;
+pub const PARQUET: isize = 46;
+pub const NULLVAL: isize = 47;
+pub const TRUEVAL: isize = 48;
+pub const FALSEVAL: isize = 49;
+pub const LIST: isize = 50;
+pub const MAP: isize = 51;
+pub const STRUCT: isize = 52;
+pub const ARROW: isize = 53;
+pub const COLON: isize = 54;
+pub const SEMICOLON: isize = 55;
+pub const LEFTBRACE: isize = 56;
+pub const RIGHTBRACE: isize = 57;
+pub const LEFTPAREN: isize = 58;
+pub const RIGHTPAREN: isize = 59;
+pub const COMMA: isize = 60;
+pub const PERIOD: isize = 61;
+pub const EQUAL: isize = 62;
+pub const LEFTBRACKET: isize = 63;
+pub const RIGHTBRACKET: isize = 64;
+pub const UNDERSCORE: isize = 65;
+pub const MINUS: isize = 66;
+pub const LEFTANGLEBRACKET: isize = 67;
+pub const RIGHTANGLEBRACKET: isize = 68;
+pub const QUESTIONMARK: isize = 69;
+pub const ATSIGN: isize = 70;
+pub const IDENTIFIER: isize = 71;
+pub const NUMBER: isize = 72;
+pub const STRING: isize = 73;
+pub const SINGLE_LINE_COMMENT: isize = 74;
+pub const URI: isize = 75;
+pub const RULE_plan: usize = 0;
+pub const RULE_plan_detail: usize = 1;
+pub const RULE_pipelines: usize = 2;
+pub const RULE_pipeline: usize = 3;
+pub const RULE_relation: usize = 4;
+pub const RULE_root_relation: usize = 5;
+pub const RULE_relation_type: usize = 6;
+pub const RULE_relation_ref: usize = 7;
+pub const RULE_relation_filter_behavior: usize = 8;
+pub const RULE_measure_detail: usize = 9;
+pub const RULE_relation_detail: usize = 10;
+pub const RULE_expression: usize = 11;
+pub const RULE_expression_list: usize = 12;
+pub const RULE_constant: usize = 13;
+pub const RULE_literal_basic_type: usize = 14;
+pub const RULE_literal_complex_type: usize = 15;
+pub const RULE_literal_specifier: usize = 16;
+pub const RULE_map_literal: usize = 17;
+pub const RULE_map_literal_value: usize = 18;
+pub const RULE_struct_literal: usize = 19;
+pub const RULE_column_name: usize = 20;
+pub const RULE_source_reference: usize = 21;
+pub const RULE_file_location: usize = 22;
+pub const RULE_file_detail: usize = 23;
+pub const RULE_file: usize = 24;
+pub const RULE_local_files_detail: usize = 25;
+pub const RULE_named_table_detail: usize = 26;
+pub const RULE_schema_definition: usize = 27;
+pub const RULE_schema_item: usize = 28;
+pub const RULE_source_definition: usize = 29;
+pub const RULE_read_type: usize = 30;
+pub const RULE_extensionspace: usize = 31;
+pub const RULE_function: usize = 32;
+pub const RULE_sort_field: usize = 33;
+pub const RULE_name: usize = 34;
+pub const RULE_signature: usize = 35;
+pub const RULE_id: usize = 36;
+pub const RULE_simple_id: usize = 37;
+pub const ruleNames: [&'static str; 38] = [
+    "plan",
+    "plan_detail",
+    "pipelines",
+    "pipeline",
+    "relation",
+    "root_relation",
+    "relation_type",
+    "relation_ref",
+    "relation_filter_behavior",
+    "measure_detail",
+    "relation_detail",
+    "expression",
+    "expression_list",
+    "constant",
+    "literal_basic_type",
+    "literal_complex_type",
+    "literal_specifier",
+    "map_literal",
+    "map_literal_value",
+    "struct_literal",
+    "column_name",
+    "source_reference",
+    "file_location",
+    "file_detail",
+    "file",
+    "local_files_detail",
+    "named_table_detail",
+    "schema_definition",
+    "schema_item",
+    "source_definition",
+    "read_type",
+    "extensionspace",
+    "function",
+    "sort_field",
+    "name",
+    "signature",
+    "id",
+    "simple_id",
+];
 
+pub const _LITERAL_NAMES: [Option<&'static str>; 71] = [
+    None,
+    None,
+    Some("'EXTENSION_SPACE'"),
+    Some("'FUNCTION'"),
+    Some("'AS'"),
+    Some("'NAMED'"),
+    Some("'SCHEMA'"),
+    Some("'RELATION'"),
+    Some("'PIPELINES'"),
+    Some("'COMMON'"),
+    Some("'BASE_SCHEMA'"),
+    Some("'FILTER'"),
+    Some("'PROJECTION'"),
+    Some("'EXPRESSION'"),
+    Some("'ADVANCED_EXTENSION'"),
+    Some("'GROUPING'"),
+    Some("'MEASURE'"),
+    Some("'INVOCATION'"),
+    Some("'SORT'"),
+    Some("'BY'"),
+    Some("'COUNT'"),
+    Some("'TYPE'"),
+    Some("'EMIT'"),
+    Some("'SUBQUERY'"),
+    Some("'EXISTS'"),
+    Some("'UNIQUE'"),
+    Some("'IN'"),
+    Some("'ALL'"),
+    Some("'ANY'"),
+    None,
+    Some("'VIRTUAL_TABLE'"),
+    Some("'LOCAL_FILES'"),
+    Some("'NAMED_TABLE'"),
+    Some("'EXTENSION_TABLE'"),
+    Some("'SOURCE'"),
+    Some("'ROOT'"),
+    Some("'ITEMS'"),
+    Some("'NAMES'"),
+    Some("'URI_FILE'"),
+    Some("'URI_PATH'"),
+    Some("'URI_PATH_GLOB'"),
+    Some("'URI_FOLDER'"),
+    Some("'PARTITION_INDEX'"),
+    Some("'START'"),
+    Some("'LENGTH'"),
+    Some("'ORC'"),
+    Some("'PARQUET'"),
+    Some("'NULL'"),
+    Some("'TRUE'"),
+    Some("'FALSE'"),
+    Some("'LIST'"),
+    Some("'MAP'"),
+    Some("'STRUCT'"),
+    Some("'->'"),
+    Some("':'"),
+    Some("';'"),
+    Some("'{'"),
+    Some("'}'"),
+    Some("'('"),
+    Some("')'"),
+    Some("','"),
+    Some("'.'"),
+    Some("'='"),
+    Some("'['"),
+    Some("']'"),
+    Some("'_'"),
+    Some("'-'"),
+    Some("'<'"),
+    Some("'>'"),
+    Some("'?'"),
+    Some("'@'"),
+];
+pub const _SYMBOLIC_NAMES: [Option<&'static str>; 76] = [
+    None,
+    Some("SPACES"),
+    Some("EXTENSION_SPACE"),
+    Some("FUNCTION"),
+    Some("AS"),
+    Some("NAMED"),
+    Some("SCHEMA"),
+    Some("RELATION"),
+    Some("PIPELINES"),
+    Some("COMMON"),
+    Some("BASE_SCHEMA"),
+    Some("FILTER"),
+    Some("PROJECTION"),
+    Some("EXPRESSION"),
+    Some("ADVANCED_EXTENSION"),
+    Some("GROUPING"),
+    Some("MEASURE"),
+    Some("INVOCATION"),
+    Some("SORT"),
+    Some("BY"),
+    Some("COUNT"),
+    Some("TYPE"),
+    Some("EMIT"),
+    Some("SUBQUERY"),
+    Some("EXISTS"),
+    Some("UNIQUE"),
+    Some("IN"),
+    Some("ALL"),
+    Some("ANY"),
+    Some("COMPARISON"),
+    Some("VIRTUAL_TABLE"),
+    Some("LOCAL_FILES"),
+    Some("NAMED_TABLE"),
+    Some("EXTENSION_TABLE"),
+    Some("SOURCE"),
+    Some("ROOT"),
+    Some("ITEMS"),
+    Some("NAMES"),
+    Some("URI_FILE"),
+    Some("URI_PATH"),
+    Some("URI_PATH_GLOB"),
+    Some("URI_FOLDER"),
+    Some("PARTITION_INDEX"),
+    Some("START"),
+    Some("LENGTH"),
+    Some("ORC"),
+    Some("PARQUET"),
+    Some("NULLVAL"),
+    Some("TRUEVAL"),
+    Some("FALSEVAL"),
+    Some("LIST"),
+    Some("MAP"),
+    Some("STRUCT"),
+    Some("ARROW"),
+    Some("COLON"),
+    Some("SEMICOLON"),
+    Some("LEFTBRACE"),
+    Some("RIGHTBRACE"),
+    Some("LEFTPAREN"),
+    Some("RIGHTPAREN"),
+    Some("COMMA"),
+    Some("PERIOD"),
+    Some("EQUAL"),
+    Some("LEFTBRACKET"),
+    Some("RIGHTBRACKET"),
+    Some("UNDERSCORE"),
+    Some("MINUS"),
+    Some("LEFTANGLEBRACKET"),
+    Some("RIGHTANGLEBRACKET"),
+    Some("QUESTIONMARK"),
+    Some("ATSIGN"),
+    Some("IDENTIFIER"),
+    Some("NUMBER"),
+    Some("STRING"),
+    Some("SINGLE_LINE_COMMENT"),
+    Some("URI"),
+];
+lazy_static! {
+    static ref _shared_context_cache: Arc<PredictionContextCache> =
+        Arc::new(PredictionContextCache::new());
+    static ref VOCABULARY: Box<dyn Vocabulary> = Box::new(VocabularyImpl::new(
+        _LITERAL_NAMES.iter(),
+        _SYMBOLIC_NAMES.iter(),
+        None
+    ));
+}
 
-	pub const _LITERAL_NAMES: [Option<&'static str>;71] = [
-		None, None, Some("'EXTENSION_SPACE'"), Some("'FUNCTION'"), Some("'AS'"), 
-		Some("'NAMED'"), Some("'SCHEMA'"), Some("'RELATION'"), Some("'PIPELINES'"), 
-		Some("'COMMON'"), Some("'BASE_SCHEMA'"), Some("'FILTER'"), Some("'PROJECTION'"), 
-		Some("'EXPRESSION'"), Some("'ADVANCED_EXTENSION'"), Some("'GROUPING'"), 
-		Some("'MEASURE'"), Some("'INVOCATION'"), Some("'SORT'"), Some("'BY'"), 
-		Some("'COUNT'"), Some("'TYPE'"), Some("'EMIT'"), Some("'SUBQUERY'"), Some("'EXISTS'"), 
-		Some("'UNIQUE'"), Some("'IN'"), Some("'ALL'"), Some("'ANY'"), None, Some("'VIRTUAL_TABLE'"), 
-		Some("'LOCAL_FILES'"), Some("'NAMED_TABLE'"), Some("'EXTENSION_TABLE'"), 
-		Some("'SOURCE'"), Some("'ROOT'"), Some("'ITEMS'"), Some("'NAMES'"), Some("'URI_FILE'"), 
-		Some("'URI_PATH'"), Some("'URI_PATH_GLOB'"), Some("'URI_FOLDER'"), Some("'PARTITION_INDEX'"), 
-		Some("'START'"), Some("'LENGTH'"), Some("'ORC'"), Some("'PARQUET'"), Some("'NULL'"), 
-		Some("'TRUE'"), Some("'FALSE'"), Some("'LIST'"), Some("'MAP'"), Some("'STRUCT'"), 
-		Some("'->'"), Some("':'"), Some("';'"), Some("'{'"), Some("'}'"), Some("'('"), 
-		Some("')'"), Some("','"), Some("'.'"), Some("'='"), Some("'['"), Some("']'"), 
-		Some("'_'"), Some("'-'"), Some("'<'"), Some("'>'"), Some("'?'"), Some("'@'")
-	];
-	pub const _SYMBOLIC_NAMES: [Option<&'static str>;76]  = [
-		None, Some("SPACES"), Some("EXTENSION_SPACE"), Some("FUNCTION"), Some("AS"), 
-		Some("NAMED"), Some("SCHEMA"), Some("RELATION"), Some("PIPELINES"), Some("COMMON"), 
-		Some("BASE_SCHEMA"), Some("FILTER"), Some("PROJECTION"), Some("EXPRESSION"), 
-		Some("ADVANCED_EXTENSION"), Some("GROUPING"), Some("MEASURE"), Some("INVOCATION"), 
-		Some("SORT"), Some("BY"), Some("COUNT"), Some("TYPE"), Some("EMIT"), Some("SUBQUERY"), 
-		Some("EXISTS"), Some("UNIQUE"), Some("IN"), Some("ALL"), Some("ANY"), 
-		Some("COMPARISON"), Some("VIRTUAL_TABLE"), Some("LOCAL_FILES"), Some("NAMED_TABLE"), 
-		Some("EXTENSION_TABLE"), Some("SOURCE"), Some("ROOT"), Some("ITEMS"), 
-		Some("NAMES"), Some("URI_FILE"), Some("URI_PATH"), Some("URI_PATH_GLOB"), 
-		Some("URI_FOLDER"), Some("PARTITION_INDEX"), Some("START"), Some("LENGTH"), 
-		Some("ORC"), Some("PARQUET"), Some("NULLVAL"), Some("TRUEVAL"), Some("FALSEVAL"), 
-		Some("LIST"), Some("MAP"), Some("STRUCT"), Some("ARROW"), Some("COLON"), 
-		Some("SEMICOLON"), Some("LEFTBRACE"), Some("RIGHTBRACE"), Some("LEFTPAREN"), 
-		Some("RIGHTPAREN"), Some("COMMA"), Some("PERIOD"), Some("EQUAL"), Some("LEFTBRACKET"), 
-		Some("RIGHTBRACKET"), Some("UNDERSCORE"), Some("MINUS"), Some("LEFTANGLEBRACKET"), 
-		Some("RIGHTANGLEBRACKET"), Some("QUESTIONMARK"), Some("ATSIGN"), Some("IDENTIFIER"), 
-		Some("NUMBER"), Some("STRING"), Some("SINGLE_LINE_COMMENT"), Some("URI")
-	];
-	lazy_static!{
-	    static ref _shared_context_cache: Arc<PredictionContextCache> = Arc::new(PredictionContextCache::new());
-		static ref VOCABULARY: Box<dyn Vocabulary> = Box::new(VocabularyImpl::new(_LITERAL_NAMES.iter(), _SYMBOLIC_NAMES.iter(), None));
-	}
-
-
-type BaseParserType<'input, I> =
-	BaseParser<'input,SubstraitPlanParserExt<'input>, I, SubstraitPlanParserContextType , dyn SubstraitPlanParserListener<'input> + 'input >;
+type BaseParserType<'input, I> = BaseParser<
+    'input,
+    SubstraitPlanParserExt<'input>,
+    I,
+    SubstraitPlanParserContextType,
+    dyn SubstraitPlanParserListener<'input> + 'input,
+>;
 
 type TokenType<'input> = <LocalTokenFactory<'input> as TokenFactory<'input>>::Tok;
 pub type LocalTokenFactory<'input> = CommonTokenFactory;
 
-pub type SubstraitPlanParserTreeWalker<'input,'a> =
-	ParseTreeWalker<'input, 'a, SubstraitPlanParserContextType , dyn SubstraitPlanParserListener<'input> + 'a>;
+pub type SubstraitPlanParserTreeWalker<'input, 'a> = ParseTreeWalker<
+    'input,
+    'a,
+    SubstraitPlanParserContextType,
+    dyn SubstraitPlanParserListener<'input> + 'a,
+>;
 
 /// Parser for SubstraitPlanParser grammar
-pub struct SubstraitPlanParser<'input,I,H>
+pub struct SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	base:BaseParserType<'input,I>,
-	interpreter:Arc<ParserATNSimulator>,
-	_shared_context_cache: Box<PredictionContextCache>,
+    base: BaseParserType<'input, I>,
+    interpreter: Arc<ParserATNSimulator>,
+    _shared_context_cache: Box<PredictionContextCache>,
     pub err_handler: H,
 }
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn get_serialized_atn() -> &'static str { _serializedATN }
+    pub fn get_serialized_atn() -> &'static str {
+        _serializedATN
+    }
 
     pub fn set_error_strategy(&mut self, strategy: H) {
         self.err_handler = strategy
     }
 
     pub fn with_strategy(input: I, strategy: H) -> Self {
-		antlr_rust::recognizer::check_version("0","3");
-		let interpreter = Arc::new(ParserATNSimulator::new(
-			_ATN.clone(),
-			_decision_to_DFA.clone(),
-			_shared_context_cache.clone(),
-		));
-		Self {
-			base: BaseParser::new_base_parser(
-				input,
-				Arc::clone(&interpreter),
-				SubstraitPlanParserExt{
-					_pd: Default::default(),
-				}
-			),
-			interpreter,
+        antlr_rust::recognizer::check_version("0", "3");
+        let interpreter = Arc::new(ParserATNSimulator::new(
+            _ATN.clone(),
+            _decision_to_DFA.clone(),
+            _shared_context_cache.clone(),
+        ));
+        Self {
+            base: BaseParser::new_base_parser(
+                input,
+                Arc::clone(&interpreter),
+                SubstraitPlanParserExt {
+                    _pd: Default::default(),
+                },
+            ),
+            interpreter,
             _shared_context_cache: Box::new(PredictionContextCache::new()),
             err_handler: strategy,
         }
     }
-
 }
 
-type DynStrategy<'input,I> = Box<dyn ErrorStrategy<'input,BaseParserType<'input,I>> + 'input>;
+type DynStrategy<'input, I> = Box<dyn ErrorStrategy<'input, BaseParserType<'input, I>> + 'input>;
 
-impl<'input, I> SubstraitPlanParser<'input, I, DynStrategy<'input,I>>
+impl<'input, I> SubstraitPlanParser<'input, I, DynStrategy<'input, I>>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
 {
-    pub fn with_dyn_strategy(input: I) -> Self{
-    	Self::with_strategy(input,Box::new(DefaultErrorStrategy::new()))
+    pub fn with_dyn_strategy(input: I) -> Self {
+        Self::with_strategy(input, Box::new(DefaultErrorStrategy::new()))
     }
 }
 
-impl<'input, I> SubstraitPlanParser<'input, I, DefaultErrorStrategy<'input,SubstraitPlanParserContextType>>
+impl<'input, I>
+    SubstraitPlanParser<'input, I, DefaultErrorStrategy<'input, SubstraitPlanParserContextType>>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
 {
-    pub fn new(input: I) -> Self{
-    	Self::with_strategy(input,DefaultErrorStrategy::new())
+    pub fn new(input: I) -> Self {
+        Self::with_strategy(input, DefaultErrorStrategy::new())
     }
 }
 
 /// Trait for monomorphized trait object that corresponds to the nodes of parse tree generated for SubstraitPlanParser
-pub trait SubstraitPlanParserContext<'input>:
-	for<'x> Listenable<dyn SubstraitPlanParserListener<'input> + 'x > + 
-	for<'x> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'x > + 
-	ParserRuleContext<'input, TF=LocalTokenFactory<'input>, Ctx=SubstraitPlanParserContextType>
-{}
+pub trait SubstraitPlanParserContext<'input>: for<'x> Listenable<dyn SubstraitPlanParserListener<'input> + 'x>
+    + for<'x> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'x>
+    + ParserRuleContext<'input, TF = LocalTokenFactory<'input>, Ctx = SubstraitPlanParserContextType>
+{
+}
 
-antlr_rust::coerce_from!{ 'input : SubstraitPlanParserContext<'input> }
+antlr_rust::coerce_from! { 'input : SubstraitPlanParserContext<'input> }
 
 impl<'input, 'x, T> VisitableDyn<T> for dyn SubstraitPlanParserContext<'input> + 'input
 where
@@ -299,27 +458,33 @@ where
     }
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for TerminalNode<'input,SubstraitPlanParserContextType> {}
-impl<'input> SubstraitPlanParserContext<'input> for ErrorNode<'input,SubstraitPlanParserContextType> {}
+impl<'input> SubstraitPlanParserContext<'input>
+    for TerminalNode<'input, SubstraitPlanParserContextType>
+{
+}
+impl<'input> SubstraitPlanParserContext<'input>
+    for ErrorNode<'input, SubstraitPlanParserContextType>
+{
+}
 
 antlr_rust::tid! { impl<'input> TidAble<'input> for dyn SubstraitPlanParserContext<'input> + 'input }
 
 antlr_rust::tid! { impl<'input> TidAble<'input> for dyn SubstraitPlanParserListener<'input> + 'input }
 
 pub struct SubstraitPlanParserContextType;
-antlr_rust::tid!{SubstraitPlanParserContextType}
+antlr_rust::tid! {SubstraitPlanParserContextType}
 
-impl<'input> ParserNodeType<'input> for SubstraitPlanParserContextType{
-	type TF = LocalTokenFactory<'input>;
-	type Type = dyn SubstraitPlanParserContext<'input> + 'input;
+impl<'input> ParserNodeType<'input> for SubstraitPlanParserContextType {
+    type TF = LocalTokenFactory<'input>;
+    type Type = dyn SubstraitPlanParserContext<'input> + 'input;
 }
 
 impl<'input, I, H> Deref for SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-    type Target = BaseParserType<'input,I>;
+    type Target = BaseParserType<'input, I>;
 
     fn deref(&self) -> &Self::Target {
         &self.base
@@ -328,8516 +493,10285 @@ where
 
 impl<'input, I, H> DerefMut for SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.base
     }
 }
 
-pub struct SubstraitPlanParserExt<'input>{
-	_pd: PhantomData<&'input str>,
+pub struct SubstraitPlanParserExt<'input> {
+    _pd: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserExt<'input>{
-}
+impl<'input> SubstraitPlanParserExt<'input> {}
 antlr_rust::tid! { SubstraitPlanParserExt<'a> }
 
-impl<'input> TokenAware<'input> for SubstraitPlanParserExt<'input>{
-	type TF = LocalTokenFactory<'input>;
+impl<'input> TokenAware<'input> for SubstraitPlanParserExt<'input> {
+    type TF = LocalTokenFactory<'input>;
 }
 
-impl<'input,I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>> ParserRecog<'input, BaseParserType<'input,I>> for SubstraitPlanParserExt<'input>{}
-
-impl<'input,I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>> Actions<'input, BaseParserType<'input,I>> for SubstraitPlanParserExt<'input>{
-	fn get_grammar_file_name(&self) -> & str{ "SubstraitPlanParser.g4"}
-
-   	fn get_rule_names(&self) -> &[& str] {&ruleNames}
-
-   	fn get_vocabulary(&self) -> &dyn Vocabulary { &**VOCABULARY }
-	fn sempred(_localctx: Option<&(dyn SubstraitPlanParserContext<'input> + 'input)>, rule_index: isize, pred_index: isize,
-			   recog:&mut BaseParserType<'input,I>
-	)->bool{
-		match rule_index {
-					3 => SubstraitPlanParser::<'input,I,_>::pipeline_sempred(_localctx.and_then(|x|x.downcast_ref()), pred_index, recog),
-					11 => SubstraitPlanParser::<'input,I,_>::expression_sempred(_localctx.and_then(|x|x.downcast_ref()), pred_index, recog),
-			_ => true
-		}
-	}
-}
-
-impl<'input, I> SubstraitPlanParser<'input, I, DefaultErrorStrategy<'input,SubstraitPlanParserContextType>>
-where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
+impl<'input, I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>>
+    ParserRecog<'input, BaseParserType<'input, I>> for SubstraitPlanParserExt<'input>
 {
-	fn pipeline_sempred(_localctx: Option<&PipelineContext<'input>>, pred_index:isize,
-						recog:&mut <Self as Deref>::Target
-		) -> bool {
-		match pred_index {
-				0=>{
-					recog.precpred(None, 2)
-				}
-			_ => true
-		}
-	}
-	fn expression_sempred(_localctx: Option<&ExpressionContext<'input>>, pred_index:isize,
-						recog:&mut <Self as Deref>::Target
-		) -> bool {
-		match pred_index {
-				1=>{
-					recog.precpred(None, 5)
-				}
-				2=>{
-					recog.precpred(None, 1)
-				}
-			_ => true
-		}
-	}
+}
+
+impl<'input, I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>>
+    Actions<'input, BaseParserType<'input, I>> for SubstraitPlanParserExt<'input>
+{
+    fn get_grammar_file_name(&self) -> &str {
+        "SubstraitPlanParser.g4"
+    }
+
+    fn get_rule_names(&self) -> &[&str] {
+        &ruleNames
+    }
+
+    fn get_vocabulary(&self) -> &dyn Vocabulary {
+        &**VOCABULARY
+    }
+    fn sempred(
+        _localctx: Option<&(dyn SubstraitPlanParserContext<'input> + 'input)>,
+        rule_index: isize,
+        pred_index: isize,
+        recog: &mut BaseParserType<'input, I>,
+    ) -> bool {
+        match rule_index {
+            3 => SubstraitPlanParser::<'input, I, _>::pipeline_sempred(
+                _localctx.and_then(|x| x.downcast_ref()),
+                pred_index,
+                recog,
+            ),
+            11 => SubstraitPlanParser::<'input, I, _>::expression_sempred(
+                _localctx.and_then(|x| x.downcast_ref()),
+                pred_index,
+                recog,
+            ),
+            _ => true,
+        }
+    }
+}
+
+impl<'input, I>
+    SubstraitPlanParser<'input, I, DefaultErrorStrategy<'input, SubstraitPlanParserContextType>>
+where
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+{
+    fn pipeline_sempred(
+        _localctx: Option<&PipelineContext<'input>>,
+        pred_index: isize,
+        recog: &mut <Self as Deref>::Target,
+    ) -> bool {
+        match pred_index {
+            0 => recog.precpred(None, 2),
+            _ => true,
+        }
+    }
+    fn expression_sempred(
+        _localctx: Option<&ExpressionContext<'input>>,
+        pred_index: isize,
+        recog: &mut <Self as Deref>::Target,
+    ) -> bool {
+        match pred_index {
+            1 => recog.precpred(None, 5),
+            2 => recog.precpred(None, 1),
+            _ => true,
+        }
+    }
 }
 //------------------- plan ----------------
 pub type PlanContextAll<'input> = PlanContext<'input>;
 
-
-pub type PlanContext<'input> = BaseParserRuleContext<'input,PlanContextExt<'input>>;
+pub type PlanContext<'input> = BaseParserRuleContext<'input, PlanContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct PlanContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct PlanContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for PlanContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for PlanContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for PlanContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_plan(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_plan(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for PlanContext<'input> {
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_plan(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_plan(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for PlanContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_plan(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for PlanContext<'input> {
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_plan(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for PlanContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_plan }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_plan }
+impl<'input> CustomRuleContext<'input> for PlanContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_plan
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_plan }
 }
-antlr_rust::tid!{PlanContextExt<'a>}
+antlr_rust::tid! {PlanContextExt<'a>}
 
-impl<'input> PlanContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<PlanContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,PlanContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait PlanContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<PlanContextExt<'input>>{
-
-/// Retrieves first TerminalNode corresponding to token EOF
-/// Returns `None` if there is no child corresponding to token EOF
-fn EOF(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(EOF, 0)
-}
-fn plan_detail_all(&self) ->  Vec<Rc<Plan_detailContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn plan_detail(&self, i: usize) -> Option<Rc<Plan_detailContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
+impl<'input> PlanContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<PlanContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            PlanContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait PlanContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<PlanContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token EOF
+    /// Returns `None` if there is no child corresponding to token EOF
+    fn EOF(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EOF, 0)
+    }
+    fn plan_detail_all(&self) -> Vec<Rc<Plan_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn plan_detail(&self, i: usize) -> Option<Rc<Plan_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
 }
 
-impl<'input> PlanContextAttrs<'input> for PlanContext<'input>{}
+impl<'input> PlanContextAttrs<'input> for PlanContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn plan(&mut self,)
-	-> Result<Rc<PlanContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = PlanContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn plan(&mut self) -> Result<Rc<PlanContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = PlanContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 0, RULE_plan);
         let mut _localctx: Rc<PlanContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(79);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                while (((_la) & !0x3f) == 0
+                    && ((1usize << _la)
+                        & ((1usize << EXTENSION_SPACE)
+                            | (1usize << NAMED)
+                            | (1usize << SCHEMA)
+                            | (1usize << PIPELINES)
+                            | (1usize << FILTER)
+                            | (1usize << GROUPING)
+                            | (1usize << MEASURE)
+                            | (1usize << SORT)
+                            | (1usize << COUNT)
+                            | (1usize << TYPE)
+                            | (1usize << EMIT)
+                            | (1usize << ALL)
+                            | (1usize << ANY)
+                            | (1usize << COMPARISON)))
+                        != 0)
+                    || (((_la - 34) & !0x3f) == 0
+                        && ((1usize << (_la - 34))
+                            & ((1usize << (SOURCE - 34))
+                                | (1usize << (ROOT - 34))
+                                | (1usize << (NULLVAL - 34))))
+                            != 0)
+                    || _la == IDENTIFIER
+                {
+                    {
+                        {
+                            /*InvokeRule plan_detail*/
+                            recog.base.set_state(76);
+                            recog.plan_detail()?;
+                        }
+                    }
+                    recog.base.set_state(81);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _la = recog.base.input.la(1);
+                }
+                recog.base.set_state(82);
+                recog.base.match_token(EOF, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(79);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			while (((_la) & !0x3f) == 0 && ((1usize << _la) & ((1usize << EXTENSION_SPACE) | (1usize << NAMED) | (1usize << SCHEMA) | (1usize << PIPELINES) | (1usize << FILTER) | (1usize << GROUPING) | (1usize << MEASURE) | (1usize << SORT) | (1usize << COUNT) | (1usize << TYPE) | (1usize << EMIT) | (1usize << ALL) | (1usize << ANY) | (1usize << COMPARISON))) != 0) || ((((_la - 34)) & !0x3f) == 0 && ((1usize << (_la - 34)) & ((1usize << (SOURCE - 34)) | (1usize << (ROOT - 34)) | (1usize << (NULLVAL - 34)))) != 0) || _la==IDENTIFIER {
-				{
-				{
-				/*InvokeRule plan_detail*/
-				recog.base.set_state(76);
-				recog.plan_detail()?;
-
-				}
-				}
-				recog.base.set_state(81);
-				recog.err_handler.sync(&mut recog.base)?;
-				_la = recog.base.input.la(1);
-			}
-			recog.base.set_state(82);
-			recog.base.match_token(EOF,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- plan_detail ----------------
 pub type Plan_detailContextAll<'input> = Plan_detailContext<'input>;
 
-
-pub type Plan_detailContext<'input> = BaseParserRuleContext<'input,Plan_detailContextExt<'input>>;
+pub type Plan_detailContext<'input> = BaseParserRuleContext<'input, Plan_detailContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Plan_detailContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Plan_detailContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Plan_detailContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Plan_detailContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Plan_detailContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_plan_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_plan_detail(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Plan_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_plan_detail(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Plan_detailContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_plan_detail(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_plan_detail(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Plan_detailContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_plan_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_plan_detail }
-}
-antlr_rust::tid!{Plan_detailContextExt<'a>}
-
-impl<'input> Plan_detailContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Plan_detailContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Plan_detailContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Plan_detailContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_plan_detail(self);
+    }
 }
 
-pub trait Plan_detailContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Plan_detailContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Plan_detailContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_plan_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_plan_detail }
+}
+antlr_rust::tid! {Plan_detailContextExt<'a>}
 
-fn pipelines(&self) -> Option<Rc<PipelinesContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-fn relation(&self) -> Option<Rc<RelationContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-fn root_relation(&self) -> Option<Rc<Root_relationContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-fn schema_definition(&self) -> Option<Rc<Schema_definitionContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-fn source_definition(&self) -> Option<Rc<Source_definitionContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-fn extensionspace(&self) -> Option<Rc<ExtensionspaceContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
+impl<'input> Plan_detailContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Plan_detailContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Plan_detailContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Plan_detailContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Plan_detailContextExt<'input>>
+{
+    fn pipelines(&self) -> Option<Rc<PipelinesContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    fn relation(&self) -> Option<Rc<RelationContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    fn root_relation(&self) -> Option<Rc<Root_relationContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    fn schema_definition(&self) -> Option<Rc<Schema_definitionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    fn source_definition(&self) -> Option<Rc<Source_definitionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    fn extensionspace(&self) -> Option<Rc<ExtensionspaceContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> Plan_detailContextAttrs<'input> for Plan_detailContext<'input>{}
+impl<'input> Plan_detailContextAttrs<'input> for Plan_detailContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn plan_detail(&mut self,)
-	-> Result<Rc<Plan_detailContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Plan_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 2, RULE_plan_detail);
+    pub fn plan_detail(&mut self) -> Result<Rc<Plan_detailContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = Plan_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 2, RULE_plan_detail);
         let mut _localctx: Rc<Plan_detailContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(90);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.interpreter.adaptive_predict(1, &mut recog.base)? {
+                1 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        /*InvokeRule pipelines*/
+                        recog.base.set_state(84);
+                        recog.pipelines()?;
+                    }
+                }
+                2 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        /*InvokeRule relation*/
+                        recog.base.set_state(85);
+                        recog.relation()?;
+                    }
+                }
+                3 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 3);
+                    recog.base.enter_outer_alt(None, 3);
+                    {
+                        /*InvokeRule root_relation*/
+                        recog.base.set_state(86);
+                        recog.root_relation()?;
+                    }
+                }
+                4 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 4);
+                    recog.base.enter_outer_alt(None, 4);
+                    {
+                        /*InvokeRule schema_definition*/
+                        recog.base.set_state(87);
+                        recog.schema_definition()?;
+                    }
+                }
+                5 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 5);
+                    recog.base.enter_outer_alt(None, 5);
+                    {
+                        /*InvokeRule source_definition*/
+                        recog.base.set_state(88);
+                        recog.source_definition()?;
+                    }
+                }
+                6 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 6);
+                    recog.base.enter_outer_alt(None, 6);
+                    {
+                        /*InvokeRule extensionspace*/
+                        recog.base.set_state(89);
+                        recog.extensionspace()?;
+                    }
+                }
 
-			recog.base.set_state(90);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(1,&mut recog.base)? {
-				1 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					/*InvokeRule pipelines*/
-					recog.base.set_state(84);
-					recog.pipelines()?;
+                _ => {}
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-			,
-				2 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					/*InvokeRule relation*/
-					recog.base.set_state(85);
-					recog.relation()?;
-
-					}
-				}
-			,
-				3 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 3);
-					recog.base.enter_outer_alt(None, 3);
-					{
-					/*InvokeRule root_relation*/
-					recog.base.set_state(86);
-					recog.root_relation()?;
-
-					}
-				}
-			,
-				4 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 4);
-					recog.base.enter_outer_alt(None, 4);
-					{
-					/*InvokeRule schema_definition*/
-					recog.base.set_state(87);
-					recog.schema_definition()?;
-
-					}
-				}
-			,
-				5 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 5);
-					recog.base.enter_outer_alt(None, 5);
-					{
-					/*InvokeRule source_definition*/
-					recog.base.set_state(88);
-					recog.source_definition()?;
-
-					}
-				}
-			,
-				6 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 6);
-					recog.base.enter_outer_alt(None, 6);
-					{
-					/*InvokeRule extensionspace*/
-					recog.base.set_state(89);
-					recog.extensionspace()?;
-
-					}
-				}
-
-				_ => {}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- pipelines ----------------
 pub type PipelinesContextAll<'input> = PipelinesContext<'input>;
 
-
-pub type PipelinesContext<'input> = BaseParserRuleContext<'input,PipelinesContextExt<'input>>;
+pub type PipelinesContext<'input> = BaseParserRuleContext<'input, PipelinesContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct PipelinesContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct PipelinesContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for PipelinesContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for PipelinesContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for PipelinesContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_pipelines(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_pipelines(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for PipelinesContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_pipelines(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for PipelinesContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_pipelines(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_pipelines(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for PipelinesContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_pipelines }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_pipelines }
-}
-antlr_rust::tid!{PipelinesContextExt<'a>}
-
-impl<'input> PipelinesContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<PipelinesContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,PipelinesContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for PipelinesContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_pipelines(self);
+    }
 }
 
-pub trait PipelinesContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<PipelinesContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for PipelinesContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_pipelines
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_pipelines }
+}
+antlr_rust::tid! {PipelinesContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token PIPELINES
-/// Returns `None` if there is no child corresponding to token PIPELINES
-fn PIPELINES(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(PIPELINES, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-fn pipeline_all(&self) ->  Vec<Rc<PipelineContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn pipeline(&self, i: usize) -> Option<Rc<PipelineContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves all `TerminalNode`s corresponding to token SEMICOLON in current rule
-fn SEMICOLON_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token SEMICOLON, starting from 0.
-/// Returns `None` if number of children corresponding to token SEMICOLON is less or equal than `i`.
-fn SEMICOLON(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SEMICOLON, i)
+impl<'input> PipelinesContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<PipelinesContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            PipelinesContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait PipelinesContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<PipelinesContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token PIPELINES
+    /// Returns `None` if there is no child corresponding to token PIPELINES
+    fn PIPELINES(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(PIPELINES, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    fn pipeline_all(&self) -> Vec<Rc<PipelineContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn pipeline(&self, i: usize) -> Option<Rc<PipelineContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token SEMICOLON in current rule
+    fn SEMICOLON_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token SEMICOLON, starting from 0.
+    /// Returns `None` if number of children corresponding to token SEMICOLON is less or equal than `i`.
+    fn SEMICOLON(
+        &self,
+        i: usize,
+    ) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, i)
+    }
 }
 
-impl<'input> PipelinesContextAttrs<'input> for PipelinesContext<'input>{}
+impl<'input> PipelinesContextAttrs<'input> for PipelinesContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn pipelines(&mut self,)
-	-> Result<Rc<PipelinesContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = PipelinesContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn pipelines(&mut self) -> Result<Rc<PipelinesContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = PipelinesContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 4, RULE_pipelines);
         let mut _localctx: Rc<PipelinesContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(92);
+                recog.base.match_token(PIPELINES, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(92);
-			recog.base.match_token(PIPELINES,&mut recog.err_handler)?;
+                recog.base.set_state(93);
+                recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-			recog.base.set_state(93);
-			recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                recog.base.set_state(99);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                while (((_la - 5) & !0x3f) == 0
+                    && ((1usize << (_la - 5))
+                        & ((1usize << (NAMED - 5))
+                            | (1usize << (SCHEMA - 5))
+                            | (1usize << (FILTER - 5))
+                            | (1usize << (GROUPING - 5))
+                            | (1usize << (MEASURE - 5))
+                            | (1usize << (SORT - 5))
+                            | (1usize << (COUNT - 5))
+                            | (1usize << (TYPE - 5))
+                            | (1usize << (EMIT - 5))
+                            | (1usize << (ALL - 5))
+                            | (1usize << (ANY - 5))
+                            | (1usize << (COMPARISON - 5))
+                            | (1usize << (SOURCE - 5))
+                            | (1usize << (ROOT - 5))))
+                        != 0)
+                    || _la == NULLVAL
+                    || _la == IDENTIFIER
+                {
+                    {
+                        {
+                            /*InvokeRule pipeline*/
+                            recog.base.set_state(94);
+                            recog.pipeline_rec(0)?;
 
-			recog.base.set_state(99);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			while ((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || _la==NULLVAL || _la==IDENTIFIER {
-				{
-				{
-				/*InvokeRule pipeline*/
-				recog.base.set_state(94);
-				recog.pipeline_rec(0)?;
+                            recog.base.set_state(95);
+                            recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                        }
+                    }
+                    recog.base.set_state(101);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _la = recog.base.input.la(1);
+                }
+                recog.base.set_state(102);
+                recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-				recog.base.set_state(95);
-				recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
-
-				}
-				}
-				recog.base.set_state(101);
-				recog.err_handler.sync(&mut recog.base)?;
-				_la = recog.base.input.la(1);
-			}
-			recog.base.set_state(102);
-			recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- pipeline ----------------
 pub type PipelineContextAll<'input> = PipelineContext<'input>;
 
-
-pub type PipelineContext<'input> = BaseParserRuleContext<'input,PipelineContextExt<'input>>;
+pub type PipelineContext<'input> = BaseParserRuleContext<'input, PipelineContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct PipelineContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct PipelineContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for PipelineContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for PipelineContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for PipelineContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_pipeline(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_pipeline(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for PipelineContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_pipeline(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_pipeline(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for PipelineContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_pipeline(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for PipelineContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_pipeline(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for PipelineContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_pipeline }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_pipeline }
+impl<'input> CustomRuleContext<'input> for PipelineContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_pipeline
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_pipeline }
 }
-antlr_rust::tid!{PipelineContextExt<'a>}
+antlr_rust::tid! {PipelineContextExt<'a>}
 
-impl<'input> PipelineContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<PipelineContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,PipelineContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait PipelineContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<PipelineContextExt<'input>>{
-
-fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-fn pipeline(&self) -> Option<Rc<PipelineContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token ARROW
-/// Returns `None` if there is no child corresponding to token ARROW
-fn ARROW(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ARROW, 0)
+impl<'input> PipelineContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<PipelineContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            PipelineContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait PipelineContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<PipelineContextExt<'input>>
+{
+    fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    fn pipeline(&self) -> Option<Rc<PipelineContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ARROW
+    /// Returns `None` if there is no child corresponding to token ARROW
+    fn ARROW(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ARROW, 0)
+    }
 }
 
-impl<'input> PipelineContextAttrs<'input> for PipelineContext<'input>{}
+impl<'input> PipelineContextAttrs<'input> for PipelineContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn  pipeline(&mut self,)
-	-> Result<Rc<PipelineContextAll<'input>>,ANTLRError> {
-		self.pipeline_rec(0)
-	}
+    pub fn pipeline(&mut self) -> Result<Rc<PipelineContextAll<'input>>, ANTLRError> {
+        self.pipeline_rec(0)
+    }
 
-	fn pipeline_rec(&mut self, _p: isize)
-	-> Result<Rc<PipelineContextAll<'input>>,ANTLRError> {
-		let recog = self;
-		let _parentctx = recog.ctx.take();
-		let _parentState = recog.base.get_state();
-		let mut _localctx = PipelineContextExt::new(_parentctx.clone(), recog.base.get_state());
-		recog.base.enter_recursion_rule(_localctx.clone(), 6, RULE_pipeline, _p);
-	    let mut _localctx: Rc<PipelineContextAll> = _localctx;
+    fn pipeline_rec(&mut self, _p: isize) -> Result<Rc<PipelineContextAll<'input>>, ANTLRError> {
+        let recog = self;
+        let _parentctx = recog.ctx.take();
+        let _parentState = recog.base.get_state();
+        let mut _localctx = PipelineContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_recursion_rule(_localctx.clone(), 6, RULE_pipeline, _p);
+        let mut _localctx: Rc<PipelineContextAll> = _localctx;
         let mut _prevctx = _localctx.clone();
-		let _startState = 6;
-		let result: Result<(), ANTLRError> = (|| {
-			let mut _alt: isize;
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			{
-			/*InvokeRule relation_ref*/
-			recog.base.set_state(105);
-			recog.relation_ref()?;
+        let _startState = 6;
+        let result: Result<(), ANTLRError> = (|| {
+            let mut _alt: isize;
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                {
+                    /*InvokeRule relation_ref*/
+                    recog.base.set_state(105);
+                    recog.relation_ref()?;
+                }
 
-			}
+                let tmp = recog.input.lt(-1).cloned();
+                recog.ctx.as_ref().unwrap().set_stop(tmp);
+                recog.base.set_state(112);
+                recog.err_handler.sync(&mut recog.base)?;
+                _alt = recog.interpreter.adaptive_predict(3, &mut recog.base)?;
+                while { _alt != 2 && _alt != INVALID_ALT } {
+                    if _alt == 1 {
+                        recog.trigger_exit_rule_event();
+                        _prevctx = _localctx.clone();
+                        {
+                            {
+                                /*recRuleAltStartAction*/
+                                let mut tmp =
+                                    PipelineContextExt::new(_parentctx.clone(), _parentState);
+                                recog.push_new_recursion_context(
+                                    tmp.clone(),
+                                    _startState,
+                                    RULE_pipeline,
+                                );
+                                _localctx = tmp;
+                                recog.base.set_state(107);
+                                if !({ recog.precpred(None, 2) }) {
+                                    Err(FailedPredicateError::new(
+                                        &mut recog.base,
+                                        Some("recog.precpred(None, 2)".to_owned()),
+                                        None,
+                                    ))?;
+                                }
+                                recog.base.set_state(108);
+                                recog.base.match_token(ARROW, &mut recog.err_handler)?;
 
-			let tmp = recog.input.lt(-1).cloned();
-			recog.ctx.as_ref().unwrap().set_stop(tmp);
-			recog.base.set_state(112);
-			recog.err_handler.sync(&mut recog.base)?;
-			_alt = recog.interpreter.adaptive_predict(3,&mut recog.base)?;
-			while { _alt!=2 && _alt!=INVALID_ALT } {
-				if _alt==1 {
-					recog.trigger_exit_rule_event();
-					_prevctx = _localctx.clone();
-					{
-					{
-					/*recRuleAltStartAction*/
-					let mut tmp = PipelineContextExt::new(_parentctx.clone(), _parentState);
-					recog.push_new_recursion_context(tmp.clone(), _startState, RULE_pipeline);
-					_localctx = tmp;
-					recog.base.set_state(107);
-					if !({recog.precpred(None, 2)}) {
-						Err(FailedPredicateError::new(&mut recog.base, Some("recog.precpred(None, 2)".to_owned()), None))?;
-					}
-					recog.base.set_state(108);
-					recog.base.match_token(ARROW,&mut recog.err_handler)?;
+                                /*InvokeRule relation_ref*/
+                                recog.base.set_state(109);
+                                recog.relation_ref()?;
+                            }
+                        }
+                    }
+                    recog.base.set_state(114);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _alt = recog.interpreter.adaptive_predict(3, &mut recog.base)?;
+                }
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.unroll_recursion_context(_parentctx);
 
-					/*InvokeRule relation_ref*/
-					recog.base.set_state(109);
-					recog.relation_ref()?;
-
-					}
-					} 
-				}
-				recog.base.set_state(114);
-				recog.err_handler.sync(&mut recog.base)?;
-				_alt = recog.interpreter.adaptive_predict(3,&mut recog.base)?;
-			}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_) => {},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re)=>{
-			//_localctx.exception = re;
-			recog.err_handler.report_error(&mut recog.base, re);
-	        recog.err_handler.recover(&mut recog.base, re)?;}
-		}
-		recog.base.unroll_recursion_context(_parentctx);
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- relation ----------------
 pub type RelationContextAll<'input> = RelationContext<'input>;
 
-
-pub type RelationContext<'input> = BaseParserRuleContext<'input,RelationContextExt<'input>>;
+pub type RelationContext<'input> = BaseParserRuleContext<'input, RelationContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct RelationContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct RelationContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_relation(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_relation(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relation(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relation(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relation(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation }
-}
-antlr_rust::tid!{RelationContextExt<'a>}
-
-impl<'input> RelationContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<RelationContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,RelationContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relation(self);
+    }
 }
 
-pub trait RelationContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<RelationContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for RelationContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation }
+}
+antlr_rust::tid! {RelationContextExt<'a>}
 
-fn relation_type(&self) -> Option<Rc<Relation_typeContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token RELATION
-/// Returns `None` if there is no child corresponding to token RELATION
-fn RELATION(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RELATION, 0)
-}
-fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-fn relation_detail_all(&self) ->  Vec<Rc<Relation_detailContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn relation_detail(&self, i: usize) -> Option<Rc<Relation_detailContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
+impl<'input> RelationContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<RelationContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            RelationContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait RelationContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<RelationContextExt<'input>>
+{
+    fn relation_type(&self) -> Option<Rc<Relation_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RELATION
+    /// Returns `None` if there is no child corresponding to token RELATION
+    fn RELATION(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RELATION, 0)
+    }
+    fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    fn relation_detail_all(&self) -> Vec<Rc<Relation_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn relation_detail(&self, i: usize) -> Option<Rc<Relation_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
 }
 
-impl<'input> RelationContextAttrs<'input> for RelationContext<'input>{}
+impl<'input> RelationContextAttrs<'input> for RelationContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn relation(&mut self,)
-	-> Result<Rc<RelationContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = RelationContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn relation(&mut self) -> Result<Rc<RelationContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = RelationContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 8, RULE_relation);
         let mut _localctx: Rc<RelationContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule relation_type*/
+                recog.base.set_state(115);
+                recog.relation_type()?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule relation_type*/
-			recog.base.set_state(115);
-			recog.relation_type()?;
+                recog.base.set_state(116);
+                recog.base.match_token(RELATION, &mut recog.err_handler)?;
 
-			recog.base.set_state(116);
-			recog.base.match_token(RELATION,&mut recog.err_handler)?;
+                /*InvokeRule relation_ref*/
+                recog.base.set_state(117);
+                recog.relation_ref()?;
 
-			/*InvokeRule relation_ref*/
-			recog.base.set_state(117);
-			recog.relation_ref()?;
+                recog.base.set_state(118);
+                recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-			recog.base.set_state(118);
-			recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                recog.base.set_state(122);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                while (((_la - 5) & !0x3f) == 0
+                    && ((1usize << (_la - 5))
+                        & ((1usize << (NAMED - 5))
+                            | (1usize << (SCHEMA - 5))
+                            | (1usize << (COMMON - 5))
+                            | (1usize << (BASE_SCHEMA - 5))
+                            | (1usize << (FILTER - 5))
+                            | (1usize << (EXPRESSION - 5))
+                            | (1usize << (ADVANCED_EXTENSION - 5))
+                            | (1usize << (GROUPING - 5))
+                            | (1usize << (MEASURE - 5))
+                            | (1usize << (SORT - 5))
+                            | (1usize << (COUNT - 5))
+                            | (1usize << (TYPE - 5))
+                            | (1usize << (EMIT - 5))
+                            | (1usize << (ALL - 5))
+                            | (1usize << (ANY - 5))
+                            | (1usize << (COMPARISON - 5))
+                            | (1usize << (SOURCE - 5))
+                            | (1usize << (ROOT - 5))))
+                        != 0)
+                    || _la == NULLVAL
+                    || _la == IDENTIFIER
+                {
+                    {
+                        {
+                            /*InvokeRule relation_detail*/
+                            recog.base.set_state(119);
+                            recog.relation_detail()?;
+                        }
+                    }
+                    recog.base.set_state(124);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _la = recog.base.input.la(1);
+                }
+                recog.base.set_state(125);
+                recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			recog.base.set_state(122);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			while ((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (COMMON - 5)) | (1usize << (BASE_SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (EXPRESSION - 5)) | (1usize << (ADVANCED_EXTENSION - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || _la==NULLVAL || _la==IDENTIFIER {
-				{
-				{
-				/*InvokeRule relation_detail*/
-				recog.base.set_state(119);
-				recog.relation_detail()?;
-
-				}
-				}
-				recog.base.set_state(124);
-				recog.err_handler.sync(&mut recog.base)?;
-				_la = recog.base.input.la(1);
-			}
-			recog.base.set_state(125);
-			recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- root_relation ----------------
 pub type Root_relationContextAll<'input> = Root_relationContext<'input>;
 
-
-pub type Root_relationContext<'input> = BaseParserRuleContext<'input,Root_relationContextExt<'input>>;
+pub type Root_relationContext<'input> =
+    BaseParserRuleContext<'input, Root_relationContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Root_relationContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Root_relationContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Root_relationContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Root_relationContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Root_relationContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_root_relation(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_root_relation(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Root_relationContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_root_relation(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Root_relationContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_root_relation(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_root_relation(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Root_relationContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_root_relation }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_root_relation }
-}
-antlr_rust::tid!{Root_relationContextExt<'a>}
-
-impl<'input> Root_relationContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Root_relationContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Root_relationContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Root_relationContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_root_relation(self);
+    }
 }
 
-pub trait Root_relationContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Root_relationContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Root_relationContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_root_relation
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_root_relation }
+}
+antlr_rust::tid! {Root_relationContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token ROOT
-/// Returns `None` if there is no child corresponding to token ROOT
-fn ROOT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ROOT, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token NAMES
-/// Returns `None` if there is no child corresponding to token NAMES
-fn NAMES(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NAMES, 0)
-}
-/// Retrieves first TerminalNode corresponding to token EQUAL
-/// Returns `None` if there is no child corresponding to token EQUAL
-fn EQUAL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(EQUAL, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACKET
-/// Returns `None` if there is no child corresponding to token LEFTBRACKET
-fn LEFTBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACKET, 0)
-}
-fn id_all(&self) ->  Vec<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACKET
-/// Returns `None` if there is no child corresponding to token RIGHTBRACKET
-fn RIGHTBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACKET, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMMA, i)
+impl<'input> Root_relationContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Root_relationContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Root_relationContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Root_relationContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Root_relationContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token ROOT
+    /// Returns `None` if there is no child corresponding to token ROOT
+    fn ROOT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ROOT, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NAMES
+    /// Returns `None` if there is no child corresponding to token NAMES
+    fn NAMES(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NAMES, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token EQUAL
+    /// Returns `None` if there is no child corresponding to token EQUAL
+    fn EQUAL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EQUAL, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACKET
+    /// Returns `None` if there is no child corresponding to token LEFTBRACKET
+    fn LEFTBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACKET, 0)
+    }
+    fn id_all(&self) -> Vec<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACKET
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACKET
+    fn RIGHTBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACKET, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
 }
 
-impl<'input> Root_relationContextAttrs<'input> for Root_relationContext<'input>{}
+impl<'input> Root_relationContextAttrs<'input> for Root_relationContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn root_relation(&mut self,)
-	-> Result<Rc<Root_relationContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Root_relationContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 10, RULE_root_relation);
+    pub fn root_relation(&mut self) -> Result<Rc<Root_relationContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Root_relationContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 10, RULE_root_relation);
         let mut _localctx: Rc<Root_relationContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            let mut _alt: isize;
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(127);
+                recog.base.match_token(ROOT, &mut recog.err_handler)?;
 
-			let mut _alt: isize;
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(127);
-			recog.base.match_token(ROOT,&mut recog.err_handler)?;
+                recog.base.set_state(128);
+                recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-			recog.base.set_state(128);
-			recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                recog.base.set_state(129);
+                recog.base.match_token(NAMES, &mut recog.err_handler)?;
 
-			recog.base.set_state(129);
-			recog.base.match_token(NAMES,&mut recog.err_handler)?;
+                recog.base.set_state(130);
+                recog.base.match_token(EQUAL, &mut recog.err_handler)?;
 
-			recog.base.set_state(130);
-			recog.base.match_token(EQUAL,&mut recog.err_handler)?;
+                recog.base.set_state(131);
+                recog
+                    .base
+                    .match_token(LEFTBRACKET, &mut recog.err_handler)?;
 
-			recog.base.set_state(131);
-			recog.base.match_token(LEFTBRACKET,&mut recog.err_handler)?;
+                /*InvokeRule id*/
+                recog.base.set_state(132);
+                recog.id()?;
 
-			/*InvokeRule id*/
-			recog.base.set_state(132);
-			recog.id()?;
+                recog.base.set_state(137);
+                recog.err_handler.sync(&mut recog.base)?;
+                _alt = recog.interpreter.adaptive_predict(5, &mut recog.base)?;
+                while { _alt != 2 && _alt != INVALID_ALT } {
+                    if _alt == 1 {
+                        {
+                            {
+                                recog.base.set_state(133);
+                                recog.base.match_token(COMMA, &mut recog.err_handler)?;
 
-			recog.base.set_state(137);
-			recog.err_handler.sync(&mut recog.base)?;
-			_alt = recog.interpreter.adaptive_predict(5,&mut recog.base)?;
-			while { _alt!=2 && _alt!=INVALID_ALT } {
-				if _alt==1 {
-					{
-					{
-					recog.base.set_state(133);
-					recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                                /*InvokeRule id*/
+                                recog.base.set_state(134);
+                                recog.id()?;
+                            }
+                        }
+                    }
+                    recog.base.set_state(139);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _alt = recog.interpreter.adaptive_predict(5, &mut recog.base)?;
+                }
+                recog.base.set_state(141);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                if _la == COMMA {
+                    {
+                        recog.base.set_state(140);
+                        recog.base.match_token(COMMA, &mut recog.err_handler)?;
+                    }
+                }
 
-					/*InvokeRule id*/
-					recog.base.set_state(134);
-					recog.id()?;
+                recog.base.set_state(143);
+                recog
+                    .base
+                    .match_token(RIGHTBRACKET, &mut recog.err_handler)?;
 
-					}
-					} 
-				}
-				recog.base.set_state(139);
-				recog.err_handler.sync(&mut recog.base)?;
-				_alt = recog.interpreter.adaptive_predict(5,&mut recog.base)?;
-			}
-			recog.base.set_state(141);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			if _la==COMMA {
-				{
-				recog.base.set_state(140);
-				recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                recog.base.set_state(144);
+                recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-				}
-			}
-
-			recog.base.set_state(143);
-			recog.base.match_token(RIGHTBRACKET,&mut recog.err_handler)?;
-
-			recog.base.set_state(144);
-			recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- relation_type ----------------
 pub type Relation_typeContextAll<'input> = Relation_typeContext<'input>;
 
-
-pub type Relation_typeContext<'input> = BaseParserRuleContext<'input,Relation_typeContextExt<'input>>;
+pub type Relation_typeContext<'input> =
+    BaseParserRuleContext<'input, Relation_typeContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Relation_typeContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Relation_typeContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Relation_typeContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Relation_typeContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Relation_typeContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_relation_type(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_relation_type(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Relation_typeContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relation_type(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relation_type(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_typeContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relation_type(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Relation_typeContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relation_type(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Relation_typeContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_type }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_type }
+impl<'input> CustomRuleContext<'input> for Relation_typeContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_type
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_type }
 }
-antlr_rust::tid!{Relation_typeContextExt<'a>}
+antlr_rust::tid! {Relation_typeContextExt<'a>}
 
-impl<'input> Relation_typeContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Relation_typeContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Relation_typeContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait Relation_typeContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Relation_typeContextExt<'input>>{
-
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-
+impl<'input> Relation_typeContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Relation_typeContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Relation_typeContextExt { ph: PhantomData },
+        ))
+    }
 }
 
-impl<'input> Relation_typeContextAttrs<'input> for Relation_typeContext<'input>{}
+pub trait Relation_typeContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Relation_typeContextExt<'input>>
+{
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+}
+
+impl<'input> Relation_typeContextAttrs<'input> for Relation_typeContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn relation_type(&mut self,)
-	-> Result<Rc<Relation_typeContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Relation_typeContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 12, RULE_relation_type);
+    pub fn relation_type(&mut self) -> Result<Rc<Relation_typeContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Relation_typeContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 12, RULE_relation_type);
         let mut _localctx: Rc<Relation_typeContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule id*/
+                recog.base.set_state(146);
+                recog.id()?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule id*/
-			recog.base.set_state(146);
-			recog.id()?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- relation_ref ----------------
 pub type Relation_refContextAll<'input> = Relation_refContext<'input>;
 
-
-pub type Relation_refContext<'input> = BaseParserRuleContext<'input,Relation_refContextExt<'input>>;
+pub type Relation_refContext<'input> =
+    BaseParserRuleContext<'input, Relation_refContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Relation_refContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Relation_refContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Relation_refContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Relation_refContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Relation_refContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_relation_ref(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_relation_ref(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_refContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relation_ref(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Relation_refContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relation_ref(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relation_ref(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Relation_refContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_ref }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_ref }
-}
-antlr_rust::tid!{Relation_refContextExt<'a>}
-
-impl<'input> Relation_refContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Relation_refContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Relation_refContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Relation_refContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relation_ref(self);
+    }
 }
 
-pub trait Relation_refContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Relation_refContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Relation_refContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_ref
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_ref }
+}
+antlr_rust::tid! {Relation_refContextExt<'a>}
 
-fn id_all(&self) ->  Vec<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTPAREN
-/// Returns `None` if there is no child corresponding to token LEFTPAREN
-fn LEFTPAREN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTPAREN, 0)
-}
-/// Retrieves first TerminalNode corresponding to token SCHEMA
-/// Returns `None` if there is no child corresponding to token SCHEMA
-fn SCHEMA(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SCHEMA, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTPAREN
-/// Returns `None` if there is no child corresponding to token RIGHTPAREN
-fn RIGHTPAREN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTPAREN, 0)
-}
-
+impl<'input> Relation_refContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Relation_refContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Relation_refContextExt { ph: PhantomData },
+        ))
+    }
 }
 
-impl<'input> Relation_refContextAttrs<'input> for Relation_refContext<'input>{}
+pub trait Relation_refContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Relation_refContextExt<'input>>
+{
+    fn id_all(&self) -> Vec<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTPAREN
+    /// Returns `None` if there is no child corresponding to token LEFTPAREN
+    fn LEFTPAREN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTPAREN, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SCHEMA
+    /// Returns `None` if there is no child corresponding to token SCHEMA
+    fn SCHEMA(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SCHEMA, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTPAREN
+    /// Returns `None` if there is no child corresponding to token RIGHTPAREN
+    fn RIGHTPAREN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTPAREN, 0)
+    }
+}
+
+impl<'input> Relation_refContextAttrs<'input> for Relation_refContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn relation_ref(&mut self,)
-	-> Result<Rc<Relation_refContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Relation_refContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 14, RULE_relation_ref);
+    pub fn relation_ref(&mut self) -> Result<Rc<Relation_refContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = Relation_refContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 14, RULE_relation_ref);
         let mut _localctx: Rc<Relation_refContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule id*/
+                recog.base.set_state(148);
+                recog.id()?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule id*/
-			recog.base.set_state(148);
-			recog.id()?;
+                recog.base.set_state(154);
+                recog.err_handler.sync(&mut recog.base)?;
+                match recog.interpreter.adaptive_predict(7, &mut recog.base)? {
+                    x if x == 1 => {
+                        {
+                            recog.base.set_state(149);
+                            recog.base.match_token(LEFTPAREN, &mut recog.err_handler)?;
 
-			recog.base.set_state(154);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(7,&mut recog.base)? {
-				x if x == 1=>{
-					{
-					recog.base.set_state(149);
-					recog.base.match_token(LEFTPAREN,&mut recog.err_handler)?;
+                            recog.base.set_state(150);
+                            recog.base.match_token(SCHEMA, &mut recog.err_handler)?;
 
-					recog.base.set_state(150);
-					recog.base.match_token(SCHEMA,&mut recog.err_handler)?;
+                            /*InvokeRule id*/
+                            recog.base.set_state(151);
+                            recog.id()?;
 
-					/*InvokeRule id*/
-					recog.base.set_state(151);
-					recog.id()?;
+                            recog.base.set_state(152);
+                            recog.base.match_token(RIGHTPAREN, &mut recog.err_handler)?;
+                        }
+                    }
 
-					recog.base.set_state(152);
-					recog.base.match_token(RIGHTPAREN,&mut recog.err_handler)?;
+                    _ => {}
+                }
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-
-				_ => {}
-			}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- relation_filter_behavior ----------------
 pub type Relation_filter_behaviorContextAll<'input> = Relation_filter_behaviorContext<'input>;
 
-
-pub type Relation_filter_behaviorContext<'input> = BaseParserRuleContext<'input,Relation_filter_behaviorContextExt<'input>>;
+pub type Relation_filter_behaviorContext<'input> =
+    BaseParserRuleContext<'input, Relation_filter_behaviorContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Relation_filter_behaviorContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Relation_filter_behaviorContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Relation_filter_behaviorContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Relation_filter_behaviorContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Relation_filter_behaviorContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_relation_filter_behavior(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_relation_filter_behavior(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Relation_filter_behaviorContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relation_filter_behavior(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relation_filter_behavior(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_filter_behaviorContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relation_filter_behavior(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Relation_filter_behaviorContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relation_filter_behavior(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Relation_filter_behaviorContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_filter_behavior }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_filter_behavior }
+impl<'input> CustomRuleContext<'input> for Relation_filter_behaviorContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_filter_behavior
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_filter_behavior }
 }
-antlr_rust::tid!{Relation_filter_behaviorContextExt<'a>}
+antlr_rust::tid! {Relation_filter_behaviorContextExt<'a>}
 
-impl<'input> Relation_filter_behaviorContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Relation_filter_behaviorContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Relation_filter_behaviorContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait Relation_filter_behaviorContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Relation_filter_behaviorContextExt<'input>>{
-
-fn id_all(&self) ->  Vec<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token MINUS
-/// Returns `None` if there is no child corresponding to token MINUS
-fn MINUS(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(MINUS, 0)
+impl<'input> Relation_filter_behaviorContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Relation_filter_behaviorContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Relation_filter_behaviorContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Relation_filter_behaviorContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Relation_filter_behaviorContextExt<'input>>
+{
+    fn id_all(&self) -> Vec<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token MINUS
+    /// Returns `None` if there is no child corresponding to token MINUS
+    fn MINUS(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(MINUS, 0)
+    }
 }
 
-impl<'input> Relation_filter_behaviorContextAttrs<'input> for Relation_filter_behaviorContext<'input>{}
+impl<'input> Relation_filter_behaviorContextAttrs<'input>
+    for Relation_filter_behaviorContext<'input>
+{
+}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn relation_filter_behavior(&mut self,)
-	-> Result<Rc<Relation_filter_behaviorContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Relation_filter_behaviorContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 16, RULE_relation_filter_behavior);
+    pub fn relation_filter_behavior(
+        &mut self,
+    ) -> Result<Rc<Relation_filter_behaviorContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Relation_filter_behaviorContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 16, RULE_relation_filter_behavior);
         let mut _localctx: Rc<Relation_filter_behaviorContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(164);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.interpreter.adaptive_predict(8, &mut recog.base)? {
+                1 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        /*InvokeRule id*/
+                        recog.base.set_state(156);
+                        recog.id()?;
+                    }
+                }
+                2 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        /*InvokeRule id*/
+                        recog.base.set_state(157);
+                        recog.id()?;
 
-			recog.base.set_state(164);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(8,&mut recog.base)? {
-				1 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					/*InvokeRule id*/
-					recog.base.set_state(156);
-					recog.id()?;
+                        recog.base.set_state(158);
+                        recog.base.match_token(MINUS, &mut recog.err_handler)?;
 
-					}
-				}
-			,
-				2 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					/*InvokeRule id*/
-					recog.base.set_state(157);
-					recog.id()?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(159);
+                        recog.id()?;
+                    }
+                }
+                3 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 3);
+                    recog.base.enter_outer_alt(None, 3);
+                    {
+                        /*InvokeRule id*/
+                        recog.base.set_state(161);
+                        recog.id()?;
 
-					recog.base.set_state(158);
-					recog.base.match_token(MINUS,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(162);
+                        recog.id()?;
+                    }
+                }
 
-					/*InvokeRule id*/
-					recog.base.set_state(159);
-					recog.id()?;
+                _ => {}
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-			,
-				3 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 3);
-					recog.base.enter_outer_alt(None, 3);
-					{
-					/*InvokeRule id*/
-					recog.base.set_state(161);
-					recog.id()?;
-
-					/*InvokeRule id*/
-					recog.base.set_state(162);
-					recog.id()?;
-
-					}
-				}
-
-				_ => {}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- measure_detail ----------------
 pub type Measure_detailContextAll<'input> = Measure_detailContext<'input>;
 
-
-pub type Measure_detailContext<'input> = BaseParserRuleContext<'input,Measure_detailContextExt<'input>>;
+pub type Measure_detailContext<'input> =
+    BaseParserRuleContext<'input, Measure_detailContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Measure_detailContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Measure_detailContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Measure_detailContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Measure_detailContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Measure_detailContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_measure_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_measure_detail(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Measure_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_measure_detail(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Measure_detailContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_measure_detail(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_measure_detail(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Measure_detailContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_measure_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_measure_detail }
-}
-antlr_rust::tid!{Measure_detailContextExt<'a>}
-
-impl<'input> Measure_detailContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Measure_detailContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Measure_detailContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Measure_detailContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_measure_detail(self);
+    }
 }
 
-pub trait Measure_detailContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Measure_detailContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Measure_detailContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_measure_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_measure_detail }
+}
+antlr_rust::tid! {Measure_detailContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token MEASURE
-/// Returns `None` if there is no child corresponding to token MEASURE
-fn MEASURE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(MEASURE, 0)
-}
-fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token SEMICOLON
-/// Returns `None` if there is no child corresponding to token SEMICOLON
-fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SEMICOLON, 0)
-}
-/// Retrieves first TerminalNode corresponding to token ARROW
-/// Returns `None` if there is no child corresponding to token ARROW
-fn ARROW(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ARROW, 0)
-}
-fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token ATSIGN
-/// Returns `None` if there is no child corresponding to token ATSIGN
-fn ATSIGN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ATSIGN, 0)
-}
-fn id_all(&self) ->  Vec<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token NAMED
-/// Returns `None` if there is no child corresponding to token NAMED
-fn NAMED(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NAMED, 0)
-}
-/// Retrieves first TerminalNode corresponding to token FILTER
-/// Returns `None` if there is no child corresponding to token FILTER
-fn FILTER(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(FILTER, 0)
-}
-/// Retrieves first TerminalNode corresponding to token INVOCATION
-/// Returns `None` if there is no child corresponding to token INVOCATION
-fn INVOCATION(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(INVOCATION, 0)
-}
-fn sort_field(&self) -> Option<Rc<Sort_fieldContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
+impl<'input> Measure_detailContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Measure_detailContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Measure_detailContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Measure_detailContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Measure_detailContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token MEASURE
+    /// Returns `None` if there is no child corresponding to token MEASURE
+    fn MEASURE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(MEASURE, 0)
+    }
+    fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ARROW
+    /// Returns `None` if there is no child corresponding to token ARROW
+    fn ARROW(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ARROW, 0)
+    }
+    fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ATSIGN
+    /// Returns `None` if there is no child corresponding to token ATSIGN
+    fn ATSIGN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ATSIGN, 0)
+    }
+    fn id_all(&self) -> Vec<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token NAMED
+    /// Returns `None` if there is no child corresponding to token NAMED
+    fn NAMED(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NAMED, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token FILTER
+    /// Returns `None` if there is no child corresponding to token FILTER
+    fn FILTER(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(FILTER, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token INVOCATION
+    /// Returns `None` if there is no child corresponding to token INVOCATION
+    fn INVOCATION(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(INVOCATION, 0)
+    }
+    fn sort_field(&self) -> Option<Rc<Sort_fieldContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> Measure_detailContextAttrs<'input> for Measure_detailContext<'input>{}
+impl<'input> Measure_detailContextAttrs<'input> for Measure_detailContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn measure_detail(&mut self,)
-	-> Result<Rc<Measure_detailContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Measure_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 18, RULE_measure_detail);
+    pub fn measure_detail(&mut self) -> Result<Rc<Measure_detailContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Measure_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 18, RULE_measure_detail);
         let mut _localctx: Rc<Measure_detailContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(191);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.base.input.la(1) {
+                MEASURE => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        recog.base.set_state(166);
+                        recog.base.match_token(MEASURE, &mut recog.err_handler)?;
 
-			recog.base.set_state(191);
-			recog.err_handler.sync(&mut recog.base)?;
-			match recog.base.input.la(1) {
-			 MEASURE 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					recog.base.set_state(166);
-					recog.base.match_token(MEASURE,&mut recog.err_handler)?;
+                        /*InvokeRule expression*/
+                        recog.base.set_state(167);
+                        recog.expression_rec(0)?;
 
-					/*InvokeRule expression*/
-					recog.base.set_state(167);
-					recog.expression_rec(0)?;
+                        recog.base.set_state(170);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == ARROW {
+                            {
+                                recog.base.set_state(168);
+                                recog.base.match_token(ARROW, &mut recog.err_handler)?;
 
-					recog.base.set_state(170);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==ARROW {
-						{
-						recog.base.set_state(168);
-						recog.base.match_token(ARROW,&mut recog.err_handler)?;
+                                /*InvokeRule literal_complex_type*/
+                                recog.base.set_state(169);
+                                recog.literal_complex_type()?;
+                            }
+                        }
 
-						/*InvokeRule literal_complex_type*/
-						recog.base.set_state(169);
-						recog.literal_complex_type()?;
+                        recog.base.set_state(174);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == ATSIGN {
+                            {
+                                recog.base.set_state(172);
+                                recog.base.match_token(ATSIGN, &mut recog.err_handler)?;
 
-						}
-					}
+                                /*InvokeRule id*/
+                                recog.base.set_state(173);
+                                recog.id()?;
+                            }
+                        }
 
-					recog.base.set_state(174);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==ATSIGN {
-						{
-						recog.base.set_state(172);
-						recog.base.match_token(ATSIGN,&mut recog.err_handler)?;
+                        recog.base.set_state(178);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == NAMED {
+                            {
+                                recog.base.set_state(176);
+                                recog.base.match_token(NAMED, &mut recog.err_handler)?;
 
-						/*InvokeRule id*/
-						recog.base.set_state(173);
-						recog.id()?;
+                                /*InvokeRule id*/
+                                recog.base.set_state(177);
+                                recog.id()?;
+                            }
+                        }
 
-						}
-					}
+                        recog.base.set_state(180);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(178);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==NAMED {
-						{
-						recog.base.set_state(176);
-						recog.base.match_token(NAMED,&mut recog.err_handler)?;
+                FILTER => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(182);
+                        recog.base.match_token(FILTER, &mut recog.err_handler)?;
 
-						/*InvokeRule id*/
-						recog.base.set_state(177);
-						recog.id()?;
+                        /*InvokeRule expression*/
+                        recog.base.set_state(183);
+                        recog.expression_rec(0)?;
 
-						}
-					}
+                        recog.base.set_state(184);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(180);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                INVOCATION => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 3);
+                    recog.base.enter_outer_alt(None, 3);
+                    {
+                        recog.base.set_state(186);
+                        recog.base.match_token(INVOCATION, &mut recog.err_handler)?;
 
-					}
-				}
+                        /*InvokeRule id*/
+                        recog.base.set_state(187);
+                        recog.id()?;
 
-			 FILTER 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(182);
-					recog.base.match_token(FILTER,&mut recog.err_handler)?;
+                        recog.base.set_state(188);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
 
-					/*InvokeRule expression*/
-					recog.base.set_state(183);
-					recog.expression_rec(0)?;
+                SORT => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 4);
+                    recog.base.enter_outer_alt(None, 4);
+                    {
+                        /*InvokeRule sort_field*/
+                        recog.base.set_state(190);
+                        recog.sort_field()?;
+                    }
+                }
 
-					recog.base.set_state(184);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                _ => Err(ANTLRError::NoAltError(NoViableAltError::new(
+                    &mut recog.base,
+                )))?,
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-
-			 INVOCATION 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 3);
-					recog.base.enter_outer_alt(None, 3);
-					{
-					recog.base.set_state(186);
-					recog.base.match_token(INVOCATION,&mut recog.err_handler)?;
-
-					/*InvokeRule id*/
-					recog.base.set_state(187);
-					recog.id()?;
-
-					recog.base.set_state(188);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
-
-					}
-				}
-
-			 SORT 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 4);
-					recog.base.enter_outer_alt(None, 4);
-					{
-					/*InvokeRule sort_field*/
-					recog.base.set_state(190);
-					recog.sort_field()?;
-
-					}
-				}
-
-				_ => Err(ANTLRError::NoAltError(NoViableAltError::new(&mut recog.base)))?
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- relation_detail ----------------
 #[derive(Debug)]
-pub enum Relation_detailContextAll<'input>{
-	RelationSourceReferenceContext(RelationSourceReferenceContext<'input>),
-	RelationEmitContext(RelationEmitContext<'input>),
-	RelationFilterContext(RelationFilterContext<'input>),
-	RelationMeasureContext(RelationMeasureContext<'input>),
-	RelationUsesSchemaContext(RelationUsesSchemaContext<'input>),
-	RelationJoinTypeContext(RelationJoinTypeContext<'input>),
-	RelationAdvancedExtensionContext(RelationAdvancedExtensionContext<'input>),
-	RelationExpressionContext(RelationExpressionContext<'input>),
-	RelationCountContext(RelationCountContext<'input>),
-	RelationCommonContext(RelationCommonContext<'input>),
-	RelationSortContext(RelationSortContext<'input>),
-	RelationGroupingContext(RelationGroupingContext<'input>),
-Error(Relation_detailContext<'input>)
+pub enum Relation_detailContextAll<'input> {
+    RelationSourceReferenceContext(RelationSourceReferenceContext<'input>),
+    RelationEmitContext(RelationEmitContext<'input>),
+    RelationFilterContext(RelationFilterContext<'input>),
+    RelationMeasureContext(RelationMeasureContext<'input>),
+    RelationUsesSchemaContext(RelationUsesSchemaContext<'input>),
+    RelationJoinTypeContext(RelationJoinTypeContext<'input>),
+    RelationAdvancedExtensionContext(RelationAdvancedExtensionContext<'input>),
+    RelationExpressionContext(RelationExpressionContext<'input>),
+    RelationCountContext(RelationCountContext<'input>),
+    RelationCommonContext(RelationCommonContext<'input>),
+    RelationSortContext(RelationSortContext<'input>),
+    RelationGroupingContext(RelationGroupingContext<'input>),
+    Error(Relation_detailContext<'input>),
 }
-antlr_rust::tid!{Relation_detailContextAll<'a>}
+antlr_rust::tid! {Relation_detailContextAll<'a>}
 
-impl<'input> antlr_rust::parser_rule_context::DerefSeal for Relation_detailContextAll<'input>{}
+impl<'input> antlr_rust::parser_rule_context::DerefSeal for Relation_detailContextAll<'input> {}
 
-impl<'input> SubstraitPlanParserContext<'input> for Relation_detailContextAll<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Relation_detailContextAll<'input> {}
 
-impl<'input> Deref for Relation_detailContextAll<'input>{
-	type Target = dyn Relation_detailContextAttrs<'input> + 'input;
-	fn deref(&self) -> &Self::Target{
-		use Relation_detailContextAll::*;
-		match self{
-			RelationSourceReferenceContext(inner) => inner,
-			RelationEmitContext(inner) => inner,
-			RelationFilterContext(inner) => inner,
-			RelationMeasureContext(inner) => inner,
-			RelationUsesSchemaContext(inner) => inner,
-			RelationJoinTypeContext(inner) => inner,
-			RelationAdvancedExtensionContext(inner) => inner,
-			RelationExpressionContext(inner) => inner,
-			RelationCountContext(inner) => inner,
-			RelationCommonContext(inner) => inner,
-			RelationSortContext(inner) => inner,
-			RelationGroupingContext(inner) => inner,
-Error(inner) => inner
-		}
-	}
+impl<'input> Deref for Relation_detailContextAll<'input> {
+    type Target = dyn Relation_detailContextAttrs<'input> + 'input;
+    fn deref(&self) -> &Self::Target {
+        use Relation_detailContextAll::*;
+        match self {
+            RelationSourceReferenceContext(inner) => inner,
+            RelationEmitContext(inner) => inner,
+            RelationFilterContext(inner) => inner,
+            RelationMeasureContext(inner) => inner,
+            RelationUsesSchemaContext(inner) => inner,
+            RelationJoinTypeContext(inner) => inner,
+            RelationAdvancedExtensionContext(inner) => inner,
+            RelationExpressionContext(inner) => inner,
+            RelationCountContext(inner) => inner,
+            RelationCommonContext(inner) => inner,
+            RelationSortContext(inner) => inner,
+            RelationGroupingContext(inner) => inner,
+            Error(inner) => inner,
+        }
+    }
 }
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_detailContextAll<'input>{
-	fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) { self.deref().accept(visitor) }
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Relation_detailContextAll<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        self.deref().accept(visitor)
+    }
 }
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Relation_detailContextAll<'input>{
-    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().enter(listener) }
-    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().exit(listener) }
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Relation_detailContextAll<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        self.deref().enter(listener)
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        self.deref().exit(listener)
+    }
 }
 
-
-
-pub type Relation_detailContext<'input> = BaseParserRuleContext<'input,Relation_detailContextExt<'input>>;
+pub type Relation_detailContext<'input> =
+    BaseParserRuleContext<'input, Relation_detailContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Relation_detailContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Relation_detailContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Relation_detailContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Relation_detailContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Relation_detailContext<'input>{
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Relation_detailContext<'input>
+{
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_detailContext<'input>{
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Relation_detailContext<'input>
+{
 }
 
-impl<'input> CustomRuleContext<'input> for Relation_detailContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for Relation_detailContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
-antlr_rust::tid!{Relation_detailContextExt<'a>}
+antlr_rust::tid! {Relation_detailContextExt<'a>}
 
-impl<'input> Relation_detailContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Relation_detailContextAll<'input>> {
-		Rc::new(
-		Relation_detailContextAll::Error(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Relation_detailContextExt{
-				ph:PhantomData
-			}),
-		)
-		)
-	}
-}
-
-pub trait Relation_detailContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Relation_detailContextExt<'input>>{
-
-
-}
-
-impl<'input> Relation_detailContextAttrs<'input> for Relation_detailContext<'input>{}
-
-pub type RelationSourceReferenceContext<'input> = BaseParserRuleContext<'input,RelationSourceReferenceContextExt<'input>>;
-
-pub trait RelationSourceReferenceContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	fn source_reference(&self) -> Option<Rc<Source_referenceContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
+impl<'input> Relation_detailContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::Error(
+            BaseParserRuleContext::new_parser_ctx(
+                parent,
+                invoking_state,
+                Relation_detailContextExt { ph: PhantomData },
+            ),
+        ))
+    }
 }
 
-impl<'input> RelationSourceReferenceContextAttrs<'input> for RelationSourceReferenceContext<'input>{}
-
-pub struct RelationSourceReferenceContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub trait Relation_detailContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Relation_detailContextExt<'input>>
+{
 }
 
-antlr_rust::tid!{RelationSourceReferenceContextExt<'a>}
+impl<'input> Relation_detailContextAttrs<'input> for Relation_detailContext<'input> {}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationSourceReferenceContext<'input>{}
+pub type RelationSourceReferenceContext<'input> =
+    BaseParserRuleContext<'input, RelationSourceReferenceContextExt<'input>>;
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationSourceReferenceContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationSourceReference(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationSourceReference(self);
-		listener.exit_every_rule(self);
-	}
+pub trait RelationSourceReferenceContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    fn source_reference(&self) -> Option<Rc<Source_referenceContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationSourceReferenceContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationSourceReference(self);
-	}
+impl<'input> RelationSourceReferenceContextAttrs<'input>
+    for RelationSourceReferenceContext<'input>
+{
 }
 
-impl<'input> CustomRuleContext<'input> for RelationSourceReferenceContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+pub struct RelationSourceReferenceContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationSourceReferenceContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+antlr_rust::tid! {RelationSourceReferenceContextExt<'a>}
+
+impl<'input> SubstraitPlanParserContext<'input> for RelationSourceReferenceContext<'input> {}
+
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationSourceReferenceContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationSourceReference(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationSourceReference(self);
+        listener.exit_every_rule(self);
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationSourceReferenceContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationSourceReferenceContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationSourceReference(self);
+    }
+}
+
+impl<'input> CustomRuleContext<'input> for RelationSourceReferenceContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+}
+
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationSourceReferenceContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
+}
+impl<'input> BorrowMut<Relation_detailContextExt<'input>>
+    for RelationSourceReferenceContext<'input>
+{
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationSourceReferenceContext<'input> {}
 
-impl<'input> RelationSourceReferenceContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationSourceReferenceContext(
-				BaseParserRuleContext::copy_from(ctx,RelationSourceReferenceContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationSourceReferenceContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationSourceReferenceContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationSourceReferenceContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationEmitContext<'input> = BaseParserRuleContext<'input,RelationEmitContextExt<'input>>;
+pub type RelationEmitContext<'input> =
+    BaseParserRuleContext<'input, RelationEmitContextExt<'input>>;
 
-pub trait RelationEmitContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token EMIT
-	/// Returns `None` if there is no child corresponding to token EMIT
-	fn EMIT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(EMIT, 0)
-	}
-	fn column_name(&self) -> Option<Rc<Column_nameContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
+pub trait RelationEmitContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token EMIT
+    /// Returns `None` if there is no child corresponding to token EMIT
+    fn EMIT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EMIT, 0)
+    }
+    fn column_name(&self) -> Option<Rc<Column_nameContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
 }
 
-impl<'input> RelationEmitContextAttrs<'input> for RelationEmitContext<'input>{}
+impl<'input> RelationEmitContextAttrs<'input> for RelationEmitContext<'input> {}
 
-pub struct RelationEmitContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationEmitContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationEmitContextExt<'a>}
+antlr_rust::tid! {RelationEmitContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationEmitContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationEmitContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationEmitContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationEmit(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationEmit(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationEmitContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationEmit(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationEmit(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationEmitContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationEmit(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationEmitContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationEmit(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationEmitContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationEmitContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationEmitContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationEmitContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationEmitContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationEmitContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationEmitContext<'input> {}
 
-impl<'input> RelationEmitContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationEmitContext(
-				BaseParserRuleContext::copy_from(ctx,RelationEmitContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationEmitContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationEmitContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationEmitContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationFilterContext<'input> = BaseParserRuleContext<'input,RelationFilterContextExt<'input>>;
+pub type RelationFilterContext<'input> =
+    BaseParserRuleContext<'input, RelationFilterContextExt<'input>>;
 
-pub trait RelationFilterContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token FILTER
-	/// Returns `None` if there is no child corresponding to token FILTER
-	fn FILTER(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(FILTER, 0)
-	}
-	fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
-	fn relation_filter_behavior(&self) -> Option<Rc<Relation_filter_behaviorContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
+pub trait RelationFilterContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token FILTER
+    /// Returns `None` if there is no child corresponding to token FILTER
+    fn FILTER(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(FILTER, 0)
+    }
+    fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
+    fn relation_filter_behavior(&self) -> Option<Rc<Relation_filter_behaviorContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> RelationFilterContextAttrs<'input> for RelationFilterContext<'input>{}
+impl<'input> RelationFilterContextAttrs<'input> for RelationFilterContext<'input> {}
 
-pub struct RelationFilterContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationFilterContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationFilterContextExt<'a>}
+antlr_rust::tid! {RelationFilterContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationFilterContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationFilterContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationFilterContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationFilter(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationFilter(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationFilterContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationFilter(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationFilter(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationFilterContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationFilter(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationFilterContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationFilter(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationFilterContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationFilterContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationFilterContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationFilterContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationFilterContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationFilterContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationFilterContext<'input> {}
 
-impl<'input> RelationFilterContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationFilterContext(
-				BaseParserRuleContext::copy_from(ctx,RelationFilterContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationFilterContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationFilterContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationFilterContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationMeasureContext<'input> = BaseParserRuleContext<'input,RelationMeasureContextExt<'input>>;
+pub type RelationMeasureContext<'input> =
+    BaseParserRuleContext<'input, RelationMeasureContextExt<'input>>;
 
-pub trait RelationMeasureContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token MEASURE
-	/// Returns `None` if there is no child corresponding to token MEASURE
-	fn MEASURE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(MEASURE, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-	/// Returns `None` if there is no child corresponding to token LEFTBRACE
-	fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(LEFTBRACE, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-	/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-	fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(RIGHTBRACE, 0)
-	}
-	fn measure_detail_all(&self) ->  Vec<Rc<Measure_detailContextAll<'input>>> where Self:Sized{
-		self.children_of_type()
-	}
-	fn measure_detail(&self, i: usize) -> Option<Rc<Measure_detailContextAll<'input>>> where Self:Sized{
-		self.child_of_type(i)
-	}
+pub trait RelationMeasureContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token MEASURE
+    /// Returns `None` if there is no child corresponding to token MEASURE
+    fn MEASURE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(MEASURE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    fn measure_detail_all(&self) -> Vec<Rc<Measure_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn measure_detail(&self, i: usize) -> Option<Rc<Measure_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
 }
 
-impl<'input> RelationMeasureContextAttrs<'input> for RelationMeasureContext<'input>{}
+impl<'input> RelationMeasureContextAttrs<'input> for RelationMeasureContext<'input> {}
 
-pub struct RelationMeasureContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationMeasureContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationMeasureContextExt<'a>}
+antlr_rust::tid! {RelationMeasureContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationMeasureContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationMeasureContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationMeasureContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationMeasure(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationMeasure(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationMeasureContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationMeasure(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationMeasure(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationMeasureContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationMeasure(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationMeasureContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationMeasure(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationMeasureContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationMeasureContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationMeasureContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationMeasureContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationMeasureContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationMeasureContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationMeasureContext<'input> {}
 
-impl<'input> RelationMeasureContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationMeasureContext(
-				BaseParserRuleContext::copy_from(ctx,RelationMeasureContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationMeasureContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationMeasureContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationMeasureContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationUsesSchemaContext<'input> = BaseParserRuleContext<'input,RelationUsesSchemaContextExt<'input>>;
+pub type RelationUsesSchemaContext<'input> =
+    BaseParserRuleContext<'input, RelationUsesSchemaContextExt<'input>>;
 
-pub trait RelationUsesSchemaContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token BASE_SCHEMA
-	/// Returns `None` if there is no child corresponding to token BASE_SCHEMA
-	fn BASE_SCHEMA(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(BASE_SCHEMA, 0)
-	}
-	fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
+pub trait RelationUsesSchemaContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token BASE_SCHEMA
+    /// Returns `None` if there is no child corresponding to token BASE_SCHEMA
+    fn BASE_SCHEMA(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(BASE_SCHEMA, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
 }
 
-impl<'input> RelationUsesSchemaContextAttrs<'input> for RelationUsesSchemaContext<'input>{}
+impl<'input> RelationUsesSchemaContextAttrs<'input> for RelationUsesSchemaContext<'input> {}
 
-pub struct RelationUsesSchemaContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationUsesSchemaContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationUsesSchemaContextExt<'a>}
+antlr_rust::tid! {RelationUsesSchemaContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationUsesSchemaContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationUsesSchemaContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationUsesSchemaContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationUsesSchema(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationUsesSchema(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationUsesSchemaContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationUsesSchema(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationUsesSchema(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationUsesSchemaContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationUsesSchema(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationUsesSchemaContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationUsesSchema(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationUsesSchemaContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationUsesSchemaContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationUsesSchemaContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationUsesSchemaContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationUsesSchemaContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationUsesSchemaContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationUsesSchemaContext<'input> {}
 
-impl<'input> RelationUsesSchemaContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationUsesSchemaContext(
-				BaseParserRuleContext::copy_from(ctx,RelationUsesSchemaContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationUsesSchemaContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationUsesSchemaContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationUsesSchemaContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationJoinTypeContext<'input> = BaseParserRuleContext<'input,RelationJoinTypeContextExt<'input>>;
+pub type RelationJoinTypeContext<'input> =
+    BaseParserRuleContext<'input, RelationJoinTypeContextExt<'input>>;
 
-pub trait RelationJoinTypeContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token TYPE
-	/// Returns `None` if there is no child corresponding to token TYPE
-	fn TYPE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(TYPE, 0)
-	}
-	fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
+pub trait RelationJoinTypeContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token TYPE
+    /// Returns `None` if there is no child corresponding to token TYPE
+    fn TYPE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(TYPE, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
 }
 
-impl<'input> RelationJoinTypeContextAttrs<'input> for RelationJoinTypeContext<'input>{}
+impl<'input> RelationJoinTypeContextAttrs<'input> for RelationJoinTypeContext<'input> {}
 
-pub struct RelationJoinTypeContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationJoinTypeContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationJoinTypeContextExt<'a>}
+antlr_rust::tid! {RelationJoinTypeContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationJoinTypeContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationJoinTypeContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationJoinTypeContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationJoinType(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationJoinType(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationJoinTypeContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationJoinType(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationJoinType(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationJoinTypeContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationJoinType(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationJoinTypeContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationJoinType(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationJoinTypeContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationJoinTypeContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationJoinTypeContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationJoinTypeContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationJoinTypeContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationJoinTypeContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationJoinTypeContext<'input> {}
 
-impl<'input> RelationJoinTypeContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationJoinTypeContext(
-				BaseParserRuleContext::copy_from(ctx,RelationJoinTypeContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationJoinTypeContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationJoinTypeContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationJoinTypeContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationAdvancedExtensionContext<'input> = BaseParserRuleContext<'input,RelationAdvancedExtensionContextExt<'input>>;
+pub type RelationAdvancedExtensionContext<'input> =
+    BaseParserRuleContext<'input, RelationAdvancedExtensionContextExt<'input>>;
 
-pub trait RelationAdvancedExtensionContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token ADVANCED_EXTENSION
-	/// Returns `None` if there is no child corresponding to token ADVANCED_EXTENSION
-	fn ADVANCED_EXTENSION(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(ADVANCED_EXTENSION, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
+pub trait RelationAdvancedExtensionContextAttrs<'input>:
+    SubstraitPlanParserContext<'input>
+{
+    /// Retrieves first TerminalNode corresponding to token ADVANCED_EXTENSION
+    /// Returns `None` if there is no child corresponding to token ADVANCED_EXTENSION
+    fn ADVANCED_EXTENSION(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ADVANCED_EXTENSION, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
 }
 
-impl<'input> RelationAdvancedExtensionContextAttrs<'input> for RelationAdvancedExtensionContext<'input>{}
-
-pub struct RelationAdvancedExtensionContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+impl<'input> RelationAdvancedExtensionContextAttrs<'input>
+    for RelationAdvancedExtensionContext<'input>
+{
 }
 
-antlr_rust::tid!{RelationAdvancedExtensionContextExt<'a>}
-
-impl<'input> SubstraitPlanParserContext<'input> for RelationAdvancedExtensionContext<'input>{}
-
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationAdvancedExtensionContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationAdvancedExtension(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationAdvancedExtension(self);
-		listener.exit_every_rule(self);
-	}
+pub struct RelationAdvancedExtensionContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationAdvancedExtensionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationAdvancedExtension(self);
-	}
+antlr_rust::tid! {RelationAdvancedExtensionContextExt<'a>}
+
+impl<'input> SubstraitPlanParserContext<'input> for RelationAdvancedExtensionContext<'input> {}
+
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationAdvancedExtensionContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationAdvancedExtension(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationAdvancedExtension(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationAdvancedExtensionContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationAdvancedExtensionContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationAdvancedExtension(self);
+    }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationAdvancedExtensionContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> CustomRuleContext<'input> for RelationAdvancedExtensionContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationAdvancedExtensionContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+
+impl<'input> Borrow<Relation_detailContextExt<'input>>
+    for RelationAdvancedExtensionContext<'input>
+{
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
+}
+impl<'input> BorrowMut<Relation_detailContextExt<'input>>
+    for RelationAdvancedExtensionContext<'input>
+{
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationAdvancedExtensionContext<'input> {}
 
-impl<'input> RelationAdvancedExtensionContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationAdvancedExtensionContext(
-				BaseParserRuleContext::copy_from(ctx,RelationAdvancedExtensionContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationAdvancedExtensionContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationAdvancedExtensionContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationAdvancedExtensionContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationExpressionContext<'input> = BaseParserRuleContext<'input,RelationExpressionContextExt<'input>>;
+pub type RelationExpressionContext<'input> =
+    BaseParserRuleContext<'input, RelationExpressionContextExt<'input>>;
 
-pub trait RelationExpressionContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token EXPRESSION
-	/// Returns `None` if there is no child corresponding to token EXPRESSION
-	fn EXPRESSION(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(EXPRESSION, 0)
-	}
-	fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token NAMED
-	/// Returns `None` if there is no child corresponding to token NAMED
-	fn NAMED(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(NAMED, 0)
-	}
-	fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
+pub trait RelationExpressionContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token EXPRESSION
+    /// Returns `None` if there is no child corresponding to token EXPRESSION
+    fn EXPRESSION(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EXPRESSION, 0)
+    }
+    fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NAMED
+    /// Returns `None` if there is no child corresponding to token NAMED
+    fn NAMED(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NAMED, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> RelationExpressionContextAttrs<'input> for RelationExpressionContext<'input>{}
+impl<'input> RelationExpressionContextAttrs<'input> for RelationExpressionContext<'input> {}
 
-pub struct RelationExpressionContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationExpressionContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationExpressionContextExt<'a>}
+antlr_rust::tid! {RelationExpressionContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationExpressionContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationExpressionContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationExpressionContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationExpression(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationExpression(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationExpressionContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationExpression(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationExpression(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationExpressionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationExpression(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationExpressionContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationExpression(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationExpressionContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationExpressionContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationExpressionContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationExpressionContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationExpressionContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationExpressionContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationExpressionContext<'input> {}
 
-impl<'input> RelationExpressionContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationExpressionContext(
-				BaseParserRuleContext::copy_from(ctx,RelationExpressionContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationExpressionContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationExpressionContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationExpressionContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationCountContext<'input> = BaseParserRuleContext<'input,RelationCountContextExt<'input>>;
+pub type RelationCountContext<'input> =
+    BaseParserRuleContext<'input, RelationCountContextExt<'input>>;
 
-pub trait RelationCountContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token COUNT
-	/// Returns `None` if there is no child corresponding to token COUNT
-	fn COUNT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(COUNT, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token NUMBER
-	/// Returns `None` if there is no child corresponding to token NUMBER
-	fn NUMBER(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(NUMBER, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
+pub trait RelationCountContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token COUNT
+    /// Returns `None` if there is no child corresponding to token COUNT
+    fn COUNT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COUNT, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NUMBER
+    /// Returns `None` if there is no child corresponding to token NUMBER
+    fn NUMBER(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NUMBER, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
 }
 
-impl<'input> RelationCountContextAttrs<'input> for RelationCountContext<'input>{}
+impl<'input> RelationCountContextAttrs<'input> for RelationCountContext<'input> {}
 
-pub struct RelationCountContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationCountContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationCountContextExt<'a>}
+antlr_rust::tid! {RelationCountContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationCountContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationCountContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationCountContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationCount(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationCount(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationCountContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationCount(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationCount(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationCountContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationCount(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationCountContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationCount(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationCountContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationCountContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationCountContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationCountContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationCountContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationCountContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationCountContext<'input> {}
 
-impl<'input> RelationCountContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationCountContext(
-				BaseParserRuleContext::copy_from(ctx,RelationCountContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationCountContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationCountContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationCountContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationCommonContext<'input> = BaseParserRuleContext<'input,RelationCommonContextExt<'input>>;
+pub type RelationCommonContext<'input> =
+    BaseParserRuleContext<'input, RelationCommonContextExt<'input>>;
 
-pub trait RelationCommonContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token COMMON
-	/// Returns `None` if there is no child corresponding to token COMMON
-	fn COMMON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(COMMON, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
+pub trait RelationCommonContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token COMMON
+    /// Returns `None` if there is no child corresponding to token COMMON
+    fn COMMON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
 }
 
-impl<'input> RelationCommonContextAttrs<'input> for RelationCommonContext<'input>{}
+impl<'input> RelationCommonContextAttrs<'input> for RelationCommonContext<'input> {}
 
-pub struct RelationCommonContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationCommonContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationCommonContextExt<'a>}
+antlr_rust::tid! {RelationCommonContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationCommonContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationCommonContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationCommonContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationCommon(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationCommon(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationCommonContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationCommon(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationCommon(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationCommonContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationCommon(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationCommonContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationCommon(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationCommonContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationCommonContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationCommonContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationCommonContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationCommonContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationCommonContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationCommonContext<'input> {}
 
-impl<'input> RelationCommonContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationCommonContext(
-				BaseParserRuleContext::copy_from(ctx,RelationCommonContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationCommonContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationCommonContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationCommonContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationSortContext<'input> = BaseParserRuleContext<'input,RelationSortContextExt<'input>>;
+pub type RelationSortContext<'input> =
+    BaseParserRuleContext<'input, RelationSortContextExt<'input>>;
 
-pub trait RelationSortContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	fn sort_field(&self) -> Option<Rc<Sort_fieldContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
+pub trait RelationSortContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    fn sort_field(&self) -> Option<Rc<Sort_fieldContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> RelationSortContextAttrs<'input> for RelationSortContext<'input>{}
+impl<'input> RelationSortContextAttrs<'input> for RelationSortContext<'input> {}
 
-pub struct RelationSortContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationSortContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationSortContextExt<'a>}
+antlr_rust::tid! {RelationSortContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationSortContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationSortContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationSortContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationSort(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationSort(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationSortContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationSort(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationSort(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationSortContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationSort(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationSortContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationSort(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationSortContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationSortContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationSortContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationSortContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationSortContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationSortContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationSortContext<'input> {}
 
-impl<'input> RelationSortContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationSortContext(
-				BaseParserRuleContext::copy_from(ctx,RelationSortContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationSortContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationSortContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationSortContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type RelationGroupingContext<'input> = BaseParserRuleContext<'input,RelationGroupingContextExt<'input>>;
+pub type RelationGroupingContext<'input> =
+    BaseParserRuleContext<'input, RelationGroupingContextExt<'input>>;
 
-pub trait RelationGroupingContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token GROUPING
-	/// Returns `None` if there is no child corresponding to token GROUPING
-	fn GROUPING(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(GROUPING, 0)
-	}
-	fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SEMICOLON
-	/// Returns `None` if there is no child corresponding to token SEMICOLON
-	fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SEMICOLON, 0)
-	}
+pub trait RelationGroupingContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token GROUPING
+    /// Returns `None` if there is no child corresponding to token GROUPING
+    fn GROUPING(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(GROUPING, 0)
+    }
+    fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
 }
 
-impl<'input> RelationGroupingContextAttrs<'input> for RelationGroupingContext<'input>{}
+impl<'input> RelationGroupingContextAttrs<'input> for RelationGroupingContext<'input> {}
 
-pub struct RelationGroupingContextExt<'input>{
-	base:Relation_detailContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct RelationGroupingContextExt<'input> {
+    base: Relation_detailContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{RelationGroupingContextExt<'a>}
+antlr_rust::tid! {RelationGroupingContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for RelationGroupingContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for RelationGroupingContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for RelationGroupingContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_relationGrouping(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationGrouping(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for RelationGroupingContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_relationGrouping(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_relationGrouping(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationGroupingContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationGrouping(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for RelationGroupingContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_relationGrouping(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for RelationGroupingContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_relation_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
+impl<'input> CustomRuleContext<'input> for RelationGroupingContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_relation_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_relation_detail }
 }
 
-impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationGroupingContext<'input>{
-	fn borrow(&self) -> &Relation_detailContextExt<'input> { &self.base }
+impl<'input> Borrow<Relation_detailContextExt<'input>> for RelationGroupingContext<'input> {
+    fn borrow(&self) -> &Relation_detailContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationGroupingContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Relation_detailContextExt<'input>> for RelationGroupingContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Relation_detailContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Relation_detailContextAttrs<'input> for RelationGroupingContext<'input> {}
 
-impl<'input> RelationGroupingContextExt<'input>{
-	fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>>  {
-		Rc::new(
-			Relation_detailContextAll::RelationGroupingContext(
-				BaseParserRuleContext::copy_from(ctx,RelationGroupingContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> RelationGroupingContextExt<'input> {
+    fn new(ctx: &dyn Relation_detailContextAttrs<'input>) -> Rc<Relation_detailContextAll<'input>> {
+        Rc::new(Relation_detailContextAll::RelationGroupingContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                RelationGroupingContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn relation_detail(&mut self,)
-	-> Result<Rc<Relation_detailContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Relation_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 20, RULE_relation_detail);
+    pub fn relation_detail(&mut self) -> Result<Rc<Relation_detailContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Relation_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 20, RULE_relation_detail);
         let mut _localctx: Rc<Relation_detailContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(244);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.interpreter.adaptive_predict(16, &mut recog.base)? {
+                1 => {
+                    let tmp = RelationCommonContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 1);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(193);
+                        recog.base.match_token(COMMON, &mut recog.err_handler)?;
 
-			recog.base.set_state(244);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(16,&mut recog.base)? {
-				1 =>{
-					let tmp = RelationCommonContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 1);
-					_localctx = tmp;
-					{
-					recog.base.set_state(193);
-					recog.base.match_token(COMMON,&mut recog.err_handler)?;
+                        recog.base.set_state(194);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                2 => {
+                    let tmp = RelationUsesSchemaContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 2);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(195);
+                        recog
+                            .base
+                            .match_token(BASE_SCHEMA, &mut recog.err_handler)?;
 
-					recog.base.set_state(194);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(196);
+                        recog.id()?;
 
-					}
-				}
-			,
-				2 =>{
-					let tmp = RelationUsesSchemaContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 2);
-					_localctx = tmp;
-					{
-					recog.base.set_state(195);
-					recog.base.match_token(BASE_SCHEMA,&mut recog.err_handler)?;
+                        recog.base.set_state(197);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                3 => {
+                    let tmp = RelationFilterContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 3);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(200);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(13, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    /*InvokeRule relation_filter_behavior*/
+                                    recog.base.set_state(199);
+                                    recog.relation_filter_behavior()?;
+                                }
+                            }
 
-					/*InvokeRule id*/
-					recog.base.set_state(196);
-					recog.id()?;
+                            _ => {}
+                        }
+                        recog.base.set_state(202);
+                        recog.base.match_token(FILTER, &mut recog.err_handler)?;
 
-					recog.base.set_state(197);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                        /*InvokeRule expression*/
+                        recog.base.set_state(203);
+                        recog.expression_rec(0)?;
 
-					}
-				}
-			,
-				3 =>{
-					let tmp = RelationFilterContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 3);
-					_localctx = tmp;
-					{
-					recog.base.set_state(200);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(13,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							/*InvokeRule relation_filter_behavior*/
-							recog.base.set_state(199);
-							recog.relation_filter_behavior()?;
+                        recog.base.set_state(204);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                4 => {
+                    let tmp = RelationExpressionContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 4);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(206);
+                        recog.base.match_token(EXPRESSION, &mut recog.err_handler)?;
 
-							}
-						}
+                        /*InvokeRule expression*/
+                        recog.base.set_state(207);
+                        recog.expression_rec(0)?;
 
-						_ => {}
-					}
-					recog.base.set_state(202);
-					recog.base.match_token(FILTER,&mut recog.err_handler)?;
+                        recog.base.set_state(210);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == NAMED {
+                            {
+                                recog.base.set_state(208);
+                                recog.base.match_token(NAMED, &mut recog.err_handler)?;
 
-					/*InvokeRule expression*/
-					recog.base.set_state(203);
-					recog.expression_rec(0)?;
+                                /*InvokeRule id*/
+                                recog.base.set_state(209);
+                                recog.id()?;
+                            }
+                        }
 
-					recog.base.set_state(204);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                        recog.base.set_state(212);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                5 => {
+                    let tmp = RelationAdvancedExtensionContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 5);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(214);
+                        recog
+                            .base
+                            .match_token(ADVANCED_EXTENSION, &mut recog.err_handler)?;
 
-					}
-				}
-			,
-				4 =>{
-					let tmp = RelationExpressionContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 4);
-					_localctx = tmp;
-					{
-					recog.base.set_state(206);
-					recog.base.match_token(EXPRESSION,&mut recog.err_handler)?;
+                        recog.base.set_state(215);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                6 => {
+                    let tmp = RelationSourceReferenceContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 6);
+                    _localctx = tmp;
+                    {
+                        /*InvokeRule source_reference*/
+                        recog.base.set_state(216);
+                        recog.source_reference()?;
 
-					/*InvokeRule expression*/
-					recog.base.set_state(207);
-					recog.expression_rec(0)?;
+                        recog.base.set_state(217);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                7 => {
+                    let tmp = RelationGroupingContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 7);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(219);
+                        recog.base.match_token(GROUPING, &mut recog.err_handler)?;
 
-					recog.base.set_state(210);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==NAMED {
-						{
-						recog.base.set_state(208);
-						recog.base.match_token(NAMED,&mut recog.err_handler)?;
+                        /*InvokeRule expression*/
+                        recog.base.set_state(220);
+                        recog.expression_rec(0)?;
 
-						/*InvokeRule id*/
-						recog.base.set_state(209);
-						recog.id()?;
+                        recog.base.set_state(221);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                8 => {
+                    let tmp = RelationMeasureContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 8);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(223);
+                        recog.base.match_token(MEASURE, &mut recog.err_handler)?;
 
-						}
-					}
+                        recog.base.set_state(224);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-					recog.base.set_state(212);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                        recog.base.set_state(228);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        while (((_la) & !0x3f) == 0
+                            && ((1usize << _la)
+                                & ((1usize << FILTER)
+                                    | (1usize << MEASURE)
+                                    | (1usize << INVOCATION)
+                                    | (1usize << SORT)))
+                                != 0)
+                        {
+                            {
+                                {
+                                    /*InvokeRule measure_detail*/
+                                    recog.base.set_state(225);
+                                    recog.measure_detail()?;
+                                }
+                            }
+                            recog.base.set_state(230);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _la = recog.base.input.la(1);
+                        }
+                        recog.base.set_state(231);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
+                9 => {
+                    let tmp = RelationSortContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 9);
+                    _localctx = tmp;
+                    {
+                        /*InvokeRule sort_field*/
+                        recog.base.set_state(232);
+                        recog.sort_field()?;
+                    }
+                }
+                10 => {
+                    let tmp = RelationCountContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 10);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(233);
+                        recog.base.match_token(COUNT, &mut recog.err_handler)?;
 
-					}
-				}
-			,
-				5 =>{
-					let tmp = RelationAdvancedExtensionContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 5);
-					_localctx = tmp;
-					{
-					recog.base.set_state(214);
-					recog.base.match_token(ADVANCED_EXTENSION,&mut recog.err_handler)?;
+                        recog.base.set_state(234);
+                        recog.base.match_token(NUMBER, &mut recog.err_handler)?;
 
-					recog.base.set_state(215);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                        recog.base.set_state(235);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                11 => {
+                    let tmp = RelationJoinTypeContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 11);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(236);
+                        recog.base.match_token(TYPE, &mut recog.err_handler)?;
 
-					}
-				}
-			,
-				6 =>{
-					let tmp = RelationSourceReferenceContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 6);
-					_localctx = tmp;
-					{
-					/*InvokeRule source_reference*/
-					recog.base.set_state(216);
-					recog.source_reference()?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(237);
+                        recog.id()?;
 
-					recog.base.set_state(217);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                        recog.base.set_state(238);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
+                12 => {
+                    let tmp = RelationEmitContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 12);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(240);
+                        recog.base.match_token(EMIT, &mut recog.err_handler)?;
 
-					}
-				}
-			,
-				7 =>{
-					let tmp = RelationGroupingContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 7);
-					_localctx = tmp;
-					{
-					recog.base.set_state(219);
-					recog.base.match_token(GROUPING,&mut recog.err_handler)?;
+                        /*InvokeRule column_name*/
+                        recog.base.set_state(241);
+                        recog.column_name()?;
 
-					/*InvokeRule expression*/
-					recog.base.set_state(220);
-					recog.expression_rec(0)?;
+                        recog.base.set_state(242);
+                        recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(221);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
+                _ => {}
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-			,
-				8 =>{
-					let tmp = RelationMeasureContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 8);
-					_localctx = tmp;
-					{
-					recog.base.set_state(223);
-					recog.base.match_token(MEASURE,&mut recog.err_handler)?;
-
-					recog.base.set_state(224);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
-
-					recog.base.set_state(228);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					while (((_la) & !0x3f) == 0 && ((1usize << _la) & ((1usize << FILTER) | (1usize << MEASURE) | (1usize << INVOCATION) | (1usize << SORT))) != 0) {
-						{
-						{
-						/*InvokeRule measure_detail*/
-						recog.base.set_state(225);
-						recog.measure_detail()?;
-
-						}
-						}
-						recog.base.set_state(230);
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-					}
-					recog.base.set_state(231);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-					}
-				}
-			,
-				9 =>{
-					let tmp = RelationSortContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 9);
-					_localctx = tmp;
-					{
-					/*InvokeRule sort_field*/
-					recog.base.set_state(232);
-					recog.sort_field()?;
-
-					}
-				}
-			,
-				10 =>{
-					let tmp = RelationCountContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 10);
-					_localctx = tmp;
-					{
-					recog.base.set_state(233);
-					recog.base.match_token(COUNT,&mut recog.err_handler)?;
-
-					recog.base.set_state(234);
-					recog.base.match_token(NUMBER,&mut recog.err_handler)?;
-
-					recog.base.set_state(235);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
-
-					}
-				}
-			,
-				11 =>{
-					let tmp = RelationJoinTypeContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 11);
-					_localctx = tmp;
-					{
-					recog.base.set_state(236);
-					recog.base.match_token(TYPE,&mut recog.err_handler)?;
-
-					/*InvokeRule id*/
-					recog.base.set_state(237);
-					recog.id()?;
-
-					recog.base.set_state(238);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
-
-					}
-				}
-			,
-				12 =>{
-					let tmp = RelationEmitContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 12);
-					_localctx = tmp;
-					{
-					recog.base.set_state(240);
-					recog.base.match_token(EMIT,&mut recog.err_handler)?;
-
-					/*InvokeRule column_name*/
-					recog.base.set_state(241);
-					recog.column_name()?;
-
-					recog.base.set_state(242);
-					recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
-
-					}
-				}
-
-				_ => {}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- expression ----------------
 #[derive(Debug)]
-pub enum ExpressionContextAll<'input>{
-	ExpressionScalarSubqueryContext(ExpressionScalarSubqueryContext<'input>),
-	ExpressionConstantContext(ExpressionConstantContext<'input>),
-	ExpressionFunctionUseContext(ExpressionFunctionUseContext<'input>),
-	ExpressionColumnContext(ExpressionColumnContext<'input>),
-	ExpressionSetComparisonSubqueryContext(ExpressionSetComparisonSubqueryContext<'input>),
-	ExpressionInPredicateSubqueryContext(ExpressionInPredicateSubqueryContext<'input>),
-	ExpressionCastContext(ExpressionCastContext<'input>),
-	ExpressionSetPredicateSubqueryContext(ExpressionSetPredicateSubqueryContext<'input>),
-Error(ExpressionContext<'input>)
+pub enum ExpressionContextAll<'input> {
+    ExpressionScalarSubqueryContext(ExpressionScalarSubqueryContext<'input>),
+    ExpressionConstantContext(ExpressionConstantContext<'input>),
+    ExpressionFunctionUseContext(ExpressionFunctionUseContext<'input>),
+    ExpressionColumnContext(ExpressionColumnContext<'input>),
+    ExpressionSetComparisonSubqueryContext(ExpressionSetComparisonSubqueryContext<'input>),
+    ExpressionInPredicateSubqueryContext(ExpressionInPredicateSubqueryContext<'input>),
+    ExpressionCastContext(ExpressionCastContext<'input>),
+    ExpressionSetPredicateSubqueryContext(ExpressionSetPredicateSubqueryContext<'input>),
+    Error(ExpressionContext<'input>),
 }
-antlr_rust::tid!{ExpressionContextAll<'a>}
+antlr_rust::tid! {ExpressionContextAll<'a>}
 
-impl<'input> antlr_rust::parser_rule_context::DerefSeal for ExpressionContextAll<'input>{}
+impl<'input> antlr_rust::parser_rule_context::DerefSeal for ExpressionContextAll<'input> {}
 
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionContextAll<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionContextAll<'input> {}
 
-impl<'input> Deref for ExpressionContextAll<'input>{
-	type Target = dyn ExpressionContextAttrs<'input> + 'input;
-	fn deref(&self) -> &Self::Target{
-		use ExpressionContextAll::*;
-		match self{
-			ExpressionScalarSubqueryContext(inner) => inner,
-			ExpressionConstantContext(inner) => inner,
-			ExpressionFunctionUseContext(inner) => inner,
-			ExpressionColumnContext(inner) => inner,
-			ExpressionSetComparisonSubqueryContext(inner) => inner,
-			ExpressionInPredicateSubqueryContext(inner) => inner,
-			ExpressionCastContext(inner) => inner,
-			ExpressionSetPredicateSubqueryContext(inner) => inner,
-Error(inner) => inner
-		}
-	}
+impl<'input> Deref for ExpressionContextAll<'input> {
+    type Target = dyn ExpressionContextAttrs<'input> + 'input;
+    fn deref(&self) -> &Self::Target {
+        use ExpressionContextAll::*;
+        match self {
+            ExpressionScalarSubqueryContext(inner) => inner,
+            ExpressionConstantContext(inner) => inner,
+            ExpressionFunctionUseContext(inner) => inner,
+            ExpressionColumnContext(inner) => inner,
+            ExpressionSetComparisonSubqueryContext(inner) => inner,
+            ExpressionInPredicateSubqueryContext(inner) => inner,
+            ExpressionCastContext(inner) => inner,
+            ExpressionSetPredicateSubqueryContext(inner) => inner,
+            Error(inner) => inner,
+        }
+    }
 }
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionContextAll<'input>{
-	fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) { self.deref().accept(visitor) }
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionContextAll<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        self.deref().accept(visitor)
+    }
 }
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionContextAll<'input>{
-    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().enter(listener) }
-    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().exit(listener) }
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionContextAll<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        self.deref().enter(listener)
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        self.deref().exit(listener)
+    }
 }
 
-
-
-pub type ExpressionContext<'input> = BaseParserRuleContext<'input,ExpressionContextExt<'input>>;
+pub type ExpressionContext<'input> = BaseParserRuleContext<'input, ExpressionContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct ExpressionContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct ExpressionContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionContext<'input>{
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionContext<'input>
+{
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionContext<'input>{
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionContext<'input>
+{
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+impl<'input> CustomRuleContext<'input> for ExpressionContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
 }
-antlr_rust::tid!{ExpressionContextExt<'a>}
+antlr_rust::tid! {ExpressionContextExt<'a>}
 
-impl<'input> ExpressionContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<ExpressionContextAll<'input>> {
-		Rc::new(
-		ExpressionContextAll::Error(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,ExpressionContextExt{
-				ph:PhantomData
-			}),
-		)
-		)
-	}
-}
-
-pub trait ExpressionContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<ExpressionContextExt<'input>>{
-
-
-}
-
-impl<'input> ExpressionContextAttrs<'input> for ExpressionContext<'input>{}
-
-pub type ExpressionScalarSubqueryContext<'input> = BaseParserRuleContext<'input,ExpressionScalarSubqueryContextExt<'input>>;
-
-pub trait ExpressionScalarSubqueryContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token SUBQUERY
-	/// Returns `None` if there is no child corresponding to token SUBQUERY
-	fn SUBQUERY(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SUBQUERY, 0)
-	}
-	fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
+impl<'input> ExpressionContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(ExpressionContextAll::Error(
+            BaseParserRuleContext::new_parser_ctx(
+                parent,
+                invoking_state,
+                ExpressionContextExt { ph: PhantomData },
+            ),
+        ))
+    }
 }
 
-impl<'input> ExpressionScalarSubqueryContextAttrs<'input> for ExpressionScalarSubqueryContext<'input>{}
-
-pub struct ExpressionScalarSubqueryContextExt<'input>{
-	base:ExpressionContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub trait ExpressionContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<ExpressionContextExt<'input>>
+{
 }
 
-antlr_rust::tid!{ExpressionScalarSubqueryContextExt<'a>}
+impl<'input> ExpressionContextAttrs<'input> for ExpressionContext<'input> {}
 
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionScalarSubqueryContext<'input>{}
+pub type ExpressionScalarSubqueryContext<'input> =
+    BaseParserRuleContext<'input, ExpressionScalarSubqueryContextExt<'input>>;
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionScalarSubqueryContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_expressionScalarSubquery(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionScalarSubquery(self);
-		listener.exit_every_rule(self);
-	}
+pub trait ExpressionScalarSubqueryContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token SUBQUERY
+    /// Returns `None` if there is no child corresponding to token SUBQUERY
+    fn SUBQUERY(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SUBQUERY, 0)
+    }
+    fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionScalarSubqueryContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionScalarSubquery(self);
-	}
+impl<'input> ExpressionScalarSubqueryContextAttrs<'input>
+    for ExpressionScalarSubqueryContext<'input>
+{
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionScalarSubqueryContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+pub struct ExpressionScalarSubqueryContextExt<'input> {
+    base: ExpressionContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionScalarSubqueryContext<'input>{
-	fn borrow(&self) -> &ExpressionContextExt<'input> { &self.base }
+antlr_rust::tid! {ExpressionScalarSubqueryContextExt<'a>}
+
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionScalarSubqueryContext<'input> {}
+
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionScalarSubqueryContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expressionScalarSubquery(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expressionScalarSubquery(self);
+        listener.exit_every_rule(self);
+    }
 }
-impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionScalarSubqueryContext<'input>{
-	fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> { &mut self.base }
+
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionScalarSubqueryContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expressionScalarSubquery(self);
+    }
+}
+
+impl<'input> CustomRuleContext<'input> for ExpressionScalarSubqueryContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+}
+
+impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionScalarSubqueryContext<'input> {
+    fn borrow(&self) -> &ExpressionContextExt<'input> {
+        &self.base
+    }
+}
+impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionScalarSubqueryContext<'input> {
+    fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> ExpressionContextAttrs<'input> for ExpressionScalarSubqueryContext<'input> {}
 
-impl<'input> ExpressionScalarSubqueryContextExt<'input>{
-	fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>>  {
-		Rc::new(
-			ExpressionContextAll::ExpressionScalarSubqueryContext(
-				BaseParserRuleContext::copy_from(ctx,ExpressionScalarSubqueryContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExpressionScalarSubqueryContextExt<'input> {
+    fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(ExpressionContextAll::ExpressionScalarSubqueryContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                ExpressionScalarSubqueryContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type ExpressionConstantContext<'input> = BaseParserRuleContext<'input,ExpressionConstantContextExt<'input>>;
+pub type ExpressionConstantContext<'input> =
+    BaseParserRuleContext<'input, ExpressionConstantContextExt<'input>>;
 
-pub trait ExpressionConstantContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	fn constant(&self) -> Option<Rc<ConstantContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
+pub trait ExpressionConstantContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    fn constant(&self) -> Option<Rc<ConstantContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> ExpressionConstantContextAttrs<'input> for ExpressionConstantContext<'input>{}
+impl<'input> ExpressionConstantContextAttrs<'input> for ExpressionConstantContext<'input> {}
 
-pub struct ExpressionConstantContextExt<'input>{
-	base:ExpressionContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct ExpressionConstantContextExt<'input> {
+    base: ExpressionContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{ExpressionConstantContextExt<'a>}
+antlr_rust::tid! {ExpressionConstantContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionConstantContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionConstantContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionConstantContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_expressionConstant(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionConstant(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionConstantContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expressionConstant(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expressionConstant(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionConstantContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionConstant(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionConstantContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expressionConstant(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionConstantContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+impl<'input> CustomRuleContext<'input> for ExpressionConstantContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
 }
 
-impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionConstantContext<'input>{
-	fn borrow(&self) -> &ExpressionContextExt<'input> { &self.base }
+impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionConstantContext<'input> {
+    fn borrow(&self) -> &ExpressionContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionConstantContext<'input>{
-	fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionConstantContext<'input> {
+    fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> ExpressionContextAttrs<'input> for ExpressionConstantContext<'input> {}
 
-impl<'input> ExpressionConstantContextExt<'input>{
-	fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>>  {
-		Rc::new(
-			ExpressionContextAll::ExpressionConstantContext(
-				BaseParserRuleContext::copy_from(ctx,ExpressionConstantContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExpressionConstantContextExt<'input> {
+    fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(ExpressionContextAll::ExpressionConstantContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                ExpressionConstantContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type ExpressionFunctionUseContext<'input> = BaseParserRuleContext<'input,ExpressionFunctionUseContextExt<'input>>;
+pub type ExpressionFunctionUseContext<'input> =
+    BaseParserRuleContext<'input, ExpressionFunctionUseContextExt<'input>>;
 
-pub trait ExpressionFunctionUseContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token LEFTPAREN
-	/// Returns `None` if there is no child corresponding to token LEFTPAREN
-	fn LEFTPAREN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(LEFTPAREN, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token RIGHTPAREN
-	/// Returns `None` if there is no child corresponding to token RIGHTPAREN
-	fn RIGHTPAREN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(RIGHTPAREN, 0)
-	}
-	fn expression_all(&self) ->  Vec<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-		self.children_of_type()
-	}
-	fn expression(&self, i: usize) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-		self.child_of_type(i)
-	}
-	/// Retrieves first TerminalNode corresponding to token ARROW
-	/// Returns `None` if there is no child corresponding to token ARROW
-	fn ARROW(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(ARROW, 0)
-	}
-	fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-	fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-		self.children_of_type()
-	}
-	/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-	/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-	fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(COMMA, i)
-	}
+pub trait ExpressionFunctionUseContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTPAREN
+    /// Returns `None` if there is no child corresponding to token LEFTPAREN
+    fn LEFTPAREN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTPAREN, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTPAREN
+    /// Returns `None` if there is no child corresponding to token RIGHTPAREN
+    fn RIGHTPAREN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTPAREN, 0)
+    }
+    fn expression_all(&self) -> Vec<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn expression(&self, i: usize) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token ARROW
+    /// Returns `None` if there is no child corresponding to token ARROW
+    fn ARROW(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ARROW, 0)
+    }
+    fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
 }
 
-impl<'input> ExpressionFunctionUseContextAttrs<'input> for ExpressionFunctionUseContext<'input>{}
+impl<'input> ExpressionFunctionUseContextAttrs<'input> for ExpressionFunctionUseContext<'input> {}
 
-pub struct ExpressionFunctionUseContextExt<'input>{
-	base:ExpressionContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct ExpressionFunctionUseContextExt<'input> {
+    base: ExpressionContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{ExpressionFunctionUseContextExt<'a>}
+antlr_rust::tid! {ExpressionFunctionUseContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionFunctionUseContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionFunctionUseContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionFunctionUseContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_expressionFunctionUse(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionFunctionUse(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionFunctionUseContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expressionFunctionUse(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expressionFunctionUse(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionFunctionUseContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionFunctionUse(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionFunctionUseContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expressionFunctionUse(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionFunctionUseContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+impl<'input> CustomRuleContext<'input> for ExpressionFunctionUseContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
 }
 
-impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionFunctionUseContext<'input>{
-	fn borrow(&self) -> &ExpressionContextExt<'input> { &self.base }
+impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionFunctionUseContext<'input> {
+    fn borrow(&self) -> &ExpressionContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionFunctionUseContext<'input>{
-	fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionFunctionUseContext<'input> {
+    fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> ExpressionContextAttrs<'input> for ExpressionFunctionUseContext<'input> {}
 
-impl<'input> ExpressionFunctionUseContextExt<'input>{
-	fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>>  {
-		Rc::new(
-			ExpressionContextAll::ExpressionFunctionUseContext(
-				BaseParserRuleContext::copy_from(ctx,ExpressionFunctionUseContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExpressionFunctionUseContextExt<'input> {
+    fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(ExpressionContextAll::ExpressionFunctionUseContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                ExpressionFunctionUseContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type ExpressionColumnContext<'input> = BaseParserRuleContext<'input,ExpressionColumnContextExt<'input>>;
+pub type ExpressionColumnContext<'input> =
+    BaseParserRuleContext<'input, ExpressionColumnContextExt<'input>>;
 
-pub trait ExpressionColumnContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	fn column_name(&self) -> Option<Rc<Column_nameContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
+pub trait ExpressionColumnContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    fn column_name(&self) -> Option<Rc<Column_nameContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> ExpressionColumnContextAttrs<'input> for ExpressionColumnContext<'input>{}
+impl<'input> ExpressionColumnContextAttrs<'input> for ExpressionColumnContext<'input> {}
 
-pub struct ExpressionColumnContextExt<'input>{
-	base:ExpressionContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct ExpressionColumnContextExt<'input> {
+    base: ExpressionContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{ExpressionColumnContextExt<'a>}
+antlr_rust::tid! {ExpressionColumnContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionColumnContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionColumnContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionColumnContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_expressionColumn(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionColumn(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionColumnContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expressionColumn(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expressionColumn(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionColumnContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionColumn(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionColumnContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expressionColumn(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionColumnContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+impl<'input> CustomRuleContext<'input> for ExpressionColumnContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
 }
 
-impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionColumnContext<'input>{
-	fn borrow(&self) -> &ExpressionContextExt<'input> { &self.base }
+impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionColumnContext<'input> {
+    fn borrow(&self) -> &ExpressionContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionColumnContext<'input>{
-	fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionColumnContext<'input> {
+    fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> ExpressionContextAttrs<'input> for ExpressionColumnContext<'input> {}
 
-impl<'input> ExpressionColumnContextExt<'input>{
-	fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>>  {
-		Rc::new(
-			ExpressionContextAll::ExpressionColumnContext(
-				BaseParserRuleContext::copy_from(ctx,ExpressionColumnContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExpressionColumnContextExt<'input> {
+    fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(ExpressionContextAll::ExpressionColumnContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                ExpressionColumnContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type ExpressionSetComparisonSubqueryContext<'input> = BaseParserRuleContext<'input,ExpressionSetComparisonSubqueryContextExt<'input>>;
+pub type ExpressionSetComparisonSubqueryContext<'input> =
+    BaseParserRuleContext<'input, ExpressionSetComparisonSubqueryContextExt<'input>>;
 
-pub trait ExpressionSetComparisonSubqueryContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token COMPARISON
-	/// Returns `None` if there is no child corresponding to token COMPARISON
-	fn COMPARISON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(COMPARISON, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SUBQUERY
-	/// Returns `None` if there is no child corresponding to token SUBQUERY
-	fn SUBQUERY(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SUBQUERY, 0)
-	}
-	fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token ALL
-	/// Returns `None` if there is no child corresponding to token ALL
-	fn ALL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(ALL, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token ANY
-	/// Returns `None` if there is no child corresponding to token ANY
-	fn ANY(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(ANY, 0)
-	}
+pub trait ExpressionSetComparisonSubqueryContextAttrs<'input>:
+    SubstraitPlanParserContext<'input>
+{
+    fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token COMPARISON
+    /// Returns `None` if there is no child corresponding to token COMPARISON
+    fn COMPARISON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMPARISON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SUBQUERY
+    /// Returns `None` if there is no child corresponding to token SUBQUERY
+    fn SUBQUERY(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SUBQUERY, 0)
+    }
+    fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ALL
+    /// Returns `None` if there is no child corresponding to token ALL
+    fn ALL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ALL, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ANY
+    /// Returns `None` if there is no child corresponding to token ANY
+    fn ANY(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ANY, 0)
+    }
 }
 
-impl<'input> ExpressionSetComparisonSubqueryContextAttrs<'input> for ExpressionSetComparisonSubqueryContext<'input>{}
-
-pub struct ExpressionSetComparisonSubqueryContextExt<'input>{
-	base:ExpressionContextExt<'input>,
-	ph:PhantomData<&'input str>
+impl<'input> ExpressionSetComparisonSubqueryContextAttrs<'input>
+    for ExpressionSetComparisonSubqueryContext<'input>
+{
 }
 
-antlr_rust::tid!{ExpressionSetComparisonSubqueryContextExt<'a>}
-
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionSetComparisonSubqueryContext<'input>{}
-
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionSetComparisonSubqueryContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_expressionSetComparisonSubquery(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionSetComparisonSubquery(self);
-		listener.exit_every_rule(self);
-	}
+pub struct ExpressionSetComparisonSubqueryContextExt<'input> {
+    base: ExpressionContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionSetComparisonSubqueryContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionSetComparisonSubquery(self);
-	}
+antlr_rust::tid! {ExpressionSetComparisonSubqueryContextExt<'a>}
+
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionSetComparisonSubqueryContext<'input> {}
+
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionSetComparisonSubqueryContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expressionSetComparisonSubquery(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expressionSetComparisonSubquery(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionSetComparisonSubqueryContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionSetComparisonSubqueryContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expressionSetComparisonSubquery(self);
+    }
 }
 
-impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionSetComparisonSubqueryContext<'input>{
-	fn borrow(&self) -> &ExpressionContextExt<'input> { &self.base }
+impl<'input> CustomRuleContext<'input> for ExpressionSetComparisonSubqueryContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
 }
-impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionSetComparisonSubqueryContext<'input>{
-	fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> { &mut self.base }
+
+impl<'input> Borrow<ExpressionContextExt<'input>>
+    for ExpressionSetComparisonSubqueryContext<'input>
+{
+    fn borrow(&self) -> &ExpressionContextExt<'input> {
+        &self.base
+    }
+}
+impl<'input> BorrowMut<ExpressionContextExt<'input>>
+    for ExpressionSetComparisonSubqueryContext<'input>
+{
+    fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> ExpressionContextAttrs<'input> for ExpressionSetComparisonSubqueryContext<'input> {}
 
-impl<'input> ExpressionSetComparisonSubqueryContextExt<'input>{
-	fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>>  {
-		Rc::new(
-			ExpressionContextAll::ExpressionSetComparisonSubqueryContext(
-				BaseParserRuleContext::copy_from(ctx,ExpressionSetComparisonSubqueryContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExpressionSetComparisonSubqueryContextExt<'input> {
+    fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(
+            ExpressionContextAll::ExpressionSetComparisonSubqueryContext(
+                BaseParserRuleContext::copy_from(
+                    ctx,
+                    ExpressionSetComparisonSubqueryContextExt {
+                        base: ctx.borrow().clone(),
+                        ph: PhantomData,
+                    },
+                ),
+            ),
+        )
+    }
 }
 
-pub type ExpressionInPredicateSubqueryContext<'input> = BaseParserRuleContext<'input,ExpressionInPredicateSubqueryContextExt<'input>>;
+pub type ExpressionInPredicateSubqueryContext<'input> =
+    BaseParserRuleContext<'input, ExpressionInPredicateSubqueryContextExt<'input>>;
 
-pub trait ExpressionInPredicateSubqueryContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	fn expression_list(&self) -> Option<Rc<Expression_listContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token IN
-	/// Returns `None` if there is no child corresponding to token IN
-	fn IN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(IN, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SUBQUERY
-	/// Returns `None` if there is no child corresponding to token SUBQUERY
-	fn SUBQUERY(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SUBQUERY, 0)
-	}
-	fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
+pub trait ExpressionInPredicateSubqueryContextAttrs<'input>:
+    SubstraitPlanParserContext<'input>
+{
+    fn expression_list(&self) -> Option<Rc<Expression_listContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token IN
+    /// Returns `None` if there is no child corresponding to token IN
+    fn IN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(IN, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SUBQUERY
+    /// Returns `None` if there is no child corresponding to token SUBQUERY
+    fn SUBQUERY(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SUBQUERY, 0)
+    }
+    fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> ExpressionInPredicateSubqueryContextAttrs<'input> for ExpressionInPredicateSubqueryContext<'input>{}
-
-pub struct ExpressionInPredicateSubqueryContextExt<'input>{
-	base:ExpressionContextExt<'input>,
-	ph:PhantomData<&'input str>
+impl<'input> ExpressionInPredicateSubqueryContextAttrs<'input>
+    for ExpressionInPredicateSubqueryContext<'input>
+{
 }
 
-antlr_rust::tid!{ExpressionInPredicateSubqueryContextExt<'a>}
-
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionInPredicateSubqueryContext<'input>{}
-
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionInPredicateSubqueryContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_expressionInPredicateSubquery(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionInPredicateSubquery(self);
-		listener.exit_every_rule(self);
-	}
+pub struct ExpressionInPredicateSubqueryContextExt<'input> {
+    base: ExpressionContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionInPredicateSubqueryContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionInPredicateSubquery(self);
-	}
+antlr_rust::tid! {ExpressionInPredicateSubqueryContextExt<'a>}
+
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionInPredicateSubqueryContext<'input> {}
+
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionInPredicateSubqueryContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expressionInPredicateSubquery(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expressionInPredicateSubquery(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionInPredicateSubqueryContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionInPredicateSubqueryContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expressionInPredicateSubquery(self);
+    }
 }
 
-impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionInPredicateSubqueryContext<'input>{
-	fn borrow(&self) -> &ExpressionContextExt<'input> { &self.base }
+impl<'input> CustomRuleContext<'input> for ExpressionInPredicateSubqueryContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
 }
-impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionInPredicateSubqueryContext<'input>{
-	fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> { &mut self.base }
+
+impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionInPredicateSubqueryContext<'input> {
+    fn borrow(&self) -> &ExpressionContextExt<'input> {
+        &self.base
+    }
+}
+impl<'input> BorrowMut<ExpressionContextExt<'input>>
+    for ExpressionInPredicateSubqueryContext<'input>
+{
+    fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> ExpressionContextAttrs<'input> for ExpressionInPredicateSubqueryContext<'input> {}
 
-impl<'input> ExpressionInPredicateSubqueryContextExt<'input>{
-	fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>>  {
-		Rc::new(
-			ExpressionContextAll::ExpressionInPredicateSubqueryContext(
-				BaseParserRuleContext::copy_from(ctx,ExpressionInPredicateSubqueryContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExpressionInPredicateSubqueryContextExt<'input> {
+    fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(ExpressionContextAll::ExpressionInPredicateSubqueryContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                ExpressionInPredicateSubqueryContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type ExpressionCastContext<'input> = BaseParserRuleContext<'input,ExpressionCastContextExt<'input>>;
+pub type ExpressionCastContext<'input> =
+    BaseParserRuleContext<'input, ExpressionCastContextExt<'input>>;
 
-pub trait ExpressionCastContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token AS
-	/// Returns `None` if there is no child corresponding to token AS
-	fn AS(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(AS, 0)
-	}
-	fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
+pub trait ExpressionCastContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token AS
+    /// Returns `None` if there is no child corresponding to token AS
+    fn AS(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(AS, 0)
+    }
+    fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> ExpressionCastContextAttrs<'input> for ExpressionCastContext<'input>{}
+impl<'input> ExpressionCastContextAttrs<'input> for ExpressionCastContext<'input> {}
 
-pub struct ExpressionCastContextExt<'input>{
-	base:ExpressionContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct ExpressionCastContextExt<'input> {
+    base: ExpressionContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{ExpressionCastContextExt<'a>}
+antlr_rust::tid! {ExpressionCastContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionCastContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionCastContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionCastContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_expressionCast(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionCast(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionCastContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expressionCast(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expressionCast(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionCastContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionCast(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionCastContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expressionCast(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionCastContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+impl<'input> CustomRuleContext<'input> for ExpressionCastContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
 }
 
-impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionCastContext<'input>{
-	fn borrow(&self) -> &ExpressionContextExt<'input> { &self.base }
+impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionCastContext<'input> {
+    fn borrow(&self) -> &ExpressionContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionCastContext<'input>{
-	fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionCastContext<'input> {
+    fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> ExpressionContextAttrs<'input> for ExpressionCastContext<'input> {}
 
-impl<'input> ExpressionCastContextExt<'input>{
-	fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>>  {
-		Rc::new(
-			ExpressionContextAll::ExpressionCastContext(
-				BaseParserRuleContext::copy_from(ctx,ExpressionCastContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExpressionCastContextExt<'input> {
+    fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(ExpressionContextAll::ExpressionCastContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                ExpressionCastContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type ExpressionSetPredicateSubqueryContext<'input> = BaseParserRuleContext<'input,ExpressionSetPredicateSubqueryContextExt<'input>>;
+pub type ExpressionSetPredicateSubqueryContext<'input> =
+    BaseParserRuleContext<'input, ExpressionSetPredicateSubqueryContextExt<'input>>;
 
-pub trait ExpressionSetPredicateSubqueryContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token IN
-	/// Returns `None` if there is no child corresponding to token IN
-	fn IN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(IN, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token SUBQUERY
-	/// Returns `None` if there is no child corresponding to token SUBQUERY
-	fn SUBQUERY(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(SUBQUERY, 0)
-	}
-	fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token UNIQUE
-	/// Returns `None` if there is no child corresponding to token UNIQUE
-	fn UNIQUE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(UNIQUE, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token EXISTS
-	/// Returns `None` if there is no child corresponding to token EXISTS
-	fn EXISTS(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(EXISTS, 0)
-	}
+pub trait ExpressionSetPredicateSubqueryContextAttrs<'input>:
+    SubstraitPlanParserContext<'input>
+{
+    /// Retrieves first TerminalNode corresponding to token IN
+    /// Returns `None` if there is no child corresponding to token IN
+    fn IN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(IN, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SUBQUERY
+    /// Returns `None` if there is no child corresponding to token SUBQUERY
+    fn SUBQUERY(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SUBQUERY, 0)
+    }
+    fn relation_ref(&self) -> Option<Rc<Relation_refContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token UNIQUE
+    /// Returns `None` if there is no child corresponding to token UNIQUE
+    fn UNIQUE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(UNIQUE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token EXISTS
+    /// Returns `None` if there is no child corresponding to token EXISTS
+    fn EXISTS(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EXISTS, 0)
+    }
 }
 
-impl<'input> ExpressionSetPredicateSubqueryContextAttrs<'input> for ExpressionSetPredicateSubqueryContext<'input>{}
-
-pub struct ExpressionSetPredicateSubqueryContextExt<'input>{
-	base:ExpressionContextExt<'input>,
-	ph:PhantomData<&'input str>
+impl<'input> ExpressionSetPredicateSubqueryContextAttrs<'input>
+    for ExpressionSetPredicateSubqueryContext<'input>
+{
 }
 
-antlr_rust::tid!{ExpressionSetPredicateSubqueryContextExt<'a>}
-
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionSetPredicateSubqueryContext<'input>{}
-
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionSetPredicateSubqueryContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_expressionSetPredicateSubquery(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionSetPredicateSubquery(self);
-		listener.exit_every_rule(self);
-	}
+pub struct ExpressionSetPredicateSubqueryContextExt<'input> {
+    base: ExpressionContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionSetPredicateSubqueryContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionSetPredicateSubquery(self);
-	}
+antlr_rust::tid! {ExpressionSetPredicateSubqueryContextExt<'a>}
+
+impl<'input> SubstraitPlanParserContext<'input> for ExpressionSetPredicateSubqueryContext<'input> {}
+
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExpressionSetPredicateSubqueryContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expressionSetPredicateSubquery(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expressionSetPredicateSubquery(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExpressionSetPredicateSubqueryContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression }
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExpressionSetPredicateSubqueryContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expressionSetPredicateSubquery(self);
+    }
 }
 
-impl<'input> Borrow<ExpressionContextExt<'input>> for ExpressionSetPredicateSubqueryContext<'input>{
-	fn borrow(&self) -> &ExpressionContextExt<'input> { &self.base }
+impl<'input> CustomRuleContext<'input> for ExpressionSetPredicateSubqueryContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression }
 }
-impl<'input> BorrowMut<ExpressionContextExt<'input>> for ExpressionSetPredicateSubqueryContext<'input>{
-	fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> { &mut self.base }
+
+impl<'input> Borrow<ExpressionContextExt<'input>>
+    for ExpressionSetPredicateSubqueryContext<'input>
+{
+    fn borrow(&self) -> &ExpressionContextExt<'input> {
+        &self.base
+    }
+}
+impl<'input> BorrowMut<ExpressionContextExt<'input>>
+    for ExpressionSetPredicateSubqueryContext<'input>
+{
+    fn borrow_mut(&mut self) -> &mut ExpressionContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> ExpressionContextAttrs<'input> for ExpressionSetPredicateSubqueryContext<'input> {}
 
-impl<'input> ExpressionSetPredicateSubqueryContextExt<'input>{
-	fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>>  {
-		Rc::new(
-			ExpressionContextAll::ExpressionSetPredicateSubqueryContext(
-				BaseParserRuleContext::copy_from(ctx,ExpressionSetPredicateSubqueryContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExpressionSetPredicateSubqueryContextExt<'input> {
+    fn new(ctx: &dyn ExpressionContextAttrs<'input>) -> Rc<ExpressionContextAll<'input>> {
+        Rc::new(ExpressionContextAll::ExpressionSetPredicateSubqueryContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                ExpressionSetPredicateSubqueryContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn  expression(&mut self,)
-	-> Result<Rc<ExpressionContextAll<'input>>,ANTLRError> {
-		self.expression_rec(0)
-	}
+    pub fn expression(&mut self) -> Result<Rc<ExpressionContextAll<'input>>, ANTLRError> {
+        self.expression_rec(0)
+    }
 
-	fn expression_rec(&mut self, _p: isize)
-	-> Result<Rc<ExpressionContextAll<'input>>,ANTLRError> {
-		let recog = self;
-		let _parentctx = recog.ctx.take();
-		let _parentState = recog.base.get_state();
-		let mut _localctx = ExpressionContextExt::new(_parentctx.clone(), recog.base.get_state());
-		recog.base.enter_recursion_rule(_localctx.clone(), 22, RULE_expression, _p);
-	    let mut _localctx: Rc<ExpressionContextAll> = _localctx;
+    fn expression_rec(
+        &mut self,
+        _p: isize,
+    ) -> Result<Rc<ExpressionContextAll<'input>>, ANTLRError> {
+        let recog = self;
+        let _parentctx = recog.ctx.take();
+        let _parentState = recog.base.get_state();
+        let mut _localctx = ExpressionContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_recursion_rule(_localctx.clone(), 22, RULE_expression, _p);
+        let mut _localctx: Rc<ExpressionContextAll> = _localctx;
         let mut _prevctx = _localctx.clone();
-		let _startState = 22;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
-			let mut _alt: isize;
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(276);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(20,&mut recog.base)? {
-				1 =>{
-					{
-					let mut tmp = ExpressionFunctionUseContextExt::new(&**_localctx);
-					recog.ctx = Some(tmp.clone());
-					_localctx = tmp;
-					_prevctx = _localctx.clone();
+        let _startState = 22;
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            let mut _alt: isize;
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(276);
+                recog.err_handler.sync(&mut recog.base)?;
+                match recog.interpreter.adaptive_predict(20, &mut recog.base)? {
+                    1 => {
+                        {
+                            let mut tmp = ExpressionFunctionUseContextExt::new(&**_localctx);
+                            recog.ctx = Some(tmp.clone());
+                            _localctx = tmp;
+                            _prevctx = _localctx.clone();
 
+                            /*InvokeRule id*/
+                            recog.base.set_state(247);
+                            recog.id()?;
 
-					/*InvokeRule id*/
-					recog.base.set_state(247);
-					recog.id()?;
+                            recog.base.set_state(248);
+                            recog.base.match_token(LEFTPAREN, &mut recog.err_handler)?;
 
-					recog.base.set_state(248);
-					recog.base.match_token(LEFTPAREN,&mut recog.err_handler)?;
+                            recog.base.set_state(255);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _la = recog.base.input.la(1);
+                            while (((_la - 5) & !0x3f) == 0
+                                && ((1usize << (_la - 5))
+                                    & ((1usize << (NAMED - 5))
+                                        | (1usize << (SCHEMA - 5))
+                                        | (1usize << (FILTER - 5))
+                                        | (1usize << (GROUPING - 5))
+                                        | (1usize << (MEASURE - 5))
+                                        | (1usize << (SORT - 5))
+                                        | (1usize << (COUNT - 5))
+                                        | (1usize << (TYPE - 5))
+                                        | (1usize << (EMIT - 5))
+                                        | (1usize << (SUBQUERY - 5))
+                                        | (1usize << (EXISTS - 5))
+                                        | (1usize << (UNIQUE - 5))
+                                        | (1usize << (ALL - 5))
+                                        | (1usize << (ANY - 5))
+                                        | (1usize << (COMPARISON - 5))
+                                        | (1usize << (SOURCE - 5))
+                                        | (1usize << (ROOT - 5))))
+                                    != 0)
+                                || (((_la - 47) & !0x3f) == 0
+                                    && ((1usize << (_la - 47))
+                                        & ((1usize << (NULLVAL - 47))
+                                            | (1usize << (TRUEVAL - 47))
+                                            | (1usize << (FALSEVAL - 47))
+                                            | (1usize << (LEFTBRACE - 47))
+                                            | (1usize << (LEFTPAREN - 47))
+                                            | (1usize << (IDENTIFIER - 47))
+                                            | (1usize << (NUMBER - 47))
+                                            | (1usize << (STRING - 47))))
+                                        != 0)
+                            {
+                                {
+                                    {
+                                        /*InvokeRule expression*/
+                                        recog.base.set_state(249);
+                                        recog.expression_rec(0)?;
 
-					recog.base.set_state(255);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					while ((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (SUBQUERY - 5)) | (1usize << (EXISTS - 5)) | (1usize << (UNIQUE - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || ((((_la - 47)) & !0x3f) == 0 && ((1usize << (_la - 47)) & ((1usize << (NULLVAL - 47)) | (1usize << (TRUEVAL - 47)) | (1usize << (FALSEVAL - 47)) | (1usize << (LEFTBRACE - 47)) | (1usize << (LEFTPAREN - 47)) | (1usize << (IDENTIFIER - 47)) | (1usize << (NUMBER - 47)) | (1usize << (STRING - 47)))) != 0) {
-						{
-						{
-						/*InvokeRule expression*/
-						recog.base.set_state(249);
-						recog.expression_rec(0)?;
+                                        recog.base.set_state(251);
+                                        recog.err_handler.sync(&mut recog.base)?;
+                                        _la = recog.base.input.la(1);
+                                        if _la == COMMA {
+                                            {
+                                                recog.base.set_state(250);
+                                                recog
+                                                    .base
+                                                    .match_token(COMMA, &mut recog.err_handler)?;
+                                            }
+                                        }
+                                    }
+                                }
+                                recog.base.set_state(257);
+                                recog.err_handler.sync(&mut recog.base)?;
+                                _la = recog.base.input.la(1);
+                            }
+                            recog.base.set_state(258);
+                            recog.base.match_token(RIGHTPAREN, &mut recog.err_handler)?;
 
-						recog.base.set_state(251);
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-						if _la==COMMA {
-							{
-							recog.base.set_state(250);
-							recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                            recog.base.set_state(261);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            match recog.interpreter.adaptive_predict(19, &mut recog.base)? {
+                                x if x == 1 => {
+                                    {
+                                        recog.base.set_state(259);
+                                        recog.base.match_token(ARROW, &mut recog.err_handler)?;
 
-							}
-						}
+                                        /*InvokeRule literal_complex_type*/
+                                        recog.base.set_state(260);
+                                        recog.literal_complex_type()?;
+                                    }
+                                }
 
-						}
-						}
-						recog.base.set_state(257);
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-					}
-					recog.base.set_state(258);
-					recog.base.match_token(RIGHTPAREN,&mut recog.err_handler)?;
+                                _ => {}
+                            }
+                        }
+                    }
+                    2 => {
+                        {
+                            let mut tmp = ExpressionConstantContextExt::new(&**_localctx);
+                            recog.ctx = Some(tmp.clone());
+                            _localctx = tmp;
+                            _prevctx = _localctx.clone();
+                            /*InvokeRule constant*/
+                            recog.base.set_state(263);
+                            recog.constant()?;
+                        }
+                    }
+                    3 => {
+                        {
+                            let mut tmp = ExpressionColumnContextExt::new(&**_localctx);
+                            recog.ctx = Some(tmp.clone());
+                            _localctx = tmp;
+                            _prevctx = _localctx.clone();
+                            /*InvokeRule column_name*/
+                            recog.base.set_state(264);
+                            recog.column_name()?;
+                        }
+                    }
+                    4 => {
+                        {
+                            let mut tmp = ExpressionScalarSubqueryContextExt::new(&**_localctx);
+                            recog.ctx = Some(tmp.clone());
+                            _localctx = tmp;
+                            _prevctx = _localctx.clone();
+                            recog.base.set_state(265);
+                            recog.base.match_token(SUBQUERY, &mut recog.err_handler)?;
 
-					recog.base.set_state(261);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(19,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							recog.base.set_state(259);
-							recog.base.match_token(ARROW,&mut recog.err_handler)?;
+                            /*InvokeRule relation_ref*/
+                            recog.base.set_state(266);
+                            recog.relation_ref()?;
+                        }
+                    }
+                    5 => {
+                        {
+                            let mut tmp =
+                                ExpressionInPredicateSubqueryContextExt::new(&**_localctx);
+                            recog.ctx = Some(tmp.clone());
+                            _localctx = tmp;
+                            _prevctx = _localctx.clone();
+                            /*InvokeRule expression_list*/
+                            recog.base.set_state(267);
+                            recog.expression_list()?;
 
-							/*InvokeRule literal_complex_type*/
-							recog.base.set_state(260);
-							recog.literal_complex_type()?;
+                            recog.base.set_state(268);
+                            recog.base.match_token(IN, &mut recog.err_handler)?;
 
-							}
-						}
+                            recog.base.set_state(269);
+                            recog.base.match_token(SUBQUERY, &mut recog.err_handler)?;
 
-						_ => {}
-					}
-					}
-				}
-			,
-				2 =>{
-					{
-					let mut tmp = ExpressionConstantContextExt::new(&**_localctx);
-					recog.ctx = Some(tmp.clone());
-					_localctx = tmp;
-					_prevctx = _localctx.clone();
-					/*InvokeRule constant*/
-					recog.base.set_state(263);
-					recog.constant()?;
+                            /*InvokeRule relation_ref*/
+                            recog.base.set_state(270);
+                            recog.relation_ref()?;
+                        }
+                    }
+                    6 => {
+                        {
+                            let mut tmp =
+                                ExpressionSetPredicateSubqueryContextExt::new(&**_localctx);
+                            recog.ctx = Some(tmp.clone());
+                            _localctx = tmp;
+                            _prevctx = _localctx.clone();
+                            recog.base.set_state(272);
+                            _la = recog.base.input.la(1);
+                            if { !(_la == EXISTS || _la == UNIQUE) } {
+                                recog.err_handler.recover_inline(&mut recog.base)?;
+                            } else {
+                                if recog.base.input.la(1) == TOKEN_EOF {
+                                    recog.base.matched_eof = true
+                                };
+                                recog.err_handler.report_match(&mut recog.base);
+                                recog.base.consume(&mut recog.err_handler);
+                            }
+                            recog.base.set_state(273);
+                            recog.base.match_token(IN, &mut recog.err_handler)?;
 
-					}
-				}
-			,
-				3 =>{
-					{
-					let mut tmp = ExpressionColumnContextExt::new(&**_localctx);
-					recog.ctx = Some(tmp.clone());
-					_localctx = tmp;
-					_prevctx = _localctx.clone();
-					/*InvokeRule column_name*/
-					recog.base.set_state(264);
-					recog.column_name()?;
+                            recog.base.set_state(274);
+                            recog.base.match_token(SUBQUERY, &mut recog.err_handler)?;
 
-					}
-				}
-			,
-				4 =>{
-					{
-					let mut tmp = ExpressionScalarSubqueryContextExt::new(&**_localctx);
-					recog.ctx = Some(tmp.clone());
-					_localctx = tmp;
-					_prevctx = _localctx.clone();
-					recog.base.set_state(265);
-					recog.base.match_token(SUBQUERY,&mut recog.err_handler)?;
+                            /*InvokeRule relation_ref*/
+                            recog.base.set_state(275);
+                            recog.relation_ref()?;
+                        }
+                    }
 
-					/*InvokeRule relation_ref*/
-					recog.base.set_state(266);
-					recog.relation_ref()?;
+                    _ => {}
+                }
 
-					}
-				}
-			,
-				5 =>{
-					{
-					let mut tmp = ExpressionInPredicateSubqueryContextExt::new(&**_localctx);
-					recog.ctx = Some(tmp.clone());
-					_localctx = tmp;
-					_prevctx = _localctx.clone();
-					/*InvokeRule expression_list*/
-					recog.base.set_state(267);
-					recog.expression_list()?;
+                let tmp = recog.input.lt(-1).cloned();
+                recog.ctx.as_ref().unwrap().set_stop(tmp);
+                recog.base.set_state(288);
+                recog.err_handler.sync(&mut recog.base)?;
+                _alt = recog.interpreter.adaptive_predict(22, &mut recog.base)?;
+                while { _alt != 2 && _alt != INVALID_ALT } {
+                    if _alt == 1 {
+                        recog.trigger_exit_rule_event();
+                        _prevctx = _localctx.clone();
+                        {
+                            recog.base.set_state(286);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            match recog.interpreter.adaptive_predict(21, &mut recog.base)? {
+                                1 => {
+                                    {
+                                        /*recRuleLabeledAltStartAction*/
+                                        let mut tmp = ExpressionCastContextExt::new(
+                                            &**ExpressionContextExt::new(
+                                                _parentctx.clone(),
+                                                _parentState,
+                                            ),
+                                        );
+                                        recog.push_new_recursion_context(
+                                            tmp.clone(),
+                                            _startState,
+                                            RULE_expression,
+                                        );
+                                        _localctx = tmp;
+                                        recog.base.set_state(278);
+                                        if !({ recog.precpred(None, 5) }) {
+                                            Err(FailedPredicateError::new(
+                                                &mut recog.base,
+                                                Some("recog.precpred(None, 5)".to_owned()),
+                                                None,
+                                            ))?;
+                                        }
+                                        recog.base.set_state(279);
+                                        recog.base.match_token(AS, &mut recog.err_handler)?;
 
-					recog.base.set_state(268);
-					recog.base.match_token(IN,&mut recog.err_handler)?;
+                                        /*InvokeRule literal_complex_type*/
+                                        recog.base.set_state(280);
+                                        recog.literal_complex_type()?;
+                                    }
+                                }
+                                2 => {
+                                    {
+                                        /*recRuleLabeledAltStartAction*/
+                                        let mut tmp =
+                                            ExpressionSetComparisonSubqueryContextExt::new(
+                                                &**ExpressionContextExt::new(
+                                                    _parentctx.clone(),
+                                                    _parentState,
+                                                ),
+                                            );
+                                        recog.push_new_recursion_context(
+                                            tmp.clone(),
+                                            _startState,
+                                            RULE_expression,
+                                        );
+                                        _localctx = tmp;
+                                        recog.base.set_state(281);
+                                        if !({ recog.precpred(None, 1) }) {
+                                            Err(FailedPredicateError::new(
+                                                &mut recog.base,
+                                                Some("recog.precpred(None, 1)".to_owned()),
+                                                None,
+                                            ))?;
+                                        }
+                                        recog.base.set_state(282);
+                                        recog
+                                            .base
+                                            .match_token(COMPARISON, &mut recog.err_handler)?;
 
-					recog.base.set_state(269);
-					recog.base.match_token(SUBQUERY,&mut recog.err_handler)?;
+                                        recog.base.set_state(283);
+                                        _la = recog.base.input.la(1);
+                                        if { !(_la == ALL || _la == ANY) } {
+                                            recog.err_handler.recover_inline(&mut recog.base)?;
+                                        } else {
+                                            if recog.base.input.la(1) == TOKEN_EOF {
+                                                recog.base.matched_eof = true
+                                            };
+                                            recog.err_handler.report_match(&mut recog.base);
+                                            recog.base.consume(&mut recog.err_handler);
+                                        }
+                                        recog.base.set_state(284);
+                                        recog.base.match_token(SUBQUERY, &mut recog.err_handler)?;
 
-					/*InvokeRule relation_ref*/
-					recog.base.set_state(270);
-					recog.relation_ref()?;
+                                        /*InvokeRule relation_ref*/
+                                        recog.base.set_state(285);
+                                        recog.relation_ref()?;
+                                    }
+                                }
 
-					}
-				}
-			,
-				6 =>{
-					{
-					let mut tmp = ExpressionSetPredicateSubqueryContextExt::new(&**_localctx);
-					recog.ctx = Some(tmp.clone());
-					_localctx = tmp;
-					_prevctx = _localctx.clone();
-					recog.base.set_state(272);
-					_la = recog.base.input.la(1);
-					if { !(_la==EXISTS || _la==UNIQUE) } {
-						recog.err_handler.recover_inline(&mut recog.base)?;
+                                _ => {}
+                            }
+                        }
+                    }
+                    recog.base.set_state(290);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _alt = recog.interpreter.adaptive_predict(22, &mut recog.base)?;
+                }
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.unroll_recursion_context(_parentctx);
 
-					}
-					else {
-						if  recog.base.input.la(1)==TOKEN_EOF { recog.base.matched_eof = true };
-						recog.err_handler.report_match(&mut recog.base);
-						recog.base.consume(&mut recog.err_handler);
-					}
-					recog.base.set_state(273);
-					recog.base.match_token(IN,&mut recog.err_handler)?;
-
-					recog.base.set_state(274);
-					recog.base.match_token(SUBQUERY,&mut recog.err_handler)?;
-
-					/*InvokeRule relation_ref*/
-					recog.base.set_state(275);
-					recog.relation_ref()?;
-
-					}
-				}
-
-				_ => {}
-			}
-
-			let tmp = recog.input.lt(-1).cloned();
-			recog.ctx.as_ref().unwrap().set_stop(tmp);
-			recog.base.set_state(288);
-			recog.err_handler.sync(&mut recog.base)?;
-			_alt = recog.interpreter.adaptive_predict(22,&mut recog.base)?;
-			while { _alt!=2 && _alt!=INVALID_ALT } {
-				if _alt==1 {
-					recog.trigger_exit_rule_event();
-					_prevctx = _localctx.clone();
-					{
-					recog.base.set_state(286);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(21,&mut recog.base)? {
-						1 =>{
-							{
-							/*recRuleLabeledAltStartAction*/
-							let mut tmp = ExpressionCastContextExt::new(&**ExpressionContextExt::new(_parentctx.clone(), _parentState));
-							recog.push_new_recursion_context(tmp.clone(), _startState, RULE_expression);
-							_localctx = tmp;
-							recog.base.set_state(278);
-							if !({recog.precpred(None, 5)}) {
-								Err(FailedPredicateError::new(&mut recog.base, Some("recog.precpred(None, 5)".to_owned()), None))?;
-							}
-							recog.base.set_state(279);
-							recog.base.match_token(AS,&mut recog.err_handler)?;
-
-							/*InvokeRule literal_complex_type*/
-							recog.base.set_state(280);
-							recog.literal_complex_type()?;
-
-							}
-						}
-					,
-						2 =>{
-							{
-							/*recRuleLabeledAltStartAction*/
-							let mut tmp = ExpressionSetComparisonSubqueryContextExt::new(&**ExpressionContextExt::new(_parentctx.clone(), _parentState));
-							recog.push_new_recursion_context(tmp.clone(), _startState, RULE_expression);
-							_localctx = tmp;
-							recog.base.set_state(281);
-							if !({recog.precpred(None, 1)}) {
-								Err(FailedPredicateError::new(&mut recog.base, Some("recog.precpred(None, 1)".to_owned()), None))?;
-							}
-							recog.base.set_state(282);
-							recog.base.match_token(COMPARISON,&mut recog.err_handler)?;
-
-							recog.base.set_state(283);
-							_la = recog.base.input.la(1);
-							if { !(_la==ALL || _la==ANY) } {
-								recog.err_handler.recover_inline(&mut recog.base)?;
-
-							}
-							else {
-								if  recog.base.input.la(1)==TOKEN_EOF { recog.base.matched_eof = true };
-								recog.err_handler.report_match(&mut recog.base);
-								recog.base.consume(&mut recog.err_handler);
-							}
-							recog.base.set_state(284);
-							recog.base.match_token(SUBQUERY,&mut recog.err_handler)?;
-
-							/*InvokeRule relation_ref*/
-							recog.base.set_state(285);
-							recog.relation_ref()?;
-
-							}
-						}
-
-						_ => {}
-					}
-					} 
-				}
-				recog.base.set_state(290);
-				recog.err_handler.sync(&mut recog.base)?;
-				_alt = recog.interpreter.adaptive_predict(22,&mut recog.base)?;
-			}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_) => {},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re)=>{
-			//_localctx.exception = re;
-			recog.err_handler.report_error(&mut recog.base, re);
-	        recog.err_handler.recover(&mut recog.base, re)?;}
-		}
-		recog.base.unroll_recursion_context(_parentctx);
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- expression_list ----------------
 pub type Expression_listContextAll<'input> = Expression_listContext<'input>;
 
-
-pub type Expression_listContext<'input> = BaseParserRuleContext<'input,Expression_listContextExt<'input>>;
+pub type Expression_listContext<'input> =
+    BaseParserRuleContext<'input, Expression_listContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Expression_listContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Expression_listContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Expression_listContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Expression_listContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Expression_listContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_expression_list(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_expression_list(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Expression_listContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expression_list(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Expression_listContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_expression_list(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_expression_list(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Expression_listContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_expression_list }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_expression_list }
-}
-antlr_rust::tid!{Expression_listContextExt<'a>}
-
-impl<'input> Expression_listContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Expression_listContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Expression_listContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Expression_listContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_expression_list(self);
+    }
 }
 
-pub trait Expression_listContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Expression_listContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Expression_listContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_expression_list
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_expression_list }
+}
+antlr_rust::tid! {Expression_listContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token LEFTPAREN
-/// Returns `None` if there is no child corresponding to token LEFTPAREN
-fn LEFTPAREN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTPAREN, 0)
-}
-fn expression_all(&self) ->  Vec<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn expression(&self, i: usize) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTPAREN
-/// Returns `None` if there is no child corresponding to token RIGHTPAREN
-fn RIGHTPAREN(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTPAREN, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMMA, i)
+impl<'input> Expression_listContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Expression_listContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Expression_listContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Expression_listContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Expression_listContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token LEFTPAREN
+    /// Returns `None` if there is no child corresponding to token LEFTPAREN
+    fn LEFTPAREN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTPAREN, 0)
+    }
+    fn expression_all(&self) -> Vec<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn expression(&self, i: usize) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTPAREN
+    /// Returns `None` if there is no child corresponding to token RIGHTPAREN
+    fn RIGHTPAREN(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTPAREN, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
 }
 
-impl<'input> Expression_listContextAttrs<'input> for Expression_listContext<'input>{}
+impl<'input> Expression_listContextAttrs<'input> for Expression_listContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn expression_list(&mut self,)
-	-> Result<Rc<Expression_listContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Expression_listContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 24, RULE_expression_list);
+    pub fn expression_list(&mut self) -> Result<Rc<Expression_listContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Expression_listContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 24, RULE_expression_list);
         let mut _localctx: Rc<Expression_listContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(291);
+                recog.base.match_token(LEFTPAREN, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(291);
-			recog.base.match_token(LEFTPAREN,&mut recog.err_handler)?;
+                /*InvokeRule expression*/
+                recog.base.set_state(292);
+                recog.expression_rec(0)?;
 
-			/*InvokeRule expression*/
-			recog.base.set_state(292);
-			recog.expression_rec(0)?;
+                recog.base.set_state(297);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                while _la == COMMA {
+                    {
+                        {
+                            recog.base.set_state(293);
+                            recog.base.match_token(COMMA, &mut recog.err_handler)?;
 
-			recog.base.set_state(297);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			while _la==COMMA {
-				{
-				{
-				recog.base.set_state(293);
-				recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                            /*InvokeRule expression*/
+                            recog.base.set_state(294);
+                            recog.expression_rec(0)?;
+                        }
+                    }
+                    recog.base.set_state(299);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _la = recog.base.input.la(1);
+                }
+                recog.base.set_state(300);
+                recog.base.match_token(RIGHTPAREN, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-				/*InvokeRule expression*/
-				recog.base.set_state(294);
-				recog.expression_rec(0)?;
-
-				}
-				}
-				recog.base.set_state(299);
-				recog.err_handler.sync(&mut recog.base)?;
-				_la = recog.base.input.la(1);
-			}
-			recog.base.set_state(300);
-			recog.base.match_token(RIGHTPAREN,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- constant ----------------
 pub type ConstantContextAll<'input> = ConstantContext<'input>;
 
-
-pub type ConstantContext<'input> = BaseParserRuleContext<'input,ConstantContextExt<'input>>;
+pub type ConstantContext<'input> = BaseParserRuleContext<'input, ConstantContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct ConstantContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct ConstantContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for ConstantContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ConstantContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ConstantContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_constant(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_constant(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ConstantContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_constant(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ConstantContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_constant(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_constant(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ConstantContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_constant }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_constant }
-}
-antlr_rust::tid!{ConstantContextExt<'a>}
-
-impl<'input> ConstantContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<ConstantContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,ConstantContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ConstantContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_constant(self);
+    }
 }
 
-pub trait ConstantContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<ConstantContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for ConstantContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_constant
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_constant }
+}
+antlr_rust::tid! {ConstantContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token NUMBER
-/// Returns `None` if there is no child corresponding to token NUMBER
-fn NUMBER(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NUMBER, 0)
-}
-/// Retrieves first TerminalNode corresponding to token UNDERSCORE
-/// Returns `None` if there is no child corresponding to token UNDERSCORE
-fn UNDERSCORE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(UNDERSCORE, 0)
-}
-fn literal_basic_type(&self) -> Option<Rc<Literal_basic_typeContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token STRING
-/// Returns `None` if there is no child corresponding to token STRING
-fn STRING(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(STRING, 0)
-}
-fn map_literal(&self) -> Option<Rc<Map_literalContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-fn struct_literal(&self) -> Option<Rc<Struct_literalContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token NULLVAL
-/// Returns `None` if there is no child corresponding to token NULLVAL
-fn NULLVAL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NULLVAL, 0)
-}
-/// Retrieves first TerminalNode corresponding to token TRUEVAL
-/// Returns `None` if there is no child corresponding to token TRUEVAL
-fn TRUEVAL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(TRUEVAL, 0)
-}
-/// Retrieves first TerminalNode corresponding to token FALSEVAL
-/// Returns `None` if there is no child corresponding to token FALSEVAL
-fn FALSEVAL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(FALSEVAL, 0)
+impl<'input> ConstantContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<ConstantContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            ConstantContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait ConstantContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<ConstantContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token NUMBER
+    /// Returns `None` if there is no child corresponding to token NUMBER
+    fn NUMBER(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NUMBER, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token UNDERSCORE
+    /// Returns `None` if there is no child corresponding to token UNDERSCORE
+    fn UNDERSCORE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(UNDERSCORE, 0)
+    }
+    fn literal_basic_type(&self) -> Option<Rc<Literal_basic_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token STRING
+    /// Returns `None` if there is no child corresponding to token STRING
+    fn STRING(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(STRING, 0)
+    }
+    fn map_literal(&self) -> Option<Rc<Map_literalContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    fn struct_literal(&self) -> Option<Rc<Struct_literalContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NULLVAL
+    /// Returns `None` if there is no child corresponding to token NULLVAL
+    fn NULLVAL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NULLVAL, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token TRUEVAL
+    /// Returns `None` if there is no child corresponding to token TRUEVAL
+    fn TRUEVAL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(TRUEVAL, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token FALSEVAL
+    /// Returns `None` if there is no child corresponding to token FALSEVAL
+    fn FALSEVAL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(FALSEVAL, 0)
+    }
 }
 
-impl<'input> ConstantContextAttrs<'input> for ConstantContext<'input>{}
+impl<'input> ConstantContextAttrs<'input> for ConstantContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn constant(&mut self,)
-	-> Result<Rc<ConstantContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = ConstantContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn constant(&mut self) -> Result<Rc<ConstantContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = ConstantContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 26, RULE_constant);
         let mut _localctx: Rc<ConstantContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(337);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.interpreter.adaptive_predict(31, &mut recog.base)? {
+                1 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        recog.base.set_state(302);
+                        recog.base.match_token(NUMBER, &mut recog.err_handler)?;
 
-			recog.base.set_state(337);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(31,&mut recog.base)? {
-				1 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					recog.base.set_state(302);
-					recog.base.match_token(NUMBER,&mut recog.err_handler)?;
+                        recog.base.set_state(305);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(24, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    recog.base.set_state(303);
+                                    recog.base.match_token(UNDERSCORE, &mut recog.err_handler)?;
 
-					recog.base.set_state(305);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(24,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							recog.base.set_state(303);
-							recog.base.match_token(UNDERSCORE,&mut recog.err_handler)?;
+                                    /*InvokeRule literal_basic_type*/
+                                    recog.base.set_state(304);
+                                    recog.literal_basic_type()?;
+                                }
+                            }
 
-							/*InvokeRule literal_basic_type*/
-							recog.base.set_state(304);
-							recog.literal_basic_type()?;
+                            _ => {}
+                        }
+                    }
+                }
+                2 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(307);
+                        recog.base.match_token(STRING, &mut recog.err_handler)?;
 
-							}
-						}
+                        recog.base.set_state(310);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(25, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    recog.base.set_state(308);
+                                    recog.base.match_token(UNDERSCORE, &mut recog.err_handler)?;
 
-						_ => {}
-					}
-					}
-				}
-			,
-				2 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(307);
-					recog.base.match_token(STRING,&mut recog.err_handler)?;
+                                    /*InvokeRule literal_basic_type*/
+                                    recog.base.set_state(309);
+                                    recog.literal_basic_type()?;
+                                }
+                            }
 
-					recog.base.set_state(310);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(25,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							recog.base.set_state(308);
-							recog.base.match_token(UNDERSCORE,&mut recog.err_handler)?;
+                            _ => {}
+                        }
+                    }
+                }
+                3 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 3);
+                    recog.base.enter_outer_alt(None, 3);
+                    {
+                        /*InvokeRule map_literal*/
+                        recog.base.set_state(312);
+                        recog.map_literal()?;
 
-							/*InvokeRule literal_basic_type*/
-							recog.base.set_state(309);
-							recog.literal_basic_type()?;
+                        recog.base.set_state(315);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(26, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    recog.base.set_state(313);
+                                    recog.base.match_token(UNDERSCORE, &mut recog.err_handler)?;
 
-							}
-						}
+                                    /*InvokeRule literal_complex_type*/
+                                    recog.base.set_state(314);
+                                    recog.literal_complex_type()?;
+                                }
+                            }
 
-						_ => {}
-					}
-					}
-				}
-			,
-				3 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 3);
-					recog.base.enter_outer_alt(None, 3);
-					{
-					/*InvokeRule map_literal*/
-					recog.base.set_state(312);
-					recog.map_literal()?;
+                            _ => {}
+                        }
+                    }
+                }
+                4 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 4);
+                    recog.base.enter_outer_alt(None, 4);
+                    {
+                        /*InvokeRule struct_literal*/
+                        recog.base.set_state(317);
+                        recog.struct_literal()?;
 
-					recog.base.set_state(315);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(26,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							recog.base.set_state(313);
-							recog.base.match_token(UNDERSCORE,&mut recog.err_handler)?;
+                        recog.base.set_state(320);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(27, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    recog.base.set_state(318);
+                                    recog.base.match_token(UNDERSCORE, &mut recog.err_handler)?;
 
-							/*InvokeRule literal_complex_type*/
-							recog.base.set_state(314);
-							recog.literal_complex_type()?;
+                                    /*InvokeRule literal_complex_type*/
+                                    recog.base.set_state(319);
+                                    recog.literal_complex_type()?;
+                                }
+                            }
 
-							}
-						}
+                            _ => {}
+                        }
+                    }
+                }
+                5 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 5);
+                    recog.base.enter_outer_alt(None, 5);
+                    {
+                        recog.base.set_state(322);
+                        recog.base.match_token(NULLVAL, &mut recog.err_handler)?;
 
-						_ => {}
-					}
-					}
-				}
-			,
-				4 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 4);
-					recog.base.enter_outer_alt(None, 4);
-					{
-					/*InvokeRule struct_literal*/
-					recog.base.set_state(317);
-					recog.struct_literal()?;
+                        recog.base.set_state(325);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(28, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    recog.base.set_state(323);
+                                    recog.base.match_token(UNDERSCORE, &mut recog.err_handler)?;
 
-					recog.base.set_state(320);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(27,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							recog.base.set_state(318);
-							recog.base.match_token(UNDERSCORE,&mut recog.err_handler)?;
+                                    /*InvokeRule literal_complex_type*/
+                                    recog.base.set_state(324);
+                                    recog.literal_complex_type()?;
+                                }
+                            }
 
-							/*InvokeRule literal_complex_type*/
-							recog.base.set_state(319);
-							recog.literal_complex_type()?;
+                            _ => {}
+                        }
+                    }
+                }
+                6 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 6);
+                    recog.base.enter_outer_alt(None, 6);
+                    {
+                        recog.base.set_state(327);
+                        recog.base.match_token(TRUEVAL, &mut recog.err_handler)?;
 
-							}
-						}
+                        recog.base.set_state(330);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(29, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    recog.base.set_state(328);
+                                    recog.base.match_token(UNDERSCORE, &mut recog.err_handler)?;
 
-						_ => {}
-					}
-					}
-				}
-			,
-				5 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 5);
-					recog.base.enter_outer_alt(None, 5);
-					{
-					recog.base.set_state(322);
-					recog.base.match_token(NULLVAL,&mut recog.err_handler)?;
+                                    /*InvokeRule literal_basic_type*/
+                                    recog.base.set_state(329);
+                                    recog.literal_basic_type()?;
+                                }
+                            }
 
-					recog.base.set_state(325);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(28,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							recog.base.set_state(323);
-							recog.base.match_token(UNDERSCORE,&mut recog.err_handler)?;
+                            _ => {}
+                        }
+                    }
+                }
+                7 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 7);
+                    recog.base.enter_outer_alt(None, 7);
+                    {
+                        recog.base.set_state(332);
+                        recog.base.match_token(FALSEVAL, &mut recog.err_handler)?;
 
-							/*InvokeRule literal_complex_type*/
-							recog.base.set_state(324);
-							recog.literal_complex_type()?;
+                        recog.base.set_state(335);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(30, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    recog.base.set_state(333);
+                                    recog.base.match_token(UNDERSCORE, &mut recog.err_handler)?;
 
-							}
-						}
+                                    /*InvokeRule literal_basic_type*/
+                                    recog.base.set_state(334);
+                                    recog.literal_basic_type()?;
+                                }
+                            }
 
-						_ => {}
-					}
-					}
-				}
-			,
-				6 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 6);
-					recog.base.enter_outer_alt(None, 6);
-					{
-					recog.base.set_state(327);
-					recog.base.match_token(TRUEVAL,&mut recog.err_handler)?;
+                            _ => {}
+                        }
+                    }
+                }
 
-					recog.base.set_state(330);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(29,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							recog.base.set_state(328);
-							recog.base.match_token(UNDERSCORE,&mut recog.err_handler)?;
+                _ => {}
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-							/*InvokeRule literal_basic_type*/
-							recog.base.set_state(329);
-							recog.literal_basic_type()?;
-
-							}
-						}
-
-						_ => {}
-					}
-					}
-				}
-			,
-				7 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 7);
-					recog.base.enter_outer_alt(None, 7);
-					{
-					recog.base.set_state(332);
-					recog.base.match_token(FALSEVAL,&mut recog.err_handler)?;
-
-					recog.base.set_state(335);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(30,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							recog.base.set_state(333);
-							recog.base.match_token(UNDERSCORE,&mut recog.err_handler)?;
-
-							/*InvokeRule literal_basic_type*/
-							recog.base.set_state(334);
-							recog.literal_basic_type()?;
-
-							}
-						}
-
-						_ => {}
-					}
-					}
-				}
-
-				_ => {}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- literal_basic_type ----------------
 pub type Literal_basic_typeContextAll<'input> = Literal_basic_typeContext<'input>;
 
-
-pub type Literal_basic_typeContext<'input> = BaseParserRuleContext<'input,Literal_basic_typeContextExt<'input>>;
+pub type Literal_basic_typeContext<'input> =
+    BaseParserRuleContext<'input, Literal_basic_typeContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Literal_basic_typeContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Literal_basic_typeContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Literal_basic_typeContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Literal_basic_typeContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Literal_basic_typeContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_literal_basic_type(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_literal_basic_type(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Literal_basic_typeContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_literal_basic_type(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_literal_basic_type(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Literal_basic_typeContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_literal_basic_type(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Literal_basic_typeContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_literal_basic_type(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Literal_basic_typeContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_literal_basic_type }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_literal_basic_type }
+impl<'input> CustomRuleContext<'input> for Literal_basic_typeContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_literal_basic_type
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_literal_basic_type }
 }
-antlr_rust::tid!{Literal_basic_typeContextExt<'a>}
+antlr_rust::tid! {Literal_basic_typeContextExt<'a>}
 
-impl<'input> Literal_basic_typeContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Literal_basic_typeContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Literal_basic_typeContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait Literal_basic_typeContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Literal_basic_typeContextExt<'input>>{
-
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token QUESTIONMARK
-/// Returns `None` if there is no child corresponding to token QUESTIONMARK
-fn QUESTIONMARK(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(QUESTIONMARK, 0)
-}
-fn literal_specifier(&self) -> Option<Rc<Literal_specifierContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
+impl<'input> Literal_basic_typeContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Literal_basic_typeContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Literal_basic_typeContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Literal_basic_typeContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Literal_basic_typeContextExt<'input>>
+{
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token QUESTIONMARK
+    /// Returns `None` if there is no child corresponding to token QUESTIONMARK
+    fn QUESTIONMARK(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(QUESTIONMARK, 0)
+    }
+    fn literal_specifier(&self) -> Option<Rc<Literal_specifierContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> Literal_basic_typeContextAttrs<'input> for Literal_basic_typeContext<'input>{}
+impl<'input> Literal_basic_typeContextAttrs<'input> for Literal_basic_typeContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn literal_basic_type(&mut self,)
-	-> Result<Rc<Literal_basic_typeContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Literal_basic_typeContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 28, RULE_literal_basic_type);
+    pub fn literal_basic_type(
+        &mut self,
+    ) -> Result<Rc<Literal_basic_typeContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Literal_basic_typeContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 28, RULE_literal_basic_type);
         let mut _localctx: Rc<Literal_basic_typeContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule id*/
+                recog.base.set_state(339);
+                recog.id()?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule id*/
-			recog.base.set_state(339);
-			recog.id()?;
+                recog.base.set_state(341);
+                recog.err_handler.sync(&mut recog.base)?;
+                match recog.interpreter.adaptive_predict(32, &mut recog.base)? {
+                    x if x == 1 => {
+                        recog.base.set_state(340);
+                        recog
+                            .base
+                            .match_token(QUESTIONMARK, &mut recog.err_handler)?;
+                    }
 
-			recog.base.set_state(341);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(32,&mut recog.base)? {
-				x if x == 1=>{
-					{
-					recog.base.set_state(340);
-					recog.base.match_token(QUESTIONMARK,&mut recog.err_handler)?;
+                    _ => {}
+                }
+                recog.base.set_state(344);
+                recog.err_handler.sync(&mut recog.base)?;
+                match recog.interpreter.adaptive_predict(33, &mut recog.base)? {
+                    x if x == 1 => {
+                        {
+                            /*InvokeRule literal_specifier*/
+                            recog.base.set_state(343);
+                            recog.literal_specifier()?;
+                        }
+                    }
 
-					}
-				}
+                    _ => {}
+                }
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-				_ => {}
-			}
-			recog.base.set_state(344);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(33,&mut recog.base)? {
-				x if x == 1=>{
-					{
-					/*InvokeRule literal_specifier*/
-					recog.base.set_state(343);
-					recog.literal_specifier()?;
-
-					}
-				}
-
-				_ => {}
-			}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- literal_complex_type ----------------
 pub type Literal_complex_typeContextAll<'input> = Literal_complex_typeContext<'input>;
 
-
-pub type Literal_complex_typeContext<'input> = BaseParserRuleContext<'input,Literal_complex_typeContextExt<'input>>;
+pub type Literal_complex_typeContext<'input> =
+    BaseParserRuleContext<'input, Literal_complex_typeContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Literal_complex_typeContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Literal_complex_typeContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Literal_complex_typeContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Literal_complex_typeContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Literal_complex_typeContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_literal_complex_type(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_literal_complex_type(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Literal_complex_typeContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_literal_complex_type(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Literal_complex_typeContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_literal_complex_type(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_literal_complex_type(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Literal_complex_typeContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_literal_complex_type }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_literal_complex_type }
-}
-antlr_rust::tid!{Literal_complex_typeContextExt<'a>}
-
-impl<'input> Literal_complex_typeContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Literal_complex_typeContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Literal_complex_typeContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Literal_complex_typeContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_literal_complex_type(self);
+    }
 }
 
-pub trait Literal_complex_typeContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Literal_complex_typeContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Literal_complex_typeContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_literal_complex_type
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_literal_complex_type }
+}
+antlr_rust::tid! {Literal_complex_typeContextExt<'a>}
 
-fn literal_basic_type(&self) -> Option<Rc<Literal_basic_typeContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token LIST
-/// Returns `None` if there is no child corresponding to token LIST
-fn LIST(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LIST, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTANGLEBRACKET
-/// Returns `None` if there is no child corresponding to token LEFTANGLEBRACKET
-fn LEFTANGLEBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTANGLEBRACKET, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTANGLEBRACKET
-/// Returns `None` if there is no child corresponding to token RIGHTANGLEBRACKET
-fn RIGHTANGLEBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTANGLEBRACKET, 0)
-}
-/// Retrieves first TerminalNode corresponding to token QUESTIONMARK
-/// Returns `None` if there is no child corresponding to token QUESTIONMARK
-fn QUESTIONMARK(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(QUESTIONMARK, 0)
-}
-fn literal_complex_type_all(&self) ->  Vec<Rc<Literal_complex_typeContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn literal_complex_type(&self, i: usize) -> Option<Rc<Literal_complex_typeContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token MAP
-/// Returns `None` if there is no child corresponding to token MAP
-fn MAP(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(MAP, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMMA, i)
-}
-/// Retrieves first TerminalNode corresponding to token STRUCT
-/// Returns `None` if there is no child corresponding to token STRUCT
-fn STRUCT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(STRUCT, 0)
+impl<'input> Literal_complex_typeContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Literal_complex_typeContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Literal_complex_typeContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Literal_complex_typeContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Literal_complex_typeContextExt<'input>>
+{
+    fn literal_basic_type(&self) -> Option<Rc<Literal_basic_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LIST
+    /// Returns `None` if there is no child corresponding to token LIST
+    fn LIST(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LIST, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTANGLEBRACKET
+    /// Returns `None` if there is no child corresponding to token LEFTANGLEBRACKET
+    fn LEFTANGLEBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTANGLEBRACKET, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTANGLEBRACKET
+    /// Returns `None` if there is no child corresponding to token RIGHTANGLEBRACKET
+    fn RIGHTANGLEBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTANGLEBRACKET, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token QUESTIONMARK
+    /// Returns `None` if there is no child corresponding to token QUESTIONMARK
+    fn QUESTIONMARK(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(QUESTIONMARK, 0)
+    }
+    fn literal_complex_type_all(&self) -> Vec<Rc<Literal_complex_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn literal_complex_type(&self, i: usize) -> Option<Rc<Literal_complex_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token MAP
+    /// Returns `None` if there is no child corresponding to token MAP
+    fn MAP(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(MAP, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
+    /// Retrieves first TerminalNode corresponding to token STRUCT
+    /// Returns `None` if there is no child corresponding to token STRUCT
+    fn STRUCT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(STRUCT, 0)
+    }
 }
 
-impl<'input> Literal_complex_typeContextAttrs<'input> for Literal_complex_typeContext<'input>{}
+impl<'input> Literal_complex_typeContextAttrs<'input> for Literal_complex_typeContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn literal_complex_type(&mut self,)
-	-> Result<Rc<Literal_complex_typeContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Literal_complex_typeContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 30, RULE_literal_complex_type);
+    pub fn literal_complex_type(
+        &mut self,
+    ) -> Result<Rc<Literal_complex_typeContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Literal_complex_typeContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 30, RULE_literal_complex_type);
         let mut _localctx: Rc<Literal_complex_typeContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(387);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.base.input.la(1) {
+                NAMED | SCHEMA | FILTER | GROUPING | MEASURE | SORT | COUNT | TYPE | EMIT | ALL
+                | ANY | COMPARISON | SOURCE | ROOT | NULLVAL | IDENTIFIER => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        /*InvokeRule literal_basic_type*/
+                        recog.base.set_state(346);
+                        recog.literal_basic_type()?;
+                    }
+                }
 
-			recog.base.set_state(387);
-			recog.err_handler.sync(&mut recog.base)?;
-			match recog.base.input.la(1) {
-			 NAMED | SCHEMA | FILTER | GROUPING | MEASURE | SORT | COUNT | TYPE |
-			 EMIT | ALL | ANY | COMPARISON | SOURCE | ROOT | NULLVAL | IDENTIFIER 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					/*InvokeRule literal_basic_type*/
-					recog.base.set_state(346);
-					recog.literal_basic_type()?;
+                LIST => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(347);
+                        recog.base.match_token(LIST, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(349);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == QUESTIONMARK {
+                            {
+                                recog.base.set_state(348);
+                                recog
+                                    .base
+                                    .match_token(QUESTIONMARK, &mut recog.err_handler)?;
+                            }
+                        }
 
-			 LIST 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(347);
-					recog.base.match_token(LIST,&mut recog.err_handler)?;
+                        recog.base.set_state(351);
+                        recog
+                            .base
+                            .match_token(LEFTANGLEBRACKET, &mut recog.err_handler)?;
 
-					recog.base.set_state(349);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==QUESTIONMARK {
-						{
-						recog.base.set_state(348);
-						recog.base.match_token(QUESTIONMARK,&mut recog.err_handler)?;
+                        recog.base.set_state(353);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if (((_la - 5) & !0x3f) == 0
+                            && ((1usize << (_la - 5))
+                                & ((1usize << (NAMED - 5))
+                                    | (1usize << (SCHEMA - 5))
+                                    | (1usize << (FILTER - 5))
+                                    | (1usize << (GROUPING - 5))
+                                    | (1usize << (MEASURE - 5))
+                                    | (1usize << (SORT - 5))
+                                    | (1usize << (COUNT - 5))
+                                    | (1usize << (TYPE - 5))
+                                    | (1usize << (EMIT - 5))
+                                    | (1usize << (ALL - 5))
+                                    | (1usize << (ANY - 5))
+                                    | (1usize << (COMPARISON - 5))
+                                    | (1usize << (SOURCE - 5))
+                                    | (1usize << (ROOT - 5))))
+                                != 0)
+                            || (((_la - 47) & !0x3f) == 0
+                                && ((1usize << (_la - 47))
+                                    & ((1usize << (NULLVAL - 47))
+                                        | (1usize << (LIST - 47))
+                                        | (1usize << (MAP - 47))
+                                        | (1usize << (STRUCT - 47))
+                                        | (1usize << (IDENTIFIER - 47))))
+                                    != 0)
+                        {
+                            {
+                                /*InvokeRule literal_complex_type*/
+                                recog.base.set_state(352);
+                                recog.literal_complex_type()?;
+                            }
+                        }
 
-						}
-					}
+                        recog.base.set_state(355);
+                        recog
+                            .base
+                            .match_token(RIGHTANGLEBRACKET, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(351);
-					recog.base.match_token(LEFTANGLEBRACKET,&mut recog.err_handler)?;
+                MAP => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 3);
+                    recog.base.enter_outer_alt(None, 3);
+                    {
+                        recog.base.set_state(356);
+                        recog.base.match_token(MAP, &mut recog.err_handler)?;
 
-					recog.base.set_state(353);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if ((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || ((((_la - 47)) & !0x3f) == 0 && ((1usize << (_la - 47)) & ((1usize << (NULLVAL - 47)) | (1usize << (LIST - 47)) | (1usize << (MAP - 47)) | (1usize << (STRUCT - 47)) | (1usize << (IDENTIFIER - 47)))) != 0) {
-						{
-						/*InvokeRule literal_complex_type*/
-						recog.base.set_state(352);
-						recog.literal_complex_type()?;
+                        recog.base.set_state(358);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == QUESTIONMARK {
+                            {
+                                recog.base.set_state(357);
+                                recog
+                                    .base
+                                    .match_token(QUESTIONMARK, &mut recog.err_handler)?;
+                            }
+                        }
 
-						}
-					}
+                        recog.base.set_state(360);
+                        recog
+                            .base
+                            .match_token(LEFTANGLEBRACKET, &mut recog.err_handler)?;
 
-					recog.base.set_state(355);
-					recog.base.match_token(RIGHTANGLEBRACKET,&mut recog.err_handler)?;
+                        recog.base.set_state(362);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        match recog.interpreter.adaptive_predict(37, &mut recog.base)? {
+                            x if x == 1 => {
+                                {
+                                    /*InvokeRule literal_basic_type*/
+                                    recog.base.set_state(361);
+                                    recog.literal_basic_type()?;
+                                }
+                            }
 
-					}
-				}
+                            _ => {}
+                        }
+                        recog.base.set_state(365);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == COMMA {
+                            {
+                                recog.base.set_state(364);
+                                recog.base.match_token(COMMA, &mut recog.err_handler)?;
+                            }
+                        }
 
-			 MAP 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 3);
-					recog.base.enter_outer_alt(None, 3);
-					{
-					recog.base.set_state(356);
-					recog.base.match_token(MAP,&mut recog.err_handler)?;
+                        recog.base.set_state(368);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if (((_la - 5) & !0x3f) == 0
+                            && ((1usize << (_la - 5))
+                                & ((1usize << (NAMED - 5))
+                                    | (1usize << (SCHEMA - 5))
+                                    | (1usize << (FILTER - 5))
+                                    | (1usize << (GROUPING - 5))
+                                    | (1usize << (MEASURE - 5))
+                                    | (1usize << (SORT - 5))
+                                    | (1usize << (COUNT - 5))
+                                    | (1usize << (TYPE - 5))
+                                    | (1usize << (EMIT - 5))
+                                    | (1usize << (ALL - 5))
+                                    | (1usize << (ANY - 5))
+                                    | (1usize << (COMPARISON - 5))
+                                    | (1usize << (SOURCE - 5))
+                                    | (1usize << (ROOT - 5))))
+                                != 0)
+                            || (((_la - 47) & !0x3f) == 0
+                                && ((1usize << (_la - 47))
+                                    & ((1usize << (NULLVAL - 47))
+                                        | (1usize << (LIST - 47))
+                                        | (1usize << (MAP - 47))
+                                        | (1usize << (STRUCT - 47))
+                                        | (1usize << (IDENTIFIER - 47))))
+                                    != 0)
+                        {
+                            {
+                                /*InvokeRule literal_complex_type*/
+                                recog.base.set_state(367);
+                                recog.literal_complex_type()?;
+                            }
+                        }
 
-					recog.base.set_state(358);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==QUESTIONMARK {
-						{
-						recog.base.set_state(357);
-						recog.base.match_token(QUESTIONMARK,&mut recog.err_handler)?;
+                        recog.base.set_state(370);
+                        recog
+                            .base
+                            .match_token(RIGHTANGLEBRACKET, &mut recog.err_handler)?;
+                    }
+                }
 
-						}
-					}
+                STRUCT => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 4);
+                    recog.base.enter_outer_alt(None, 4);
+                    {
+                        recog.base.set_state(371);
+                        recog.base.match_token(STRUCT, &mut recog.err_handler)?;
 
-					recog.base.set_state(360);
-					recog.base.match_token(LEFTANGLEBRACKET,&mut recog.err_handler)?;
+                        recog.base.set_state(373);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == QUESTIONMARK {
+                            {
+                                recog.base.set_state(372);
+                                recog
+                                    .base
+                                    .match_token(QUESTIONMARK, &mut recog.err_handler)?;
+                            }
+                        }
 
-					recog.base.set_state(362);
-					recog.err_handler.sync(&mut recog.base)?;
-					match  recog.interpreter.adaptive_predict(37,&mut recog.base)? {
-						x if x == 1=>{
-							{
-							/*InvokeRule literal_basic_type*/
-							recog.base.set_state(361);
-							recog.literal_basic_type()?;
+                        recog.base.set_state(375);
+                        recog
+                            .base
+                            .match_token(LEFTANGLEBRACKET, &mut recog.err_handler)?;
 
-							}
-						}
+                        recog.base.set_state(377);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if (((_la - 5) & !0x3f) == 0
+                            && ((1usize << (_la - 5))
+                                & ((1usize << (NAMED - 5))
+                                    | (1usize << (SCHEMA - 5))
+                                    | (1usize << (FILTER - 5))
+                                    | (1usize << (GROUPING - 5))
+                                    | (1usize << (MEASURE - 5))
+                                    | (1usize << (SORT - 5))
+                                    | (1usize << (COUNT - 5))
+                                    | (1usize << (TYPE - 5))
+                                    | (1usize << (EMIT - 5))
+                                    | (1usize << (ALL - 5))
+                                    | (1usize << (ANY - 5))
+                                    | (1usize << (COMPARISON - 5))
+                                    | (1usize << (SOURCE - 5))
+                                    | (1usize << (ROOT - 5))))
+                                != 0)
+                            || (((_la - 47) & !0x3f) == 0
+                                && ((1usize << (_la - 47))
+                                    & ((1usize << (NULLVAL - 47))
+                                        | (1usize << (LIST - 47))
+                                        | (1usize << (MAP - 47))
+                                        | (1usize << (STRUCT - 47))
+                                        | (1usize << (IDENTIFIER - 47))))
+                                    != 0)
+                        {
+                            {
+                                /*InvokeRule literal_complex_type*/
+                                recog.base.set_state(376);
+                                recog.literal_complex_type()?;
+                            }
+                        }
 
-						_ => {}
-					}
-					recog.base.set_state(365);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==COMMA {
-						{
-						recog.base.set_state(364);
-						recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                        recog.base.set_state(383);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        while _la == COMMA {
+                            {
+                                {
+                                    recog.base.set_state(379);
+                                    recog.base.match_token(COMMA, &mut recog.err_handler)?;
 
-						}
-					}
+                                    /*InvokeRule literal_complex_type*/
+                                    recog.base.set_state(380);
+                                    recog.literal_complex_type()?;
+                                }
+                            }
+                            recog.base.set_state(385);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _la = recog.base.input.la(1);
+                        }
+                        recog.base.set_state(386);
+                        recog
+                            .base
+                            .match_token(RIGHTANGLEBRACKET, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(368);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if ((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || ((((_la - 47)) & !0x3f) == 0 && ((1usize << (_la - 47)) & ((1usize << (NULLVAL - 47)) | (1usize << (LIST - 47)) | (1usize << (MAP - 47)) | (1usize << (STRUCT - 47)) | (1usize << (IDENTIFIER - 47)))) != 0) {
-						{
-						/*InvokeRule literal_complex_type*/
-						recog.base.set_state(367);
-						recog.literal_complex_type()?;
+                _ => Err(ANTLRError::NoAltError(NoViableAltError::new(
+                    &mut recog.base,
+                )))?,
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-						}
-					}
-
-					recog.base.set_state(370);
-					recog.base.match_token(RIGHTANGLEBRACKET,&mut recog.err_handler)?;
-
-					}
-				}
-
-			 STRUCT 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 4);
-					recog.base.enter_outer_alt(None, 4);
-					{
-					recog.base.set_state(371);
-					recog.base.match_token(STRUCT,&mut recog.err_handler)?;
-
-					recog.base.set_state(373);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==QUESTIONMARK {
-						{
-						recog.base.set_state(372);
-						recog.base.match_token(QUESTIONMARK,&mut recog.err_handler)?;
-
-						}
-					}
-
-					recog.base.set_state(375);
-					recog.base.match_token(LEFTANGLEBRACKET,&mut recog.err_handler)?;
-
-					recog.base.set_state(377);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if ((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || ((((_la - 47)) & !0x3f) == 0 && ((1usize << (_la - 47)) & ((1usize << (NULLVAL - 47)) | (1usize << (LIST - 47)) | (1usize << (MAP - 47)) | (1usize << (STRUCT - 47)) | (1usize << (IDENTIFIER - 47)))) != 0) {
-						{
-						/*InvokeRule literal_complex_type*/
-						recog.base.set_state(376);
-						recog.literal_complex_type()?;
-
-						}
-					}
-
-					recog.base.set_state(383);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					while _la==COMMA {
-						{
-						{
-						recog.base.set_state(379);
-						recog.base.match_token(COMMA,&mut recog.err_handler)?;
-
-						/*InvokeRule literal_complex_type*/
-						recog.base.set_state(380);
-						recog.literal_complex_type()?;
-
-						}
-						}
-						recog.base.set_state(385);
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-					}
-					recog.base.set_state(386);
-					recog.base.match_token(RIGHTANGLEBRACKET,&mut recog.err_handler)?;
-
-					}
-				}
-
-				_ => Err(ANTLRError::NoAltError(NoViableAltError::new(&mut recog.base)))?
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- literal_specifier ----------------
 pub type Literal_specifierContextAll<'input> = Literal_specifierContext<'input>;
 
-
-pub type Literal_specifierContext<'input> = BaseParserRuleContext<'input,Literal_specifierContextExt<'input>>;
+pub type Literal_specifierContext<'input> =
+    BaseParserRuleContext<'input, Literal_specifierContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Literal_specifierContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Literal_specifierContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Literal_specifierContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Literal_specifierContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Literal_specifierContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_literal_specifier(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_literal_specifier(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Literal_specifierContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_literal_specifier(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Literal_specifierContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_literal_specifier(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_literal_specifier(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Literal_specifierContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_literal_specifier }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_literal_specifier }
-}
-antlr_rust::tid!{Literal_specifierContextExt<'a>}
-
-impl<'input> Literal_specifierContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Literal_specifierContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Literal_specifierContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Literal_specifierContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_literal_specifier(self);
+    }
 }
 
-pub trait Literal_specifierContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Literal_specifierContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Literal_specifierContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_literal_specifier
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_literal_specifier }
+}
+antlr_rust::tid! {Literal_specifierContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token LEFTANGLEBRACKET
-/// Returns `None` if there is no child corresponding to token LEFTANGLEBRACKET
-fn LEFTANGLEBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTANGLEBRACKET, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token NUMBER in current rule
-fn NUMBER_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token NUMBER, starting from 0.
-/// Returns `None` if number of children corresponding to token NUMBER is less or equal than `i`.
-fn NUMBER(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NUMBER, i)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTANGLEBRACKET
-/// Returns `None` if there is no child corresponding to token RIGHTANGLEBRACKET
-fn RIGHTANGLEBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTANGLEBRACKET, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMMA, i)
+impl<'input> Literal_specifierContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Literal_specifierContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Literal_specifierContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Literal_specifierContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Literal_specifierContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token LEFTANGLEBRACKET
+    /// Returns `None` if there is no child corresponding to token LEFTANGLEBRACKET
+    fn LEFTANGLEBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTANGLEBRACKET, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token NUMBER in current rule
+    fn NUMBER_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token NUMBER, starting from 0.
+    /// Returns `None` if number of children corresponding to token NUMBER is less or equal than `i`.
+    fn NUMBER(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NUMBER, i)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTANGLEBRACKET
+    /// Returns `None` if there is no child corresponding to token RIGHTANGLEBRACKET
+    fn RIGHTANGLEBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTANGLEBRACKET, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
 }
 
-impl<'input> Literal_specifierContextAttrs<'input> for Literal_specifierContext<'input>{}
+impl<'input> Literal_specifierContextAttrs<'input> for Literal_specifierContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn literal_specifier(&mut self,)
-	-> Result<Rc<Literal_specifierContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Literal_specifierContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 32, RULE_literal_specifier);
+    pub fn literal_specifier(
+        &mut self,
+    ) -> Result<Rc<Literal_specifierContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Literal_specifierContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 32, RULE_literal_specifier);
         let mut _localctx: Rc<Literal_specifierContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(389);
+                recog
+                    .base
+                    .match_token(LEFTANGLEBRACKET, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(389);
-			recog.base.match_token(LEFTANGLEBRACKET,&mut recog.err_handler)?;
+                recog.base.set_state(390);
+                recog.base.match_token(NUMBER, &mut recog.err_handler)?;
 
-			recog.base.set_state(390);
-			recog.base.match_token(NUMBER,&mut recog.err_handler)?;
+                recog.base.set_state(395);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                while _la == COMMA {
+                    {
+                        {
+                            recog.base.set_state(391);
+                            recog.base.match_token(COMMA, &mut recog.err_handler)?;
 
-			recog.base.set_state(395);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			while _la==COMMA {
-				{
-				{
-				recog.base.set_state(391);
-				recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                            recog.base.set_state(392);
+                            recog.base.match_token(NUMBER, &mut recog.err_handler)?;
+                        }
+                    }
+                    recog.base.set_state(397);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _la = recog.base.input.la(1);
+                }
+                recog.base.set_state(398);
+                recog
+                    .base
+                    .match_token(RIGHTANGLEBRACKET, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-				recog.base.set_state(392);
-				recog.base.match_token(NUMBER,&mut recog.err_handler)?;
-
-				}
-				}
-				recog.base.set_state(397);
-				recog.err_handler.sync(&mut recog.base)?;
-				_la = recog.base.input.la(1);
-			}
-			recog.base.set_state(398);
-			recog.base.match_token(RIGHTANGLEBRACKET,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- map_literal ----------------
 pub type Map_literalContextAll<'input> = Map_literalContext<'input>;
 
-
-pub type Map_literalContext<'input> = BaseParserRuleContext<'input,Map_literalContextExt<'input>>;
+pub type Map_literalContext<'input> = BaseParserRuleContext<'input, Map_literalContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Map_literalContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Map_literalContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Map_literalContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Map_literalContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Map_literalContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_map_literal(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_map_literal(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Map_literalContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_map_literal(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Map_literalContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_map_literal(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_map_literal(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Map_literalContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_map_literal }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_map_literal }
-}
-antlr_rust::tid!{Map_literalContextExt<'a>}
-
-impl<'input> Map_literalContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Map_literalContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Map_literalContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Map_literalContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_map_literal(self);
+    }
 }
 
-pub trait Map_literalContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Map_literalContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Map_literalContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_map_literal
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_map_literal }
+}
+antlr_rust::tid! {Map_literalContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-fn map_literal_value_all(&self) ->  Vec<Rc<Map_literal_valueContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn map_literal_value(&self, i: usize) -> Option<Rc<Map_literal_valueContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMMA, i)
+impl<'input> Map_literalContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Map_literalContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Map_literalContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Map_literalContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Map_literalContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    fn map_literal_value_all(&self) -> Vec<Rc<Map_literal_valueContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn map_literal_value(&self, i: usize) -> Option<Rc<Map_literal_valueContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
 }
 
-impl<'input> Map_literalContextAttrs<'input> for Map_literalContext<'input>{}
+impl<'input> Map_literalContextAttrs<'input> for Map_literalContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn map_literal(&mut self,)
-	-> Result<Rc<Map_literalContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Map_literalContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 34, RULE_map_literal);
+    pub fn map_literal(&mut self) -> Result<Rc<Map_literalContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = Map_literalContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 34, RULE_map_literal);
         let mut _localctx: Rc<Map_literalContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(413);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.interpreter.adaptive_predict(46, &mut recog.base)? {
+                1 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        recog.base.set_state(400);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-			recog.base.set_state(413);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(46,&mut recog.base)? {
-				1 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					recog.base.set_state(400);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                        /*InvokeRule map_literal_value*/
+                        recog.base.set_state(401);
+                        recog.map_literal_value()?;
 
-					/*InvokeRule map_literal_value*/
-					recog.base.set_state(401);
-					recog.map_literal_value()?;
+                        recog.base.set_state(406);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        while _la == COMMA {
+                            {
+                                {
+                                    recog.base.set_state(402);
+                                    recog.base.match_token(COMMA, &mut recog.err_handler)?;
 
-					recog.base.set_state(406);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					while _la==COMMA {
-						{
-						{
-						recog.base.set_state(402);
-						recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                                    /*InvokeRule map_literal_value*/
+                                    recog.base.set_state(403);
+                                    recog.map_literal_value()?;
+                                }
+                            }
+                            recog.base.set_state(408);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _la = recog.base.input.la(1);
+                        }
+                        recog.base.set_state(409);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
+                2 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(411);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-						/*InvokeRule map_literal_value*/
-						recog.base.set_state(403);
-						recog.map_literal_value()?;
+                        recog.base.set_state(412);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
 
-						}
-						}
-						recog.base.set_state(408);
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-					}
-					recog.base.set_state(409);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
+                _ => {}
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-			,
-				2 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(411);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
-
-					recog.base.set_state(412);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-					}
-				}
-
-				_ => {}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- map_literal_value ----------------
 pub type Map_literal_valueContextAll<'input> = Map_literal_valueContext<'input>;
 
-
-pub type Map_literal_valueContext<'input> = BaseParserRuleContext<'input,Map_literal_valueContextExt<'input>>;
+pub type Map_literal_valueContext<'input> =
+    BaseParserRuleContext<'input, Map_literal_valueContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Map_literal_valueContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Map_literal_valueContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Map_literal_valueContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Map_literal_valueContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Map_literal_valueContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_map_literal_value(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_map_literal_value(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Map_literal_valueContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_map_literal_value(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_map_literal_value(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Map_literal_valueContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_map_literal_value(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Map_literal_valueContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_map_literal_value(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Map_literal_valueContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_map_literal_value }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_map_literal_value }
+impl<'input> CustomRuleContext<'input> for Map_literal_valueContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_map_literal_value
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_map_literal_value }
 }
-antlr_rust::tid!{Map_literal_valueContextExt<'a>}
+antlr_rust::tid! {Map_literal_valueContextExt<'a>}
 
-impl<'input> Map_literal_valueContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Map_literal_valueContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Map_literal_valueContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait Map_literal_valueContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Map_literal_valueContextExt<'input>>{
-
-fn constant_all(&self) ->  Vec<Rc<ConstantContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn constant(&self, i: usize) -> Option<Rc<ConstantContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token COLON
-/// Returns `None` if there is no child corresponding to token COLON
-fn COLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COLON, 0)
+impl<'input> Map_literal_valueContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Map_literal_valueContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Map_literal_valueContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Map_literal_valueContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Map_literal_valueContextExt<'input>>
+{
+    fn constant_all(&self) -> Vec<Rc<ConstantContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn constant(&self, i: usize) -> Option<Rc<ConstantContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token COLON
+    /// Returns `None` if there is no child corresponding to token COLON
+    fn COLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COLON, 0)
+    }
 }
 
-impl<'input> Map_literal_valueContextAttrs<'input> for Map_literal_valueContext<'input>{}
+impl<'input> Map_literal_valueContextAttrs<'input> for Map_literal_valueContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn map_literal_value(&mut self,)
-	-> Result<Rc<Map_literal_valueContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Map_literal_valueContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 36, RULE_map_literal_value);
+    pub fn map_literal_value(
+        &mut self,
+    ) -> Result<Rc<Map_literal_valueContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Map_literal_valueContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 36, RULE_map_literal_value);
         let mut _localctx: Rc<Map_literal_valueContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule constant*/
+                recog.base.set_state(415);
+                recog.constant()?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule constant*/
-			recog.base.set_state(415);
-			recog.constant()?;
+                recog.base.set_state(416);
+                recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-			recog.base.set_state(416);
-			recog.base.match_token(COLON,&mut recog.err_handler)?;
+                /*InvokeRule constant*/
+                recog.base.set_state(417);
+                recog.constant()?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			/*InvokeRule constant*/
-			recog.base.set_state(417);
-			recog.constant()?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- struct_literal ----------------
 pub type Struct_literalContextAll<'input> = Struct_literalContext<'input>;
 
-
-pub type Struct_literalContext<'input> = BaseParserRuleContext<'input,Struct_literalContextExt<'input>>;
+pub type Struct_literalContext<'input> =
+    BaseParserRuleContext<'input, Struct_literalContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Struct_literalContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Struct_literalContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Struct_literalContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Struct_literalContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Struct_literalContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_struct_literal(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_struct_literal(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Struct_literalContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_struct_literal(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Struct_literalContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_struct_literal(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_struct_literal(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Struct_literalContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_struct_literal }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_struct_literal }
-}
-antlr_rust::tid!{Struct_literalContextExt<'a>}
-
-impl<'input> Struct_literalContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Struct_literalContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Struct_literalContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Struct_literalContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_struct_literal(self);
+    }
 }
 
-pub trait Struct_literalContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Struct_literalContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Struct_literalContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_struct_literal
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_struct_literal }
+}
+antlr_rust::tid! {Struct_literalContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-fn constant_all(&self) ->  Vec<Rc<ConstantContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn constant(&self, i: usize) -> Option<Rc<ConstantContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMMA, i)
+impl<'input> Struct_literalContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Struct_literalContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Struct_literalContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Struct_literalContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Struct_literalContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    fn constant_all(&self) -> Vec<Rc<ConstantContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn constant(&self, i: usize) -> Option<Rc<ConstantContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
 }
 
-impl<'input> Struct_literalContextAttrs<'input> for Struct_literalContext<'input>{}
+impl<'input> Struct_literalContextAttrs<'input> for Struct_literalContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn struct_literal(&mut self,)
-	-> Result<Rc<Struct_literalContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Struct_literalContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 38, RULE_struct_literal);
+    pub fn struct_literal(&mut self) -> Result<Rc<Struct_literalContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Struct_literalContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 38, RULE_struct_literal);
         let mut _localctx: Rc<Struct_literalContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(432);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.interpreter.adaptive_predict(48, &mut recog.base)? {
+                1 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        recog.base.set_state(419);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-			recog.base.set_state(432);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(48,&mut recog.base)? {
-				1 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					recog.base.set_state(419);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                        /*InvokeRule constant*/
+                        recog.base.set_state(420);
+                        recog.constant()?;
 
-					/*InvokeRule constant*/
-					recog.base.set_state(420);
-					recog.constant()?;
+                        recog.base.set_state(425);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        while _la == COMMA {
+                            {
+                                {
+                                    recog.base.set_state(421);
+                                    recog.base.match_token(COMMA, &mut recog.err_handler)?;
 
-					recog.base.set_state(425);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					while _la==COMMA {
-						{
-						{
-						recog.base.set_state(421);
-						recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                                    /*InvokeRule constant*/
+                                    recog.base.set_state(422);
+                                    recog.constant()?;
+                                }
+                            }
+                            recog.base.set_state(427);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _la = recog.base.input.la(1);
+                        }
+                        recog.base.set_state(428);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
+                2 => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(430);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-						/*InvokeRule constant*/
-						recog.base.set_state(422);
-						recog.constant()?;
+                        recog.base.set_state(431);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
 
-						}
-						}
-						recog.base.set_state(427);
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-					}
-					recog.base.set_state(428);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
+                _ => {}
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-			,
-				2 =>{
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(430);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
-
-					recog.base.set_state(431);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-					}
-				}
-
-				_ => {}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- column_name ----------------
 pub type Column_nameContextAll<'input> = Column_nameContext<'input>;
 
-
-pub type Column_nameContext<'input> = BaseParserRuleContext<'input,Column_nameContextExt<'input>>;
+pub type Column_nameContext<'input> = BaseParserRuleContext<'input, Column_nameContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Column_nameContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Column_nameContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Column_nameContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Column_nameContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Column_nameContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_column_name(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_column_name(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Column_nameContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_column_name(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_column_name(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Column_nameContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_column_name(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Column_nameContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_column_name(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Column_nameContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_column_name }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_column_name }
+impl<'input> CustomRuleContext<'input> for Column_nameContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_column_name
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_column_name }
 }
-antlr_rust::tid!{Column_nameContextExt<'a>}
+antlr_rust::tid! {Column_nameContextExt<'a>}
 
-impl<'input> Column_nameContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Column_nameContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Column_nameContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait Column_nameContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Column_nameContextExt<'input>>{
-
-fn id_all(&self) ->  Vec<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token PERIOD
-/// Returns `None` if there is no child corresponding to token PERIOD
-fn PERIOD(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(PERIOD, 0)
+impl<'input> Column_nameContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Column_nameContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Column_nameContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Column_nameContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Column_nameContextExt<'input>>
+{
+    fn id_all(&self) -> Vec<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token PERIOD
+    /// Returns `None` if there is no child corresponding to token PERIOD
+    fn PERIOD(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(PERIOD, 0)
+    }
 }
 
-impl<'input> Column_nameContextAttrs<'input> for Column_nameContext<'input>{}
+impl<'input> Column_nameContextAttrs<'input> for Column_nameContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn column_name(&mut self,)
-	-> Result<Rc<Column_nameContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Column_nameContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 40, RULE_column_name);
+    pub fn column_name(&mut self) -> Result<Rc<Column_nameContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = Column_nameContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 40, RULE_column_name);
         let mut _localctx: Rc<Column_nameContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(437);
+                recog.err_handler.sync(&mut recog.base)?;
+                match recog.interpreter.adaptive_predict(49, &mut recog.base)? {
+                    x if x == 1 => {
+                        {
+                            /*InvokeRule id*/
+                            recog.base.set_state(434);
+                            recog.id()?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(437);
-			recog.err_handler.sync(&mut recog.base)?;
-			match  recog.interpreter.adaptive_predict(49,&mut recog.base)? {
-				x if x == 1=>{
-					{
-					/*InvokeRule id*/
-					recog.base.set_state(434);
-					recog.id()?;
+                            recog.base.set_state(435);
+                            recog.base.match_token(PERIOD, &mut recog.err_handler)?;
+                        }
+                    }
 
-					recog.base.set_state(435);
-					recog.base.match_token(PERIOD,&mut recog.err_handler)?;
+                    _ => {}
+                }
+                /*InvokeRule id*/
+                recog.base.set_state(439);
+                recog.id()?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-
-				_ => {}
-			}
-			/*InvokeRule id*/
-			recog.base.set_state(439);
-			recog.id()?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- source_reference ----------------
 pub type Source_referenceContextAll<'input> = Source_referenceContext<'input>;
 
-
-pub type Source_referenceContext<'input> = BaseParserRuleContext<'input,Source_referenceContextExt<'input>>;
+pub type Source_referenceContext<'input> =
+    BaseParserRuleContext<'input, Source_referenceContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Source_referenceContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Source_referenceContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Source_referenceContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Source_referenceContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Source_referenceContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_source_reference(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_source_reference(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Source_referenceContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_source_reference(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_source_reference(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Source_referenceContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_source_reference(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Source_referenceContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_source_reference(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Source_referenceContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_source_reference }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_source_reference }
+impl<'input> CustomRuleContext<'input> for Source_referenceContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_source_reference
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_source_reference }
 }
-antlr_rust::tid!{Source_referenceContextExt<'a>}
+antlr_rust::tid! {Source_referenceContextExt<'a>}
 
-impl<'input> Source_referenceContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Source_referenceContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Source_referenceContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait Source_referenceContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Source_referenceContextExt<'input>>{
-
-/// Retrieves first TerminalNode corresponding to token SOURCE
-/// Returns `None` if there is no child corresponding to token SOURCE
-fn SOURCE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SOURCE, 0)
-}
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
+impl<'input> Source_referenceContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Source_referenceContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Source_referenceContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Source_referenceContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Source_referenceContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token SOURCE
+    /// Returns `None` if there is no child corresponding to token SOURCE
+    fn SOURCE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SOURCE, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> Source_referenceContextAttrs<'input> for Source_referenceContext<'input>{}
+impl<'input> Source_referenceContextAttrs<'input> for Source_referenceContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn source_reference(&mut self,)
-	-> Result<Rc<Source_referenceContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Source_referenceContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 42, RULE_source_reference);
+    pub fn source_reference(
+        &mut self,
+    ) -> Result<Rc<Source_referenceContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Source_referenceContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 42, RULE_source_reference);
         let mut _localctx: Rc<Source_referenceContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(441);
+                recog.base.match_token(SOURCE, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(441);
-			recog.base.match_token(SOURCE,&mut recog.err_handler)?;
+                /*InvokeRule id*/
+                recog.base.set_state(442);
+                recog.id()?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			/*InvokeRule id*/
-			recog.base.set_state(442);
-			recog.id()?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- file_location ----------------
 pub type File_locationContextAll<'input> = File_locationContext<'input>;
 
-
-pub type File_locationContext<'input> = BaseParserRuleContext<'input,File_locationContextExt<'input>>;
+pub type File_locationContext<'input> =
+    BaseParserRuleContext<'input, File_locationContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct File_locationContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct File_locationContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for File_locationContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for File_locationContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for File_locationContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_file_location(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_file_location(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for File_locationContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_file_location(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for File_locationContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_file_location(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_file_location(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for File_locationContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_file_location }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_file_location }
-}
-antlr_rust::tid!{File_locationContextExt<'a>}
-
-impl<'input> File_locationContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<File_locationContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,File_locationContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for File_locationContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_file_location(self);
+    }
 }
 
-pub trait File_locationContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<File_locationContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for File_locationContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_file_location
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_file_location }
+}
+antlr_rust::tid! {File_locationContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token URI_FILE
-/// Returns `None` if there is no child corresponding to token URI_FILE
-fn URI_FILE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(URI_FILE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token COLON
-/// Returns `None` if there is no child corresponding to token COLON
-fn COLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COLON, 0)
-}
-/// Retrieves first TerminalNode corresponding to token STRING
-/// Returns `None` if there is no child corresponding to token STRING
-fn STRING(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(STRING, 0)
-}
-/// Retrieves first TerminalNode corresponding to token URI_PATH
-/// Returns `None` if there is no child corresponding to token URI_PATH
-fn URI_PATH(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(URI_PATH, 0)
-}
-/// Retrieves first TerminalNode corresponding to token URI_PATH_GLOB
-/// Returns `None` if there is no child corresponding to token URI_PATH_GLOB
-fn URI_PATH_GLOB(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(URI_PATH_GLOB, 0)
-}
-/// Retrieves first TerminalNode corresponding to token URI_FOLDER
-/// Returns `None` if there is no child corresponding to token URI_FOLDER
-fn URI_FOLDER(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(URI_FOLDER, 0)
+impl<'input> File_locationContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<File_locationContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            File_locationContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait File_locationContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<File_locationContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token URI_FILE
+    /// Returns `None` if there is no child corresponding to token URI_FILE
+    fn URI_FILE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(URI_FILE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token COLON
+    /// Returns `None` if there is no child corresponding to token COLON
+    fn COLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COLON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token STRING
+    /// Returns `None` if there is no child corresponding to token STRING
+    fn STRING(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(STRING, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token URI_PATH
+    /// Returns `None` if there is no child corresponding to token URI_PATH
+    fn URI_PATH(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(URI_PATH, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token URI_PATH_GLOB
+    /// Returns `None` if there is no child corresponding to token URI_PATH_GLOB
+    fn URI_PATH_GLOB(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(URI_PATH_GLOB, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token URI_FOLDER
+    /// Returns `None` if there is no child corresponding to token URI_FOLDER
+    fn URI_FOLDER(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(URI_FOLDER, 0)
+    }
 }
 
-impl<'input> File_locationContextAttrs<'input> for File_locationContext<'input>{}
+impl<'input> File_locationContextAttrs<'input> for File_locationContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn file_location(&mut self,)
-	-> Result<Rc<File_locationContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = File_locationContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 44, RULE_file_location);
+    pub fn file_location(&mut self) -> Result<Rc<File_locationContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            File_locationContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 44, RULE_file_location);
         let mut _localctx: Rc<File_locationContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(456);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.base.input.la(1) {
+                URI_FILE => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        recog.base.set_state(444);
+                        recog.base.match_token(URI_FILE, &mut recog.err_handler)?;
 
-			recog.base.set_state(456);
-			recog.err_handler.sync(&mut recog.base)?;
-			match recog.base.input.la(1) {
-			 URI_FILE 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					recog.base.set_state(444);
-					recog.base.match_token(URI_FILE,&mut recog.err_handler)?;
+                        recog.base.set_state(445);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-					recog.base.set_state(445);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
+                        recog.base.set_state(446);
+                        recog.base.match_token(STRING, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(446);
-					recog.base.match_token(STRING,&mut recog.err_handler)?;
+                URI_PATH => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(447);
+                        recog.base.match_token(URI_PATH, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(448);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-			 URI_PATH 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(447);
-					recog.base.match_token(URI_PATH,&mut recog.err_handler)?;
+                        recog.base.set_state(449);
+                        recog.base.match_token(STRING, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(448);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
+                URI_PATH_GLOB => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 3);
+                    recog.base.enter_outer_alt(None, 3);
+                    {
+                        recog.base.set_state(450);
+                        recog
+                            .base
+                            .match_token(URI_PATH_GLOB, &mut recog.err_handler)?;
 
-					recog.base.set_state(449);
-					recog.base.match_token(STRING,&mut recog.err_handler)?;
+                        recog.base.set_state(451);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(452);
+                        recog.base.match_token(STRING, &mut recog.err_handler)?;
+                    }
+                }
 
-			 URI_PATH_GLOB 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 3);
-					recog.base.enter_outer_alt(None, 3);
-					{
-					recog.base.set_state(450);
-					recog.base.match_token(URI_PATH_GLOB,&mut recog.err_handler)?;
+                URI_FOLDER => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 4);
+                    recog.base.enter_outer_alt(None, 4);
+                    {
+                        recog.base.set_state(453);
+                        recog.base.match_token(URI_FOLDER, &mut recog.err_handler)?;
 
-					recog.base.set_state(451);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
+                        recog.base.set_state(454);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-					recog.base.set_state(452);
-					recog.base.match_token(STRING,&mut recog.err_handler)?;
+                        recog.base.set_state(455);
+                        recog.base.match_token(STRING, &mut recog.err_handler)?;
+                    }
+                }
 
-					}
-				}
+                _ => Err(ANTLRError::NoAltError(NoViableAltError::new(
+                    &mut recog.base,
+                )))?,
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			 URI_FOLDER 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 4);
-					recog.base.enter_outer_alt(None, 4);
-					{
-					recog.base.set_state(453);
-					recog.base.match_token(URI_FOLDER,&mut recog.err_handler)?;
-
-					recog.base.set_state(454);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
-
-					recog.base.set_state(455);
-					recog.base.match_token(STRING,&mut recog.err_handler)?;
-
-					}
-				}
-
-				_ => Err(ANTLRError::NoAltError(NoViableAltError::new(&mut recog.base)))?
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- file_detail ----------------
 pub type File_detailContextAll<'input> = File_detailContext<'input>;
 
-
-pub type File_detailContext<'input> = BaseParserRuleContext<'input,File_detailContextExt<'input>>;
+pub type File_detailContext<'input> = BaseParserRuleContext<'input, File_detailContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct File_detailContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct File_detailContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for File_detailContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for File_detailContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for File_detailContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_file_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_file_detail(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for File_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_file_detail(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for File_detailContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_file_detail(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_file_detail(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for File_detailContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_file_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_file_detail }
-}
-antlr_rust::tid!{File_detailContextExt<'a>}
-
-impl<'input> File_detailContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<File_detailContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,File_detailContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for File_detailContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_file_detail(self);
+    }
 }
 
-pub trait File_detailContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<File_detailContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for File_detailContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_file_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_file_detail }
+}
+antlr_rust::tid! {File_detailContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token PARTITION_INDEX
-/// Returns `None` if there is no child corresponding to token PARTITION_INDEX
-fn PARTITION_INDEX(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(PARTITION_INDEX, 0)
-}
-/// Retrieves first TerminalNode corresponding to token COLON
-/// Returns `None` if there is no child corresponding to token COLON
-fn COLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COLON, 0)
-}
-/// Retrieves first TerminalNode corresponding to token NUMBER
-/// Returns `None` if there is no child corresponding to token NUMBER
-fn NUMBER(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NUMBER, 0)
-}
-/// Retrieves first TerminalNode corresponding to token START
-/// Returns `None` if there is no child corresponding to token START
-fn START(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(START, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LENGTH
-/// Returns `None` if there is no child corresponding to token LENGTH
-fn LENGTH(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LENGTH, 0)
-}
-/// Retrieves first TerminalNode corresponding to token ORC
-/// Returns `None` if there is no child corresponding to token ORC
-fn ORC(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ORC, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token PARQUET
-/// Returns `None` if there is no child corresponding to token PARQUET
-fn PARQUET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(PARQUET, 0)
-}
-fn file_location(&self) -> Option<Rc<File_locationContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
+impl<'input> File_detailContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<File_detailContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            File_detailContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait File_detailContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<File_detailContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token PARTITION_INDEX
+    /// Returns `None` if there is no child corresponding to token PARTITION_INDEX
+    fn PARTITION_INDEX(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(PARTITION_INDEX, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token COLON
+    /// Returns `None` if there is no child corresponding to token COLON
+    fn COLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COLON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NUMBER
+    /// Returns `None` if there is no child corresponding to token NUMBER
+    fn NUMBER(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NUMBER, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token START
+    /// Returns `None` if there is no child corresponding to token START
+    fn START(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(START, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LENGTH
+    /// Returns `None` if there is no child corresponding to token LENGTH
+    fn LENGTH(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LENGTH, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ORC
+    /// Returns `None` if there is no child corresponding to token ORC
+    fn ORC(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ORC, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token PARQUET
+    /// Returns `None` if there is no child corresponding to token PARQUET
+    fn PARQUET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(PARQUET, 0)
+    }
+    fn file_location(&self) -> Option<Rc<File_locationContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> File_detailContextAttrs<'input> for File_detailContext<'input>{}
+impl<'input> File_detailContextAttrs<'input> for File_detailContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn file_detail(&mut self,)
-	-> Result<Rc<File_detailContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = File_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 46, RULE_file_detail);
+    pub fn file_detail(&mut self) -> Result<Rc<File_detailContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = File_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 46, RULE_file_detail);
         let mut _localctx: Rc<File_detailContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(476);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.base.input.la(1) {
+                PARTITION_INDEX => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        recog.base.set_state(458);
+                        recog
+                            .base
+                            .match_token(PARTITION_INDEX, &mut recog.err_handler)?;
 
-			recog.base.set_state(476);
-			recog.err_handler.sync(&mut recog.base)?;
-			match recog.base.input.la(1) {
-			 PARTITION_INDEX 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					recog.base.set_state(458);
-					recog.base.match_token(PARTITION_INDEX,&mut recog.err_handler)?;
+                        recog.base.set_state(459);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-					recog.base.set_state(459);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
+                        recog.base.set_state(460);
+                        recog.base.match_token(NUMBER, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(460);
-					recog.base.match_token(NUMBER,&mut recog.err_handler)?;
+                START => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(461);
+                        recog.base.match_token(START, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(462);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-			 START 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(461);
-					recog.base.match_token(START,&mut recog.err_handler)?;
+                        recog.base.set_state(463);
+                        recog.base.match_token(NUMBER, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(462);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
+                LENGTH => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 3);
+                    recog.base.enter_outer_alt(None, 3);
+                    {
+                        recog.base.set_state(464);
+                        recog.base.match_token(LENGTH, &mut recog.err_handler)?;
 
-					recog.base.set_state(463);
-					recog.base.match_token(NUMBER,&mut recog.err_handler)?;
+                        recog.base.set_state(465);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(466);
+                        recog.base.match_token(NUMBER, &mut recog.err_handler)?;
+                    }
+                }
 
-			 LENGTH 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 3);
-					recog.base.enter_outer_alt(None, 3);
-					{
-					recog.base.set_state(464);
-					recog.base.match_token(LENGTH,&mut recog.err_handler)?;
+                ORC => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 4);
+                    recog.base.enter_outer_alt(None, 4);
+                    {
+                        recog.base.set_state(467);
+                        recog.base.match_token(ORC, &mut recog.err_handler)?;
 
-					recog.base.set_state(465);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
+                        recog.base.set_state(468);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-					recog.base.set_state(466);
-					recog.base.match_token(NUMBER,&mut recog.err_handler)?;
+                        recog.base.set_state(469);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(470);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
 
-			 ORC 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 4);
-					recog.base.enter_outer_alt(None, 4);
-					{
-					recog.base.set_state(467);
-					recog.base.match_token(ORC,&mut recog.err_handler)?;
+                PARQUET => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 5);
+                    recog.base.enter_outer_alt(None, 5);
+                    {
+                        recog.base.set_state(471);
+                        recog.base.match_token(PARQUET, &mut recog.err_handler)?;
 
-					recog.base.set_state(468);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
+                        recog.base.set_state(472);
+                        recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-					recog.base.set_state(469);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                        recog.base.set_state(473);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-					recog.base.set_state(470);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
+                        recog.base.set_state(474);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
 
-					}
-				}
+                URI_FILE | URI_PATH | URI_PATH_GLOB | URI_FOLDER => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 6);
+                    recog.base.enter_outer_alt(None, 6);
+                    {
+                        /*InvokeRule file_location*/
+                        recog.base.set_state(475);
+                        recog.file_location()?;
+                    }
+                }
 
-			 PARQUET 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 5);
-					recog.base.enter_outer_alt(None, 5);
-					{
-					recog.base.set_state(471);
-					recog.base.match_token(PARQUET,&mut recog.err_handler)?;
+                _ => Err(ANTLRError::NoAltError(NoViableAltError::new(
+                    &mut recog.base,
+                )))?,
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					recog.base.set_state(472);
-					recog.base.match_token(COLON,&mut recog.err_handler)?;
-
-					recog.base.set_state(473);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
-
-					recog.base.set_state(474);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-					}
-				}
-
-			 URI_FILE | URI_PATH | URI_PATH_GLOB | URI_FOLDER 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 6);
-					recog.base.enter_outer_alt(None, 6);
-					{
-					/*InvokeRule file_location*/
-					recog.base.set_state(475);
-					recog.file_location()?;
-
-					}
-				}
-
-				_ => Err(ANTLRError::NoAltError(NoViableAltError::new(&mut recog.base)))?
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- file ----------------
 pub type FileContextAll<'input> = FileContext<'input>;
 
-
-pub type FileContext<'input> = BaseParserRuleContext<'input,FileContextExt<'input>>;
+pub type FileContext<'input> = BaseParserRuleContext<'input, FileContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct FileContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct FileContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for FileContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for FileContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for FileContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_file(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_file(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for FileContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_file(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for FileContext<'input> {
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_file(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_file(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for FileContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_file }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_file }
-}
-antlr_rust::tid!{FileContextExt<'a>}
-
-impl<'input> FileContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<FileContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,FileContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for FileContext<'input> {
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_file(self);
+    }
 }
 
-pub trait FileContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<FileContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for FileContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_file
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_file }
+}
+antlr_rust::tid! {FileContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-fn file_detail_all(&self) ->  Vec<Rc<File_detailContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn file_detail(&self, i: usize) -> Option<Rc<File_detailContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
+impl<'input> FileContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<FileContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            FileContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait FileContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<FileContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    fn file_detail_all(&self) -> Vec<Rc<File_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn file_detail(&self, i: usize) -> Option<Rc<File_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
 }
 
-impl<'input> FileContextAttrs<'input> for FileContext<'input>{}
+impl<'input> FileContextAttrs<'input> for FileContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn file(&mut self,)
-	-> Result<Rc<FileContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = FileContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn file(&mut self) -> Result<Rc<FileContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = FileContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 48, RULE_file);
         let mut _localctx: Rc<FileContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(478);
+                recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(478);
-			recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                recog.base.set_state(482);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                while (((_la - 38) & !0x3f) == 0
+                    && ((1usize << (_la - 38))
+                        & ((1usize << (URI_FILE - 38))
+                            | (1usize << (URI_PATH - 38))
+                            | (1usize << (URI_PATH_GLOB - 38))
+                            | (1usize << (URI_FOLDER - 38))
+                            | (1usize << (PARTITION_INDEX - 38))
+                            | (1usize << (START - 38))
+                            | (1usize << (LENGTH - 38))
+                            | (1usize << (ORC - 38))
+                            | (1usize << (PARQUET - 38))))
+                        != 0)
+                {
+                    {
+                        {
+                            /*InvokeRule file_detail*/
+                            recog.base.set_state(479);
+                            recog.file_detail()?;
+                        }
+                    }
+                    recog.base.set_state(484);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _la = recog.base.input.la(1);
+                }
+                recog.base.set_state(485);
+                recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			recog.base.set_state(482);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			while ((((_la - 38)) & !0x3f) == 0 && ((1usize << (_la - 38)) & ((1usize << (URI_FILE - 38)) | (1usize << (URI_PATH - 38)) | (1usize << (URI_PATH_GLOB - 38)) | (1usize << (URI_FOLDER - 38)) | (1usize << (PARTITION_INDEX - 38)) | (1usize << (START - 38)) | (1usize << (LENGTH - 38)) | (1usize << (ORC - 38)) | (1usize << (PARQUET - 38)))) != 0) {
-				{
-				{
-				/*InvokeRule file_detail*/
-				recog.base.set_state(479);
-				recog.file_detail()?;
-
-				}
-				}
-				recog.base.set_state(484);
-				recog.err_handler.sync(&mut recog.base)?;
-				_la = recog.base.input.la(1);
-			}
-			recog.base.set_state(485);
-			recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- local_files_detail ----------------
 pub type Local_files_detailContextAll<'input> = Local_files_detailContext<'input>;
 
-
-pub type Local_files_detailContext<'input> = BaseParserRuleContext<'input,Local_files_detailContextExt<'input>>;
+pub type Local_files_detailContext<'input> =
+    BaseParserRuleContext<'input, Local_files_detailContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Local_files_detailContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Local_files_detailContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Local_files_detailContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Local_files_detailContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Local_files_detailContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_local_files_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_local_files_detail(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Local_files_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_local_files_detail(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Local_files_detailContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_local_files_detail(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_local_files_detail(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Local_files_detailContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_local_files_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_local_files_detail }
-}
-antlr_rust::tid!{Local_files_detailContextExt<'a>}
-
-impl<'input> Local_files_detailContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Local_files_detailContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Local_files_detailContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Local_files_detailContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_local_files_detail(self);
+    }
 }
 
-pub trait Local_files_detailContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Local_files_detailContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Local_files_detailContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_local_files_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_local_files_detail }
+}
+antlr_rust::tid! {Local_files_detailContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token ADVANCED_EXTENSION
-/// Returns `None` if there is no child corresponding to token ADVANCED_EXTENSION
-fn ADVANCED_EXTENSION(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ADVANCED_EXTENSION, 0)
-}
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token ITEMS
-/// Returns `None` if there is no child corresponding to token ITEMS
-fn ITEMS(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ITEMS, 0)
-}
-/// Retrieves first TerminalNode corresponding to token EQUAL
-/// Returns `None` if there is no child corresponding to token EQUAL
-fn EQUAL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(EQUAL, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACKET
-/// Returns `None` if there is no child corresponding to token LEFTBRACKET
-fn LEFTBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACKET, 0)
-}
-fn file_all(&self) ->  Vec<Rc<FileContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn file(&self, i: usize) -> Option<Rc<FileContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACKET
-/// Returns `None` if there is no child corresponding to token RIGHTBRACKET
-fn RIGHTBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACKET, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMMA, i)
+impl<'input> Local_files_detailContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Local_files_detailContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Local_files_detailContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Local_files_detailContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Local_files_detailContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token ADVANCED_EXTENSION
+    /// Returns `None` if there is no child corresponding to token ADVANCED_EXTENSION
+    fn ADVANCED_EXTENSION(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ADVANCED_EXTENSION, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ITEMS
+    /// Returns `None` if there is no child corresponding to token ITEMS
+    fn ITEMS(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ITEMS, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token EQUAL
+    /// Returns `None` if there is no child corresponding to token EQUAL
+    fn EQUAL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EQUAL, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACKET
+    /// Returns `None` if there is no child corresponding to token LEFTBRACKET
+    fn LEFTBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACKET, 0)
+    }
+    fn file_all(&self) -> Vec<Rc<FileContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn file(&self, i: usize) -> Option<Rc<FileContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACKET
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACKET
+    fn RIGHTBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACKET, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
 }
 
-impl<'input> Local_files_detailContextAttrs<'input> for Local_files_detailContext<'input>{}
+impl<'input> Local_files_detailContextAttrs<'input> for Local_files_detailContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn local_files_detail(&mut self,)
-	-> Result<Rc<Local_files_detailContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Local_files_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 50, RULE_local_files_detail);
+    pub fn local_files_detail(
+        &mut self,
+    ) -> Result<Rc<Local_files_detailContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Local_files_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 50, RULE_local_files_detail);
         let mut _localctx: Rc<Local_files_detailContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            let mut _alt: isize;
+            recog.base.set_state(505);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.base.input.la(1) {
+                ADVANCED_EXTENSION => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        recog.base.set_state(487);
+                        recog
+                            .base
+                            .match_token(ADVANCED_EXTENSION, &mut recog.err_handler)?;
 
-			let mut _alt: isize;
-			recog.base.set_state(505);
-			recog.err_handler.sync(&mut recog.base)?;
-			match recog.base.input.la(1) {
-			 ADVANCED_EXTENSION 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					recog.base.set_state(487);
-					recog.base.match_token(ADVANCED_EXTENSION,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(488);
+                        recog.id()?;
+                    }
+                }
 
-					/*InvokeRule id*/
-					recog.base.set_state(488);
-					recog.id()?;
+                ITEMS => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(489);
+                        recog.base.match_token(ITEMS, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(490);
+                        recog.base.match_token(EQUAL, &mut recog.err_handler)?;
 
-			 ITEMS 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(489);
-					recog.base.match_token(ITEMS,&mut recog.err_handler)?;
+                        recog.base.set_state(491);
+                        recog
+                            .base
+                            .match_token(LEFTBRACKET, &mut recog.err_handler)?;
 
-					recog.base.set_state(490);
-					recog.base.match_token(EQUAL,&mut recog.err_handler)?;
+                        /*InvokeRule file*/
+                        recog.base.set_state(492);
+                        recog.file()?;
 
-					recog.base.set_state(491);
-					recog.base.match_token(LEFTBRACKET,&mut recog.err_handler)?;
+                        recog.base.set_state(497);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _alt = recog.interpreter.adaptive_predict(53, &mut recog.base)?;
+                        while { _alt != 2 && _alt != INVALID_ALT } {
+                            if _alt == 1 {
+                                {
+                                    {
+                                        recog.base.set_state(493);
+                                        recog.base.match_token(COMMA, &mut recog.err_handler)?;
 
-					/*InvokeRule file*/
-					recog.base.set_state(492);
-					recog.file()?;
+                                        /*InvokeRule file*/
+                                        recog.base.set_state(494);
+                                        recog.file()?;
+                                    }
+                                }
+                            }
+                            recog.base.set_state(499);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _alt = recog.interpreter.adaptive_predict(53, &mut recog.base)?;
+                        }
+                        recog.base.set_state(501);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == COMMA {
+                            {
+                                recog.base.set_state(500);
+                                recog.base.match_token(COMMA, &mut recog.err_handler)?;
+                            }
+                        }
 
-					recog.base.set_state(497);
-					recog.err_handler.sync(&mut recog.base)?;
-					_alt = recog.interpreter.adaptive_predict(53,&mut recog.base)?;
-					while { _alt!=2 && _alt!=INVALID_ALT } {
-						if _alt==1 {
-							{
-							{
-							recog.base.set_state(493);
-							recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                        recog.base.set_state(503);
+                        recog
+                            .base
+                            .match_token(RIGHTBRACKET, &mut recog.err_handler)?;
+                    }
+                }
 
-							/*InvokeRule file*/
-							recog.base.set_state(494);
-							recog.file()?;
+                _ => Err(ANTLRError::NoAltError(NoViableAltError::new(
+                    &mut recog.base,
+                )))?,
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-							}
-							} 
-						}
-						recog.base.set_state(499);
-						recog.err_handler.sync(&mut recog.base)?;
-						_alt = recog.interpreter.adaptive_predict(53,&mut recog.base)?;
-					}
-					recog.base.set_state(501);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==COMMA {
-						{
-						recog.base.set_state(500);
-						recog.base.match_token(COMMA,&mut recog.err_handler)?;
-
-						}
-					}
-
-					recog.base.set_state(503);
-					recog.base.match_token(RIGHTBRACKET,&mut recog.err_handler)?;
-
-					}
-				}
-
-				_ => Err(ANTLRError::NoAltError(NoViableAltError::new(&mut recog.base)))?
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- named_table_detail ----------------
 pub type Named_table_detailContextAll<'input> = Named_table_detailContext<'input>;
 
-
-pub type Named_table_detailContext<'input> = BaseParserRuleContext<'input,Named_table_detailContextExt<'input>>;
+pub type Named_table_detailContext<'input> =
+    BaseParserRuleContext<'input, Named_table_detailContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Named_table_detailContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Named_table_detailContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Named_table_detailContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Named_table_detailContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Named_table_detailContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_named_table_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_named_table_detail(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Named_table_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_named_table_detail(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Named_table_detailContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_named_table_detail(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_named_table_detail(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Named_table_detailContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_named_table_detail }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_named_table_detail }
-}
-antlr_rust::tid!{Named_table_detailContextExt<'a>}
-
-impl<'input> Named_table_detailContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Named_table_detailContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Named_table_detailContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Named_table_detailContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_named_table_detail(self);
+    }
 }
 
-pub trait Named_table_detailContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Named_table_detailContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Named_table_detailContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_named_table_detail
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_named_table_detail }
+}
+antlr_rust::tid! {Named_table_detailContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token ADVANCED_EXTENSION
-/// Returns `None` if there is no child corresponding to token ADVANCED_EXTENSION
-fn ADVANCED_EXTENSION(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ADVANCED_EXTENSION, 0)
-}
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token NAMES
-/// Returns `None` if there is no child corresponding to token NAMES
-fn NAMES(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NAMES, 0)
-}
-/// Retrieves first TerminalNode corresponding to token EQUAL
-/// Returns `None` if there is no child corresponding to token EQUAL
-fn EQUAL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(EQUAL, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACKET
-/// Returns `None` if there is no child corresponding to token LEFTBRACKET
-fn LEFTBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACKET, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token STRING in current rule
-fn STRING_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token STRING, starting from 0.
-/// Returns `None` if number of children corresponding to token STRING is less or equal than `i`.
-fn STRING(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(STRING, i)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACKET
-/// Returns `None` if there is no child corresponding to token RIGHTBRACKET
-fn RIGHTBRACKET(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACKET, 0)
-}
-/// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
-fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
-/// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
-fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMMA, i)
+impl<'input> Named_table_detailContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Named_table_detailContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Named_table_detailContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Named_table_detailContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Named_table_detailContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token ADVANCED_EXTENSION
+    /// Returns `None` if there is no child corresponding to token ADVANCED_EXTENSION
+    fn ADVANCED_EXTENSION(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ADVANCED_EXTENSION, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NAMES
+    /// Returns `None` if there is no child corresponding to token NAMES
+    fn NAMES(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NAMES, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token EQUAL
+    /// Returns `None` if there is no child corresponding to token EQUAL
+    fn EQUAL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EQUAL, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACKET
+    /// Returns `None` if there is no child corresponding to token LEFTBRACKET
+    fn LEFTBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACKET, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token STRING in current rule
+    fn STRING_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token STRING, starting from 0.
+    /// Returns `None` if number of children corresponding to token STRING is less or equal than `i`.
+    fn STRING(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(STRING, i)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACKET
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACKET
+    fn RIGHTBRACKET(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACKET, 0)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token COMMA in current rule
+    fn COMMA_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token COMMA, starting from 0.
+    /// Returns `None` if number of children corresponding to token COMMA is less or equal than `i`.
+    fn COMMA(&self, i: usize) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMMA, i)
+    }
 }
 
-impl<'input> Named_table_detailContextAttrs<'input> for Named_table_detailContext<'input>{}
+impl<'input> Named_table_detailContextAttrs<'input> for Named_table_detailContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn named_table_detail(&mut self,)
-	-> Result<Rc<Named_table_detailContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Named_table_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 52, RULE_named_table_detail);
+    pub fn named_table_detail(
+        &mut self,
+    ) -> Result<Rc<Named_table_detailContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Named_table_detailContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 52, RULE_named_table_detail);
         let mut _localctx: Rc<Named_table_detailContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            let mut _alt: isize;
+            recog.base.set_state(524);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.base.input.la(1) {
+                ADVANCED_EXTENSION => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 1);
+                    recog.base.enter_outer_alt(None, 1);
+                    {
+                        recog.base.set_state(507);
+                        recog
+                            .base
+                            .match_token(ADVANCED_EXTENSION, &mut recog.err_handler)?;
 
-			let mut _alt: isize;
-			recog.base.set_state(524);
-			recog.err_handler.sync(&mut recog.base)?;
-			match recog.base.input.la(1) {
-			 ADVANCED_EXTENSION 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 1);
-					recog.base.enter_outer_alt(None, 1);
-					{
-					recog.base.set_state(507);
-					recog.base.match_token(ADVANCED_EXTENSION,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(508);
+                        recog.id()?;
+                    }
+                }
 
-					/*InvokeRule id*/
-					recog.base.set_state(508);
-					recog.id()?;
+                NAMES => {
+                    //recog.base.enter_outer_alt(_localctx.clone(), 2);
+                    recog.base.enter_outer_alt(None, 2);
+                    {
+                        recog.base.set_state(509);
+                        recog.base.match_token(NAMES, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(510);
+                        recog.base.match_token(EQUAL, &mut recog.err_handler)?;
 
-			 NAMES 
-				=> {
-					//recog.base.enter_outer_alt(_localctx.clone(), 2);
-					recog.base.enter_outer_alt(None, 2);
-					{
-					recog.base.set_state(509);
-					recog.base.match_token(NAMES,&mut recog.err_handler)?;
+                        recog.base.set_state(511);
+                        recog
+                            .base
+                            .match_token(LEFTBRACKET, &mut recog.err_handler)?;
 
-					recog.base.set_state(510);
-					recog.base.match_token(EQUAL,&mut recog.err_handler)?;
+                        recog.base.set_state(512);
+                        recog.base.match_token(STRING, &mut recog.err_handler)?;
 
-					recog.base.set_state(511);
-					recog.base.match_token(LEFTBRACKET,&mut recog.err_handler)?;
+                        recog.base.set_state(517);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _alt = recog.interpreter.adaptive_predict(56, &mut recog.base)?;
+                        while { _alt != 2 && _alt != INVALID_ALT } {
+                            if _alt == 1 {
+                                {
+                                    {
+                                        recog.base.set_state(513);
+                                        recog.base.match_token(COMMA, &mut recog.err_handler)?;
 
-					recog.base.set_state(512);
-					recog.base.match_token(STRING,&mut recog.err_handler)?;
+                                        recog.base.set_state(514);
+                                        recog.base.match_token(STRING, &mut recog.err_handler)?;
+                                    }
+                                }
+                            }
+                            recog.base.set_state(519);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _alt = recog.interpreter.adaptive_predict(56, &mut recog.base)?;
+                        }
+                        recog.base.set_state(521);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        if _la == COMMA {
+                            {
+                                recog.base.set_state(520);
+                                recog.base.match_token(COMMA, &mut recog.err_handler)?;
+                            }
+                        }
 
-					recog.base.set_state(517);
-					recog.err_handler.sync(&mut recog.base)?;
-					_alt = recog.interpreter.adaptive_predict(56,&mut recog.base)?;
-					while { _alt!=2 && _alt!=INVALID_ALT } {
-						if _alt==1 {
-							{
-							{
-							recog.base.set_state(513);
-							recog.base.match_token(COMMA,&mut recog.err_handler)?;
+                        recog.base.set_state(523);
+                        recog
+                            .base
+                            .match_token(RIGHTBRACKET, &mut recog.err_handler)?;
+                    }
+                }
 
-							recog.base.set_state(514);
-							recog.base.match_token(STRING,&mut recog.err_handler)?;
+                _ => Err(ANTLRError::NoAltError(NoViableAltError::new(
+                    &mut recog.base,
+                )))?,
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-							}
-							} 
-						}
-						recog.base.set_state(519);
-						recog.err_handler.sync(&mut recog.base)?;
-						_alt = recog.interpreter.adaptive_predict(56,&mut recog.base)?;
-					}
-					recog.base.set_state(521);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					if _la==COMMA {
-						{
-						recog.base.set_state(520);
-						recog.base.match_token(COMMA,&mut recog.err_handler)?;
-
-						}
-					}
-
-					recog.base.set_state(523);
-					recog.base.match_token(RIGHTBRACKET,&mut recog.err_handler)?;
-
-					}
-				}
-
-				_ => Err(ANTLRError::NoAltError(NoViableAltError::new(&mut recog.base)))?
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- schema_definition ----------------
 pub type Schema_definitionContextAll<'input> = Schema_definitionContext<'input>;
 
-
-pub type Schema_definitionContext<'input> = BaseParserRuleContext<'input,Schema_definitionContextExt<'input>>;
+pub type Schema_definitionContext<'input> =
+    BaseParserRuleContext<'input, Schema_definitionContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Schema_definitionContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Schema_definitionContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Schema_definitionContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Schema_definitionContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Schema_definitionContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_schema_definition(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_schema_definition(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Schema_definitionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_schema_definition(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Schema_definitionContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_schema_definition(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_schema_definition(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Schema_definitionContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_schema_definition }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_schema_definition }
-}
-antlr_rust::tid!{Schema_definitionContextExt<'a>}
-
-impl<'input> Schema_definitionContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Schema_definitionContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Schema_definitionContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Schema_definitionContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_schema_definition(self);
+    }
 }
 
-pub trait Schema_definitionContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Schema_definitionContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Schema_definitionContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_schema_definition
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_schema_definition }
+}
+antlr_rust::tid! {Schema_definitionContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token SCHEMA
-/// Returns `None` if there is no child corresponding to token SCHEMA
-fn SCHEMA(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SCHEMA, 0)
-}
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-fn schema_item_all(&self) ->  Vec<Rc<Schema_itemContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn schema_item(&self, i: usize) -> Option<Rc<Schema_itemContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
+impl<'input> Schema_definitionContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Schema_definitionContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Schema_definitionContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Schema_definitionContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Schema_definitionContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token SCHEMA
+    /// Returns `None` if there is no child corresponding to token SCHEMA
+    fn SCHEMA(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SCHEMA, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    fn schema_item_all(&self) -> Vec<Rc<Schema_itemContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn schema_item(&self, i: usize) -> Option<Rc<Schema_itemContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
 }
 
-impl<'input> Schema_definitionContextAttrs<'input> for Schema_definitionContext<'input>{}
+impl<'input> Schema_definitionContextAttrs<'input> for Schema_definitionContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn schema_definition(&mut self,)
-	-> Result<Rc<Schema_definitionContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Schema_definitionContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 54, RULE_schema_definition);
+    pub fn schema_definition(
+        &mut self,
+    ) -> Result<Rc<Schema_definitionContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Schema_definitionContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 54, RULE_schema_definition);
         let mut _localctx: Rc<Schema_definitionContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(526);
+                recog.base.match_token(SCHEMA, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(526);
-			recog.base.match_token(SCHEMA,&mut recog.err_handler)?;
+                /*InvokeRule id*/
+                recog.base.set_state(527);
+                recog.id()?;
 
-			/*InvokeRule id*/
-			recog.base.set_state(527);
-			recog.id()?;
+                recog.base.set_state(528);
+                recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-			recog.base.set_state(528);
-			recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                recog.base.set_state(532);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                while (((_la - 5) & !0x3f) == 0
+                    && ((1usize << (_la - 5))
+                        & ((1usize << (NAMED - 5))
+                            | (1usize << (SCHEMA - 5))
+                            | (1usize << (FILTER - 5))
+                            | (1usize << (GROUPING - 5))
+                            | (1usize << (MEASURE - 5))
+                            | (1usize << (SORT - 5))
+                            | (1usize << (COUNT - 5))
+                            | (1usize << (TYPE - 5))
+                            | (1usize << (EMIT - 5))
+                            | (1usize << (ALL - 5))
+                            | (1usize << (ANY - 5))
+                            | (1usize << (COMPARISON - 5))
+                            | (1usize << (SOURCE - 5))
+                            | (1usize << (ROOT - 5))))
+                        != 0)
+                    || _la == NULLVAL
+                    || _la == IDENTIFIER
+                {
+                    {
+                        {
+                            /*InvokeRule schema_item*/
+                            recog.base.set_state(529);
+                            recog.schema_item()?;
+                        }
+                    }
+                    recog.base.set_state(534);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _la = recog.base.input.la(1);
+                }
+                recog.base.set_state(535);
+                recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			recog.base.set_state(532);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			while ((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || _la==NULLVAL || _la==IDENTIFIER {
-				{
-				{
-				/*InvokeRule schema_item*/
-				recog.base.set_state(529);
-				recog.schema_item()?;
-
-				}
-				}
-				recog.base.set_state(534);
-				recog.err_handler.sync(&mut recog.base)?;
-				_la = recog.base.input.la(1);
-			}
-			recog.base.set_state(535);
-			recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- schema_item ----------------
 pub type Schema_itemContextAll<'input> = Schema_itemContext<'input>;
 
-
-pub type Schema_itemContext<'input> = BaseParserRuleContext<'input,Schema_itemContextExt<'input>>;
+pub type Schema_itemContext<'input> = BaseParserRuleContext<'input, Schema_itemContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Schema_itemContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Schema_itemContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Schema_itemContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Schema_itemContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Schema_itemContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_schema_item(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_schema_item(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Schema_itemContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_schema_item(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Schema_itemContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_schema_item(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_schema_item(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Schema_itemContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_schema_item }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_schema_item }
-}
-antlr_rust::tid!{Schema_itemContextExt<'a>}
-
-impl<'input> Schema_itemContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Schema_itemContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Schema_itemContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Schema_itemContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_schema_item(self);
+    }
 }
 
-pub trait Schema_itemContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Schema_itemContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Schema_itemContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_schema_item
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_schema_item }
+}
+antlr_rust::tid! {Schema_itemContextExt<'a>}
 
-fn id_all(&self) ->  Vec<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token SEMICOLON
-/// Returns `None` if there is no child corresponding to token SEMICOLON
-fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SEMICOLON, 0)
-}
-/// Retrieves first TerminalNode corresponding to token NAMED
-/// Returns `None` if there is no child corresponding to token NAMED
-fn NAMED(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NAMED, 0)
+impl<'input> Schema_itemContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Schema_itemContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Schema_itemContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Schema_itemContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Schema_itemContextExt<'input>>
+{
+    fn id_all(&self) -> Vec<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn id(&self, i: usize) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    fn literal_complex_type(&self) -> Option<Rc<Literal_complex_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NAMED
+    /// Returns `None` if there is no child corresponding to token NAMED
+    fn NAMED(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NAMED, 0)
+    }
 }
 
-impl<'input> Schema_itemContextAttrs<'input> for Schema_itemContext<'input>{}
+impl<'input> Schema_itemContextAttrs<'input> for Schema_itemContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn schema_item(&mut self,)
-	-> Result<Rc<Schema_itemContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Schema_itemContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 56, RULE_schema_item);
+    pub fn schema_item(&mut self) -> Result<Rc<Schema_itemContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = Schema_itemContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 56, RULE_schema_item);
         let mut _localctx: Rc<Schema_itemContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule id*/
+                recog.base.set_state(537);
+                recog.id()?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule id*/
-			recog.base.set_state(537);
-			recog.id()?;
+                /*InvokeRule literal_complex_type*/
+                recog.base.set_state(538);
+                recog.literal_complex_type()?;
 
-			/*InvokeRule literal_complex_type*/
-			recog.base.set_state(538);
-			recog.literal_complex_type()?;
+                recog.base.set_state(541);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                if _la == NAMED {
+                    {
+                        recog.base.set_state(539);
+                        recog.base.match_token(NAMED, &mut recog.err_handler)?;
 
-			recog.base.set_state(541);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			if _la==NAMED {
-				{
-				recog.base.set_state(539);
-				recog.base.match_token(NAMED,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(540);
+                        recog.id()?;
+                    }
+                }
 
-				/*InvokeRule id*/
-				recog.base.set_state(540);
-				recog.id()?;
+                recog.base.set_state(543);
+                recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-				}
-			}
-
-			recog.base.set_state(543);
-			recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- source_definition ----------------
 pub type Source_definitionContextAll<'input> = Source_definitionContext<'input>;
 
-
-pub type Source_definitionContext<'input> = BaseParserRuleContext<'input,Source_definitionContextExt<'input>>;
+pub type Source_definitionContext<'input> =
+    BaseParserRuleContext<'input, Source_definitionContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Source_definitionContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Source_definitionContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Source_definitionContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Source_definitionContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Source_definitionContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_source_definition(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_source_definition(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Source_definitionContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_source_definition(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_source_definition(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Source_definitionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_source_definition(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Source_definitionContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_source_definition(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Source_definitionContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_source_definition }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_source_definition }
+impl<'input> CustomRuleContext<'input> for Source_definitionContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_source_definition
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_source_definition }
 }
-antlr_rust::tid!{Source_definitionContextExt<'a>}
+antlr_rust::tid! {Source_definitionContextExt<'a>}
 
-impl<'input> Source_definitionContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Source_definitionContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Source_definitionContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait Source_definitionContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Source_definitionContextExt<'input>>{
-
-/// Retrieves first TerminalNode corresponding to token SOURCE
-/// Returns `None` if there is no child corresponding to token SOURCE
-fn SOURCE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SOURCE, 0)
-}
-fn read_type(&self) -> Option<Rc<Read_typeContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
+impl<'input> Source_definitionContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Source_definitionContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Source_definitionContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Source_definitionContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Source_definitionContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token SOURCE
+    /// Returns `None` if there is no child corresponding to token SOURCE
+    fn SOURCE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SOURCE, 0)
+    }
+    fn read_type(&self) -> Option<Rc<Read_typeContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> Source_definitionContextAttrs<'input> for Source_definitionContext<'input>{}
+impl<'input> Source_definitionContextAttrs<'input> for Source_definitionContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn source_definition(&mut self,)
-	-> Result<Rc<Source_definitionContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Source_definitionContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 58, RULE_source_definition);
+    pub fn source_definition(
+        &mut self,
+    ) -> Result<Rc<Source_definitionContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            Source_definitionContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 58, RULE_source_definition);
         let mut _localctx: Rc<Source_definitionContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(545);
+                recog.base.match_token(SOURCE, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(545);
-			recog.base.match_token(SOURCE,&mut recog.err_handler)?;
+                /*InvokeRule read_type*/
+                recog.base.set_state(546);
+                recog.read_type()?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			/*InvokeRule read_type*/
-			recog.base.set_state(546);
-			recog.read_type()?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- read_type ----------------
 #[derive(Debug)]
-pub enum Read_typeContextAll<'input>{
-	NamedTableContext(NamedTableContext<'input>),
-	LocalFilesContext(LocalFilesContext<'input>),
-	VirtualTableContext(VirtualTableContext<'input>),
-	ExtensionTableContext(ExtensionTableContext<'input>),
-Error(Read_typeContext<'input>)
+pub enum Read_typeContextAll<'input> {
+    NamedTableContext(NamedTableContext<'input>),
+    LocalFilesContext(LocalFilesContext<'input>),
+    VirtualTableContext(VirtualTableContext<'input>),
+    ExtensionTableContext(ExtensionTableContext<'input>),
+    Error(Read_typeContext<'input>),
 }
-antlr_rust::tid!{Read_typeContextAll<'a>}
+antlr_rust::tid! {Read_typeContextAll<'a>}
 
-impl<'input> antlr_rust::parser_rule_context::DerefSeal for Read_typeContextAll<'input>{}
+impl<'input> antlr_rust::parser_rule_context::DerefSeal for Read_typeContextAll<'input> {}
 
-impl<'input> SubstraitPlanParserContext<'input> for Read_typeContextAll<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Read_typeContextAll<'input> {}
 
-impl<'input> Deref for Read_typeContextAll<'input>{
-	type Target = dyn Read_typeContextAttrs<'input> + 'input;
-	fn deref(&self) -> &Self::Target{
-		use Read_typeContextAll::*;
-		match self{
-			NamedTableContext(inner) => inner,
-			LocalFilesContext(inner) => inner,
-			VirtualTableContext(inner) => inner,
-			ExtensionTableContext(inner) => inner,
-Error(inner) => inner
-		}
-	}
+impl<'input> Deref for Read_typeContextAll<'input> {
+    type Target = dyn Read_typeContextAttrs<'input> + 'input;
+    fn deref(&self) -> &Self::Target {
+        use Read_typeContextAll::*;
+        match self {
+            NamedTableContext(inner) => inner,
+            LocalFilesContext(inner) => inner,
+            VirtualTableContext(inner) => inner,
+            ExtensionTableContext(inner) => inner,
+            Error(inner) => inner,
+        }
+    }
 }
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Read_typeContextAll<'input>{
-	fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) { self.deref().accept(visitor) }
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Read_typeContextAll<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        self.deref().accept(visitor)
+    }
 }
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Read_typeContextAll<'input>{
-    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().enter(listener) }
-    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().exit(listener) }
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Read_typeContextAll<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        self.deref().enter(listener)
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        self.deref().exit(listener)
+    }
 }
 
-
-
-pub type Read_typeContext<'input> = BaseParserRuleContext<'input,Read_typeContextExt<'input>>;
+pub type Read_typeContext<'input> = BaseParserRuleContext<'input, Read_typeContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Read_typeContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Read_typeContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Read_typeContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Read_typeContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Read_typeContext<'input>{
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Read_typeContext<'input>
+{
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Read_typeContext<'input>{
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Read_typeContext<'input>
+{
 }
 
-impl<'input> CustomRuleContext<'input> for Read_typeContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_read_type }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
+impl<'input> CustomRuleContext<'input> for Read_typeContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_read_type
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
 }
-antlr_rust::tid!{Read_typeContextExt<'a>}
+antlr_rust::tid! {Read_typeContextExt<'a>}
 
-impl<'input> Read_typeContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Read_typeContextAll<'input>> {
-		Rc::new(
-		Read_typeContextAll::Error(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Read_typeContextExt{
-				ph:PhantomData
-			}),
-		)
-		)
-	}
-}
-
-pub trait Read_typeContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Read_typeContextExt<'input>>{
-
-
-}
-
-impl<'input> Read_typeContextAttrs<'input> for Read_typeContext<'input>{}
-
-pub type NamedTableContext<'input> = BaseParserRuleContext<'input,NamedTableContextExt<'input>>;
-
-pub trait NamedTableContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token NAMED_TABLE
-	/// Returns `None` if there is no child corresponding to token NAMED_TABLE
-	fn NAMED_TABLE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(NAMED_TABLE, 0)
-	}
-	fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-	/// Returns `None` if there is no child corresponding to token LEFTBRACE
-	fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(LEFTBRACE, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-	/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-	fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(RIGHTBRACE, 0)
-	}
-	fn named_table_detail_all(&self) ->  Vec<Rc<Named_table_detailContextAll<'input>>> where Self:Sized{
-		self.children_of_type()
-	}
-	fn named_table_detail(&self, i: usize) -> Option<Rc<Named_table_detailContextAll<'input>>> where Self:Sized{
-		self.child_of_type(i)
-	}
+impl<'input> Read_typeContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Read_typeContextAll<'input>> {
+        Rc::new(Read_typeContextAll::Error(
+            BaseParserRuleContext::new_parser_ctx(
+                parent,
+                invoking_state,
+                Read_typeContextExt { ph: PhantomData },
+            ),
+        ))
+    }
 }
 
-impl<'input> NamedTableContextAttrs<'input> for NamedTableContext<'input>{}
-
-pub struct NamedTableContextExt<'input>{
-	base:Read_typeContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub trait Read_typeContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Read_typeContextExt<'input>>
+{
 }
 
-antlr_rust::tid!{NamedTableContextExt<'a>}
+impl<'input> Read_typeContextAttrs<'input> for Read_typeContext<'input> {}
 
-impl<'input> SubstraitPlanParserContext<'input> for NamedTableContext<'input>{}
+pub type NamedTableContext<'input> = BaseParserRuleContext<'input, NamedTableContextExt<'input>>;
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for NamedTableContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_namedTable(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_namedTable(self);
-		listener.exit_every_rule(self);
-	}
+pub trait NamedTableContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token NAMED_TABLE
+    /// Returns `None` if there is no child corresponding to token NAMED_TABLE
+    fn NAMED_TABLE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NAMED_TABLE, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    fn named_table_detail_all(&self) -> Vec<Rc<Named_table_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn named_table_detail(&self, i: usize) -> Option<Rc<Named_table_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for NamedTableContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_namedTable(self);
-	}
+impl<'input> NamedTableContextAttrs<'input> for NamedTableContext<'input> {}
+
+pub struct NamedTableContextExt<'input> {
+    base: Read_typeContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> CustomRuleContext<'input> for NamedTableContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_read_type }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
+antlr_rust::tid! {NamedTableContextExt<'a>}
+
+impl<'input> SubstraitPlanParserContext<'input> for NamedTableContext<'input> {}
+
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for NamedTableContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_namedTable(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_namedTable(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> Borrow<Read_typeContextExt<'input>> for NamedTableContext<'input>{
-	fn borrow(&self) -> &Read_typeContextExt<'input> { &self.base }
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for NamedTableContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_namedTable(self);
+    }
 }
-impl<'input> BorrowMut<Read_typeContextExt<'input>> for NamedTableContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Read_typeContextExt<'input> { &mut self.base }
+
+impl<'input> CustomRuleContext<'input> for NamedTableContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_read_type
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
+}
+
+impl<'input> Borrow<Read_typeContextExt<'input>> for NamedTableContext<'input> {
+    fn borrow(&self) -> &Read_typeContextExt<'input> {
+        &self.base
+    }
+}
+impl<'input> BorrowMut<Read_typeContextExt<'input>> for NamedTableContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Read_typeContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Read_typeContextAttrs<'input> for NamedTableContext<'input> {}
 
-impl<'input> NamedTableContextExt<'input>{
-	fn new(ctx: &dyn Read_typeContextAttrs<'input>) -> Rc<Read_typeContextAll<'input>>  {
-		Rc::new(
-			Read_typeContextAll::NamedTableContext(
-				BaseParserRuleContext::copy_from(ctx,NamedTableContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> NamedTableContextExt<'input> {
+    fn new(ctx: &dyn Read_typeContextAttrs<'input>) -> Rc<Read_typeContextAll<'input>> {
+        Rc::new(Read_typeContextAll::NamedTableContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                NamedTableContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type LocalFilesContext<'input> = BaseParserRuleContext<'input,LocalFilesContextExt<'input>>;
+pub type LocalFilesContext<'input> = BaseParserRuleContext<'input, LocalFilesContextExt<'input>>;
 
-pub trait LocalFilesContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token LOCAL_FILES
-	/// Returns `None` if there is no child corresponding to token LOCAL_FILES
-	fn LOCAL_FILES(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(LOCAL_FILES, 0)
-	}
-	fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-	/// Returns `None` if there is no child corresponding to token LEFTBRACE
-	fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(LEFTBRACE, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-	/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-	fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(RIGHTBRACE, 0)
-	}
-	fn local_files_detail_all(&self) ->  Vec<Rc<Local_files_detailContextAll<'input>>> where Self:Sized{
-		self.children_of_type()
-	}
-	fn local_files_detail(&self, i: usize) -> Option<Rc<Local_files_detailContextAll<'input>>> where Self:Sized{
-		self.child_of_type(i)
-	}
+pub trait LocalFilesContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token LOCAL_FILES
+    /// Returns `None` if there is no child corresponding to token LOCAL_FILES
+    fn LOCAL_FILES(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LOCAL_FILES, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    fn local_files_detail_all(&self) -> Vec<Rc<Local_files_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn local_files_detail(&self, i: usize) -> Option<Rc<Local_files_detailContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
 }
 
-impl<'input> LocalFilesContextAttrs<'input> for LocalFilesContext<'input>{}
+impl<'input> LocalFilesContextAttrs<'input> for LocalFilesContext<'input> {}
 
-pub struct LocalFilesContextExt<'input>{
-	base:Read_typeContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct LocalFilesContextExt<'input> {
+    base: Read_typeContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{LocalFilesContextExt<'a>}
+antlr_rust::tid! {LocalFilesContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for LocalFilesContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for LocalFilesContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for LocalFilesContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_localFiles(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_localFiles(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for LocalFilesContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_localFiles(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_localFiles(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for LocalFilesContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_localFiles(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for LocalFilesContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_localFiles(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for LocalFilesContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_read_type }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
+impl<'input> CustomRuleContext<'input> for LocalFilesContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_read_type
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
 }
 
-impl<'input> Borrow<Read_typeContextExt<'input>> for LocalFilesContext<'input>{
-	fn borrow(&self) -> &Read_typeContextExt<'input> { &self.base }
+impl<'input> Borrow<Read_typeContextExt<'input>> for LocalFilesContext<'input> {
+    fn borrow(&self) -> &Read_typeContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Read_typeContextExt<'input>> for LocalFilesContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Read_typeContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Read_typeContextExt<'input>> for LocalFilesContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Read_typeContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Read_typeContextAttrs<'input> for LocalFilesContext<'input> {}
 
-impl<'input> LocalFilesContextExt<'input>{
-	fn new(ctx: &dyn Read_typeContextAttrs<'input>) -> Rc<Read_typeContextAll<'input>>  {
-		Rc::new(
-			Read_typeContextAll::LocalFilesContext(
-				BaseParserRuleContext::copy_from(ctx,LocalFilesContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> LocalFilesContextExt<'input> {
+    fn new(ctx: &dyn Read_typeContextAttrs<'input>) -> Rc<Read_typeContextAll<'input>> {
+        Rc::new(Read_typeContextAll::LocalFilesContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                LocalFilesContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type VirtualTableContext<'input> = BaseParserRuleContext<'input,VirtualTableContextExt<'input>>;
+pub type VirtualTableContext<'input> =
+    BaseParserRuleContext<'input, VirtualTableContextExt<'input>>;
 
-pub trait VirtualTableContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token VIRTUAL_TABLE
-	/// Returns `None` if there is no child corresponding to token VIRTUAL_TABLE
-	fn VIRTUAL_TABLE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(VIRTUAL_TABLE, 0)
-	}
-	fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-	/// Returns `None` if there is no child corresponding to token LEFTBRACE
-	fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(LEFTBRACE, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-	/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-	fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(RIGHTBRACE, 0)
-	}
+pub trait VirtualTableContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token VIRTUAL_TABLE
+    /// Returns `None` if there is no child corresponding to token VIRTUAL_TABLE
+    fn VIRTUAL_TABLE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(VIRTUAL_TABLE, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
 }
 
-impl<'input> VirtualTableContextAttrs<'input> for VirtualTableContext<'input>{}
+impl<'input> VirtualTableContextAttrs<'input> for VirtualTableContext<'input> {}
 
-pub struct VirtualTableContextExt<'input>{
-	base:Read_typeContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct VirtualTableContextExt<'input> {
+    base: Read_typeContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{VirtualTableContextExt<'a>}
+antlr_rust::tid! {VirtualTableContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for VirtualTableContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for VirtualTableContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for VirtualTableContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_virtualTable(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_virtualTable(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for VirtualTableContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_virtualTable(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_virtualTable(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for VirtualTableContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_virtualTable(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for VirtualTableContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_virtualTable(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for VirtualTableContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_read_type }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
+impl<'input> CustomRuleContext<'input> for VirtualTableContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_read_type
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
 }
 
-impl<'input> Borrow<Read_typeContextExt<'input>> for VirtualTableContext<'input>{
-	fn borrow(&self) -> &Read_typeContextExt<'input> { &self.base }
+impl<'input> Borrow<Read_typeContextExt<'input>> for VirtualTableContext<'input> {
+    fn borrow(&self) -> &Read_typeContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Read_typeContextExt<'input>> for VirtualTableContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Read_typeContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Read_typeContextExt<'input>> for VirtualTableContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Read_typeContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Read_typeContextAttrs<'input> for VirtualTableContext<'input> {}
 
-impl<'input> VirtualTableContextExt<'input>{
-	fn new(ctx: &dyn Read_typeContextAttrs<'input>) -> Rc<Read_typeContextAll<'input>>  {
-		Rc::new(
-			Read_typeContextAll::VirtualTableContext(
-				BaseParserRuleContext::copy_from(ctx,VirtualTableContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> VirtualTableContextExt<'input> {
+    fn new(ctx: &dyn Read_typeContextAttrs<'input>) -> Rc<Read_typeContextAll<'input>> {
+        Rc::new(Read_typeContextAll::VirtualTableContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                VirtualTableContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
-pub type ExtensionTableContext<'input> = BaseParserRuleContext<'input,ExtensionTableContextExt<'input>>;
+pub type ExtensionTableContext<'input> =
+    BaseParserRuleContext<'input, ExtensionTableContextExt<'input>>;
 
-pub trait ExtensionTableContextAttrs<'input>: SubstraitPlanParserContext<'input>{
-	/// Retrieves first TerminalNode corresponding to token EXTENSION_TABLE
-	/// Returns `None` if there is no child corresponding to token EXTENSION_TABLE
-	fn EXTENSION_TABLE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(EXTENSION_TABLE, 0)
-	}
-	fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-		self.child_of_type(0)
-	}
-	/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-	/// Returns `None` if there is no child corresponding to token LEFTBRACE
-	fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(LEFTBRACE, 0)
-	}
-	/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-	/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-	fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-		self.get_token(RIGHTBRACE, 0)
-	}
+pub trait ExtensionTableContextAttrs<'input>: SubstraitPlanParserContext<'input> {
+    /// Retrieves first TerminalNode corresponding to token EXTENSION_TABLE
+    /// Returns `None` if there is no child corresponding to token EXTENSION_TABLE
+    fn EXTENSION_TABLE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EXTENSION_TABLE, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
 }
 
-impl<'input> ExtensionTableContextAttrs<'input> for ExtensionTableContext<'input>{}
+impl<'input> ExtensionTableContextAttrs<'input> for ExtensionTableContext<'input> {}
 
-pub struct ExtensionTableContextExt<'input>{
-	base:Read_typeContextExt<'input>,
-	ph:PhantomData<&'input str>
+pub struct ExtensionTableContextExt<'input> {
+    base: Read_typeContextExt<'input>,
+    ph: PhantomData<&'input str>,
 }
 
-antlr_rust::tid!{ExtensionTableContextExt<'a>}
+antlr_rust::tid! {ExtensionTableContextExt<'a>}
 
-impl<'input> SubstraitPlanParserContext<'input> for ExtensionTableContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ExtensionTableContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExtensionTableContext<'input>{
-	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.enter_every_rule(self);
-		listener.enter_extensionTable(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_extensionTable(self);
-		listener.exit_every_rule(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExtensionTableContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_extensionTable(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_extensionTable(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExtensionTableContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_extensionTable(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExtensionTableContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_extensionTable(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExtensionTableContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_read_type }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
+impl<'input> CustomRuleContext<'input> for ExtensionTableContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_read_type
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_read_type }
 }
 
-impl<'input> Borrow<Read_typeContextExt<'input>> for ExtensionTableContext<'input>{
-	fn borrow(&self) -> &Read_typeContextExt<'input> { &self.base }
+impl<'input> Borrow<Read_typeContextExt<'input>> for ExtensionTableContext<'input> {
+    fn borrow(&self) -> &Read_typeContextExt<'input> {
+        &self.base
+    }
 }
-impl<'input> BorrowMut<Read_typeContextExt<'input>> for ExtensionTableContext<'input>{
-	fn borrow_mut(&mut self) -> &mut Read_typeContextExt<'input> { &mut self.base }
+impl<'input> BorrowMut<Read_typeContextExt<'input>> for ExtensionTableContext<'input> {
+    fn borrow_mut(&mut self) -> &mut Read_typeContextExt<'input> {
+        &mut self.base
+    }
 }
 
 impl<'input> Read_typeContextAttrs<'input> for ExtensionTableContext<'input> {}
 
-impl<'input> ExtensionTableContextExt<'input>{
-	fn new(ctx: &dyn Read_typeContextAttrs<'input>) -> Rc<Read_typeContextAll<'input>>  {
-		Rc::new(
-			Read_typeContextAll::ExtensionTableContext(
-				BaseParserRuleContext::copy_from(ctx,ExtensionTableContextExt{
-        			base: ctx.borrow().clone(),
-        			ph:PhantomData
-				})
-			)
-		)
-	}
+impl<'input> ExtensionTableContextExt<'input> {
+    fn new(ctx: &dyn Read_typeContextAttrs<'input>) -> Rc<Read_typeContextAll<'input>> {
+        Rc::new(Read_typeContextAll::ExtensionTableContext(
+            BaseParserRuleContext::copy_from(
+                ctx,
+                ExtensionTableContextExt {
+                    base: ctx.borrow().clone(),
+                    ph: PhantomData,
+                },
+            ),
+        ))
+    }
 }
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn read_type(&mut self,)
-	-> Result<Rc<Read_typeContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Read_typeContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn read_type(&mut self) -> Result<Rc<Read_typeContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = Read_typeContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 60, RULE_read_type);
         let mut _localctx: Rc<Read_typeContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            recog.base.set_state(580);
+            recog.err_handler.sync(&mut recog.base)?;
+            match recog.base.input.la(1) {
+                LOCAL_FILES => {
+                    let tmp = LocalFilesContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 1);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(548);
+                        recog
+                            .base
+                            .match_token(LOCAL_FILES, &mut recog.err_handler)?;
 
-			recog.base.set_state(580);
-			recog.err_handler.sync(&mut recog.base)?;
-			match recog.base.input.la(1) {
-			 LOCAL_FILES 
-				=> {
-					let tmp = LocalFilesContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 1);
-					_localctx = tmp;
-					{
-					recog.base.set_state(548);
-					recog.base.match_token(LOCAL_FILES,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(549);
+                        recog.id()?;
 
-					/*InvokeRule id*/
-					recog.base.set_state(549);
-					recog.id()?;
+                        recog.base.set_state(550);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-					recog.base.set_state(550);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                        recog.base.set_state(554);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        while _la == ADVANCED_EXTENSION || _la == ITEMS {
+                            {
+                                {
+                                    /*InvokeRule local_files_detail*/
+                                    recog.base.set_state(551);
+                                    recog.local_files_detail()?;
+                                }
+                            }
+                            recog.base.set_state(556);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _la = recog.base.input.la(1);
+                        }
+                        recog.base.set_state(557);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
 
-					recog.base.set_state(554);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					while _la==ADVANCED_EXTENSION || _la==ITEMS {
-						{
-						{
-						/*InvokeRule local_files_detail*/
-						recog.base.set_state(551);
-						recog.local_files_detail()?;
+                VIRTUAL_TABLE => {
+                    let tmp = VirtualTableContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 2);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(559);
+                        recog
+                            .base
+                            .match_token(VIRTUAL_TABLE, &mut recog.err_handler)?;
 
-						}
-						}
-						recog.base.set_state(556);
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-					}
-					recog.base.set_state(557);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(560);
+                        recog.id()?;
 
-					}
-				}
+                        recog.base.set_state(561);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-			 VIRTUAL_TABLE 
-				=> {
-					let tmp = VirtualTableContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 2);
-					_localctx = tmp;
-					{
-					recog.base.set_state(559);
-					recog.base.match_token(VIRTUAL_TABLE,&mut recog.err_handler)?;
+                        recog.base.set_state(562);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
 
-					/*InvokeRule id*/
-					recog.base.set_state(560);
-					recog.id()?;
+                NAMED_TABLE => {
+                    let tmp = NamedTableContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 3);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(564);
+                        recog
+                            .base
+                            .match_token(NAMED_TABLE, &mut recog.err_handler)?;
 
-					recog.base.set_state(561);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(565);
+                        recog.id()?;
 
-					recog.base.set_state(562);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
+                        recog.base.set_state(566);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-					}
-				}
+                        recog.base.set_state(570);
+                        recog.err_handler.sync(&mut recog.base)?;
+                        _la = recog.base.input.la(1);
+                        while _la == ADVANCED_EXTENSION || _la == NAMES {
+                            {
+                                {
+                                    /*InvokeRule named_table_detail*/
+                                    recog.base.set_state(567);
+                                    recog.named_table_detail()?;
+                                }
+                            }
+                            recog.base.set_state(572);
+                            recog.err_handler.sync(&mut recog.base)?;
+                            _la = recog.base.input.la(1);
+                        }
+                        recog.base.set_state(573);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
 
-			 NAMED_TABLE 
-				=> {
-					let tmp = NamedTableContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 3);
-					_localctx = tmp;
-					{
-					recog.base.set_state(564);
-					recog.base.match_token(NAMED_TABLE,&mut recog.err_handler)?;
+                EXTENSION_TABLE => {
+                    let tmp = ExtensionTableContextExt::new(&**_localctx);
+                    recog.base.enter_outer_alt(Some(tmp.clone()), 4);
+                    _localctx = tmp;
+                    {
+                        recog.base.set_state(575);
+                        recog
+                            .base
+                            .match_token(EXTENSION_TABLE, &mut recog.err_handler)?;
 
-					/*InvokeRule id*/
-					recog.base.set_state(565);
-					recog.id()?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(576);
+                        recog.id()?;
 
-					recog.base.set_state(566);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
+                        recog.base.set_state(577);
+                        recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-					recog.base.set_state(570);
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					while _la==ADVANCED_EXTENSION || _la==NAMES {
-						{
-						{
-						/*InvokeRule named_table_detail*/
-						recog.base.set_state(567);
-						recog.named_table_detail()?;
+                        recog.base.set_state(578);
+                        recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+                    }
+                }
 
-						}
-						}
-						recog.base.set_state(572);
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-					}
-					recog.base.set_state(573);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
+                _ => Err(ANTLRError::NoAltError(NoViableAltError::new(
+                    &mut recog.base,
+                )))?,
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-					}
-				}
-
-			 EXTENSION_TABLE 
-				=> {
-					let tmp = ExtensionTableContextExt::new(&**_localctx);
-					recog.base.enter_outer_alt(Some(tmp.clone()), 4);
-					_localctx = tmp;
-					{
-					recog.base.set_state(575);
-					recog.base.match_token(EXTENSION_TABLE,&mut recog.err_handler)?;
-
-					/*InvokeRule id*/
-					recog.base.set_state(576);
-					recog.id()?;
-
-					recog.base.set_state(577);
-					recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
-
-					recog.base.set_state(578);
-					recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-					}
-				}
-
-				_ => Err(ANTLRError::NoAltError(NoViableAltError::new(&mut recog.base)))?
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- extensionspace ----------------
 pub type ExtensionspaceContextAll<'input> = ExtensionspaceContext<'input>;
 
-
-pub type ExtensionspaceContext<'input> = BaseParserRuleContext<'input,ExtensionspaceContextExt<'input>>;
+pub type ExtensionspaceContext<'input> =
+    BaseParserRuleContext<'input, ExtensionspaceContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct ExtensionspaceContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct ExtensionspaceContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for ExtensionspaceContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for ExtensionspaceContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExtensionspaceContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_extensionspace(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_extensionspace(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExtensionspaceContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_extensionspace(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for ExtensionspaceContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_extensionspace(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_extensionspace(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for ExtensionspaceContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_extensionspace }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_extensionspace }
-}
-antlr_rust::tid!{ExtensionspaceContextExt<'a>}
-
-impl<'input> ExtensionspaceContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<ExtensionspaceContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,ExtensionspaceContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for ExtensionspaceContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_extensionspace(self);
+    }
 }
 
-pub trait ExtensionspaceContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<ExtensionspaceContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for ExtensionspaceContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_extensionspace
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_extensionspace }
+}
+antlr_rust::tid! {ExtensionspaceContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token EXTENSION_SPACE
-/// Returns `None` if there is no child corresponding to token EXTENSION_SPACE
-fn EXTENSION_SPACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(EXTENSION_SPACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token LEFTBRACE
-/// Returns `None` if there is no child corresponding to token LEFTBRACE
-fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(LEFTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token RIGHTBRACE
-/// Returns `None` if there is no child corresponding to token RIGHTBRACE
-fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(RIGHTBRACE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token URI
-/// Returns `None` if there is no child corresponding to token URI
-fn URI(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(URI, 0)
-}
-fn function_all(&self) ->  Vec<Rc<FunctionContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn function(&self, i: usize) -> Option<Rc<FunctionContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
+impl<'input> ExtensionspaceContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<ExtensionspaceContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            ExtensionspaceContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait ExtensionspaceContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<ExtensionspaceContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token EXTENSION_SPACE
+    /// Returns `None` if there is no child corresponding to token EXTENSION_SPACE
+    fn EXTENSION_SPACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EXTENSION_SPACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token LEFTBRACE
+    /// Returns `None` if there is no child corresponding to token LEFTBRACE
+    fn LEFTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(LEFTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token RIGHTBRACE
+    /// Returns `None` if there is no child corresponding to token RIGHTBRACE
+    fn RIGHTBRACE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(RIGHTBRACE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token URI
+    /// Returns `None` if there is no child corresponding to token URI
+    fn URI(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(URI, 0)
+    }
+    fn function_all(&self) -> Vec<Rc<FunctionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn function(&self, i: usize) -> Option<Rc<FunctionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
 }
 
-impl<'input> ExtensionspaceContextAttrs<'input> for ExtensionspaceContext<'input>{}
+impl<'input> ExtensionspaceContextAttrs<'input> for ExtensionspaceContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn extensionspace(&mut self,)
-	-> Result<Rc<ExtensionspaceContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = ExtensionspaceContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 62, RULE_extensionspace);
+    pub fn extensionspace(&mut self) -> Result<Rc<ExtensionspaceContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx =
+            ExtensionspaceContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 62, RULE_extensionspace);
         let mut _localctx: Rc<ExtensionspaceContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(582);
+                recog
+                    .base
+                    .match_token(EXTENSION_SPACE, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(582);
-			recog.base.match_token(EXTENSION_SPACE,&mut recog.err_handler)?;
+                recog.base.set_state(584);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                if _la == URI {
+                    {
+                        recog.base.set_state(583);
+                        recog.base.match_token(URI, &mut recog.err_handler)?;
+                    }
+                }
 
-			recog.base.set_state(584);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			if _la==URI {
-				{
-				recog.base.set_state(583);
-				recog.base.match_token(URI,&mut recog.err_handler)?;
+                recog.base.set_state(586);
+                recog.base.match_token(LEFTBRACE, &mut recog.err_handler)?;
 
-				}
-			}
+                recog.base.set_state(590);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                while _la == FUNCTION {
+                    {
+                        {
+                            /*InvokeRule function*/
+                            recog.base.set_state(587);
+                            recog.function()?;
+                        }
+                    }
+                    recog.base.set_state(592);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _la = recog.base.input.la(1);
+                }
+                recog.base.set_state(593);
+                recog.base.match_token(RIGHTBRACE, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			recog.base.set_state(586);
-			recog.base.match_token(LEFTBRACE,&mut recog.err_handler)?;
-
-			recog.base.set_state(590);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			while _la==FUNCTION {
-				{
-				{
-				/*InvokeRule function*/
-				recog.base.set_state(587);
-				recog.function()?;
-
-				}
-				}
-				recog.base.set_state(592);
-				recog.err_handler.sync(&mut recog.base)?;
-				_la = recog.base.input.la(1);
-			}
-			recog.base.set_state(593);
-			recog.base.match_token(RIGHTBRACE,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- function ----------------
 pub type FunctionContextAll<'input> = FunctionContext<'input>;
 
-
-pub type FunctionContext<'input> = BaseParserRuleContext<'input,FunctionContextExt<'input>>;
+pub type FunctionContext<'input> = BaseParserRuleContext<'input, FunctionContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct FunctionContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct FunctionContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for FunctionContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for FunctionContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for FunctionContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_function(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_function(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for FunctionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_function(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for FunctionContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_function(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_function(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for FunctionContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_function }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_function }
-}
-antlr_rust::tid!{FunctionContextExt<'a>}
-
-impl<'input> FunctionContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<FunctionContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,FunctionContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for FunctionContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_function(self);
+    }
 }
 
-pub trait FunctionContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<FunctionContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for FunctionContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_function
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_function }
+}
+antlr_rust::tid! {FunctionContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token FUNCTION
-/// Returns `None` if there is no child corresponding to token FUNCTION
-fn FUNCTION(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(FUNCTION, 0)
-}
-fn name(&self) -> Option<Rc<NameContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token SEMICOLON
-/// Returns `None` if there is no child corresponding to token SEMICOLON
-fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SEMICOLON, 0)
-}
-/// Retrieves first TerminalNode corresponding to token AS
-/// Returns `None` if there is no child corresponding to token AS
-fn AS(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(AS, 0)
-}
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-
+impl<'input> FunctionContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<FunctionContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            FunctionContextExt { ph: PhantomData },
+        ))
+    }
 }
 
-impl<'input> FunctionContextAttrs<'input> for FunctionContext<'input>{}
+pub trait FunctionContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<FunctionContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token FUNCTION
+    /// Returns `None` if there is no child corresponding to token FUNCTION
+    fn FUNCTION(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(FUNCTION, 0)
+    }
+    fn name(&self) -> Option<Rc<NameContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token AS
+    /// Returns `None` if there is no child corresponding to token AS
+    fn AS(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(AS, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+}
+
+impl<'input> FunctionContextAttrs<'input> for FunctionContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn function(&mut self,)
-	-> Result<Rc<FunctionContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = FunctionContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn function(&mut self) -> Result<Rc<FunctionContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = FunctionContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 64, RULE_function);
         let mut _localctx: Rc<FunctionContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(595);
+                recog.base.match_token(FUNCTION, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(595);
-			recog.base.match_token(FUNCTION,&mut recog.err_handler)?;
+                /*InvokeRule name*/
+                recog.base.set_state(596);
+                recog.name()?;
 
-			/*InvokeRule name*/
-			recog.base.set_state(596);
-			recog.name()?;
+                recog.base.set_state(599);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                if _la == AS {
+                    {
+                        recog.base.set_state(597);
+                        recog.base.match_token(AS, &mut recog.err_handler)?;
 
-			recog.base.set_state(599);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			if _la==AS {
-				{
-				recog.base.set_state(597);
-				recog.base.match_token(AS,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(598);
+                        recog.id()?;
+                    }
+                }
 
-				/*InvokeRule id*/
-				recog.base.set_state(598);
-				recog.id()?;
+                recog.base.set_state(601);
+                recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-				}
-			}
-
-			recog.base.set_state(601);
-			recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- sort_field ----------------
 pub type Sort_fieldContextAll<'input> = Sort_fieldContext<'input>;
 
-
-pub type Sort_fieldContext<'input> = BaseParserRuleContext<'input,Sort_fieldContextExt<'input>>;
+pub type Sort_fieldContext<'input> = BaseParserRuleContext<'input, Sort_fieldContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Sort_fieldContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Sort_fieldContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Sort_fieldContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Sort_fieldContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Sort_fieldContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_sort_field(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_sort_field(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Sort_fieldContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_sort_field(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Sort_fieldContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_sort_field(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_sort_field(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Sort_fieldContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_sort_field }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_sort_field }
-}
-antlr_rust::tid!{Sort_fieldContextExt<'a>}
-
-impl<'input> Sort_fieldContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Sort_fieldContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Sort_fieldContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Sort_fieldContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_sort_field(self);
+    }
 }
 
-pub trait Sort_fieldContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Sort_fieldContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Sort_fieldContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_sort_field
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_sort_field }
+}
+antlr_rust::tid! {Sort_fieldContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token SORT
-/// Returns `None` if there is no child corresponding to token SORT
-fn SORT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SORT, 0)
-}
-fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token SEMICOLON
-/// Returns `None` if there is no child corresponding to token SEMICOLON
-fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SEMICOLON, 0)
-}
-/// Retrieves first TerminalNode corresponding to token BY
-/// Returns `None` if there is no child corresponding to token BY
-fn BY(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(BY, 0)
-}
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-
+impl<'input> Sort_fieldContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Sort_fieldContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Sort_fieldContextExt { ph: PhantomData },
+        ))
+    }
 }
 
-impl<'input> Sort_fieldContextAttrs<'input> for Sort_fieldContext<'input>{}
+pub trait Sort_fieldContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Sort_fieldContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token SORT
+    /// Returns `None` if there is no child corresponding to token SORT
+    fn SORT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SORT, 0)
+    }
+    fn expression(&self) -> Option<Rc<ExpressionContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SEMICOLON
+    /// Returns `None` if there is no child corresponding to token SEMICOLON
+    fn SEMICOLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SEMICOLON, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token BY
+    /// Returns `None` if there is no child corresponding to token BY
+    fn BY(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(BY, 0)
+    }
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+}
+
+impl<'input> Sort_fieldContextAttrs<'input> for Sort_fieldContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn sort_field(&mut self,)
-	-> Result<Rc<Sort_fieldContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Sort_fieldContextExt::new(_parentctx.clone(), recog.base.get_state());
-        recog.base.enter_rule(_localctx.clone(), 66, RULE_sort_field);
+    pub fn sort_field(&mut self) -> Result<Rc<Sort_fieldContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = Sort_fieldContextExt::new(_parentctx.clone(), recog.base.get_state());
+        recog
+            .base
+            .enter_rule(_localctx.clone(), 66, RULE_sort_field);
         let mut _localctx: Rc<Sort_fieldContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(603);
+                recog.base.match_token(SORT, &mut recog.err_handler)?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(603);
-			recog.base.match_token(SORT,&mut recog.err_handler)?;
+                /*InvokeRule expression*/
+                recog.base.set_state(604);
+                recog.expression_rec(0)?;
 
-			/*InvokeRule expression*/
-			recog.base.set_state(604);
-			recog.expression_rec(0)?;
+                recog.base.set_state(607);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                if _la == BY {
+                    {
+                        recog.base.set_state(605);
+                        recog.base.match_token(BY, &mut recog.err_handler)?;
 
-			recog.base.set_state(607);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			if _la==BY {
-				{
-				recog.base.set_state(605);
-				recog.base.match_token(BY,&mut recog.err_handler)?;
+                        /*InvokeRule id*/
+                        recog.base.set_state(606);
+                        recog.id()?;
+                    }
+                }
 
-				/*InvokeRule id*/
-				recog.base.set_state(606);
-				recog.id()?;
+                recog.base.set_state(609);
+                recog.base.match_token(SEMICOLON, &mut recog.err_handler)?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-				}
-			}
-
-			recog.base.set_state(609);
-			recog.base.match_token(SEMICOLON,&mut recog.err_handler)?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- name ----------------
 pub type NameContextAll<'input> = NameContext<'input>;
 
-
-pub type NameContext<'input> = BaseParserRuleContext<'input,NameContextExt<'input>>;
+pub type NameContext<'input> = BaseParserRuleContext<'input, NameContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct NameContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct NameContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for NameContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for NameContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for NameContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_name(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_name(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for NameContext<'input> {
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_name(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_name(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for NameContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_name(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for NameContext<'input> {
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_name(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for NameContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_name }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_name }
+impl<'input> CustomRuleContext<'input> for NameContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_name
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_name }
 }
-antlr_rust::tid!{NameContextExt<'a>}
+antlr_rust::tid! {NameContextExt<'a>}
 
-impl<'input> NameContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<NameContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,NameContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait NameContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<NameContextExt<'input>>{
-
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-/// Retrieves first TerminalNode corresponding to token COLON
-/// Returns `None` if there is no child corresponding to token COLON
-fn COLON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COLON, 0)
-}
-fn signature(&self) -> Option<Rc<SignatureContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
+impl<'input> NameContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<NameContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            NameContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait NameContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<NameContextExt<'input>>
+{
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+    /// Retrieves first TerminalNode corresponding to token COLON
+    /// Returns `None` if there is no child corresponding to token COLON
+    fn COLON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COLON, 0)
+    }
+    fn signature(&self) -> Option<Rc<SignatureContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
 }
 
-impl<'input> NameContextAttrs<'input> for NameContext<'input>{}
+impl<'input> NameContextAttrs<'input> for NameContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn name(&mut self,)
-	-> Result<Rc<NameContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = NameContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn name(&mut self) -> Result<Rc<NameContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = NameContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 68, RULE_name);
         let mut _localctx: Rc<NameContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule id*/
+                recog.base.set_state(611);
+                recog.id()?;
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule id*/
-			recog.base.set_state(611);
-			recog.id()?;
+                recog.base.set_state(612);
+                recog.base.match_token(COLON, &mut recog.err_handler)?;
 
-			recog.base.set_state(612);
-			recog.base.match_token(COLON,&mut recog.err_handler)?;
+                recog.base.set_state(614);
+                recog.err_handler.sync(&mut recog.base)?;
+                _la = recog.base.input.la(1);
+                if (((_la - 5) & !0x3f) == 0
+                    && ((1usize << (_la - 5))
+                        & ((1usize << (NAMED - 5))
+                            | (1usize << (SCHEMA - 5))
+                            | (1usize << (FILTER - 5))
+                            | (1usize << (GROUPING - 5))
+                            | (1usize << (MEASURE - 5))
+                            | (1usize << (SORT - 5))
+                            | (1usize << (COUNT - 5))
+                            | (1usize << (TYPE - 5))
+                            | (1usize << (EMIT - 5))
+                            | (1usize << (ALL - 5))
+                            | (1usize << (ANY - 5))
+                            | (1usize << (COMPARISON - 5))
+                            | (1usize << (SOURCE - 5))
+                            | (1usize << (ROOT - 5))))
+                        != 0)
+                    || _la == NULLVAL
+                    || _la == IDENTIFIER
+                {
+                    {
+                        /*InvokeRule signature*/
+                        recog.base.set_state(613);
+                        recog.signature()?;
+                    }
+                }
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			recog.base.set_state(614);
-			recog.err_handler.sync(&mut recog.base)?;
-			_la = recog.base.input.la(1);
-			if ((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || _la==NULLVAL || _la==IDENTIFIER {
-				{
-				/*InvokeRule signature*/
-				recog.base.set_state(613);
-				recog.signature()?;
-
-				}
-			}
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- signature ----------------
 pub type SignatureContextAll<'input> = SignatureContext<'input>;
 
-
-pub type SignatureContext<'input> = BaseParserRuleContext<'input,SignatureContextExt<'input>>;
+pub type SignatureContext<'input> = BaseParserRuleContext<'input, SignatureContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct SignatureContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct SignatureContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for SignatureContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for SignatureContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for SignatureContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_signature(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_signature(self);
-			listener.exit_every_rule(self);
-		}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for SignatureContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_signature(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_signature(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for SignatureContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_signature(self);
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for SignatureContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_signature(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for SignatureContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_signature }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_signature }
+impl<'input> CustomRuleContext<'input> for SignatureContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_signature
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_signature }
 }
-antlr_rust::tid!{SignatureContextExt<'a>}
+antlr_rust::tid! {SignatureContextExt<'a>}
 
-impl<'input> SignatureContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<SignatureContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,SignatureContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
-}
-
-pub trait SignatureContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<SignatureContextExt<'input>>{
-
-fn id(&self) -> Option<Rc<IdContextAll<'input>>> where Self:Sized{
-	self.child_of_type(0)
-}
-
+impl<'input> SignatureContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<SignatureContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            SignatureContextExt { ph: PhantomData },
+        ))
+    }
 }
 
-impl<'input> SignatureContextAttrs<'input> for SignatureContext<'input>{}
+pub trait SignatureContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<SignatureContextExt<'input>>
+{
+    fn id(&self) -> Option<Rc<IdContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(0)
+    }
+}
+
+impl<'input> SignatureContextAttrs<'input> for SignatureContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn signature(&mut self,)
-	-> Result<Rc<SignatureContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = SignatureContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn signature(&mut self) -> Result<Rc<SignatureContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = SignatureContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 70, RULE_signature);
         let mut _localctx: Rc<SignatureContextAll> = _localctx;
-		let result: Result<(), ANTLRError> = (|| {
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule id*/
+                recog.base.set_state(616);
+                recog.id()?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule id*/
-			recog.base.set_state(616);
-			recog.id()?;
-
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- id ----------------
 pub type IdContextAll<'input> = IdContext<'input>;
 
-
-pub type IdContext<'input> = BaseParserRuleContext<'input,IdContextExt<'input>>;
+pub type IdContext<'input> = BaseParserRuleContext<'input, IdContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct IdContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct IdContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for IdContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for IdContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for IdContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_id(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_id(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for IdContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_id(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for IdContext<'input> {
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_id(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_id(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for IdContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_id }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_id }
-}
-antlr_rust::tid!{IdContextExt<'a>}
-
-impl<'input> IdContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<IdContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,IdContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for IdContext<'input> {
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_id(self);
+    }
 }
 
-pub trait IdContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<IdContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for IdContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_id
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_id }
+}
+antlr_rust::tid! {IdContextExt<'a>}
 
-fn simple_id_all(&self) ->  Vec<Rc<Simple_idContextAll<'input>>> where Self:Sized{
-	self.children_of_type()
-}
-fn simple_id(&self, i: usize) -> Option<Rc<Simple_idContextAll<'input>>> where Self:Sized{
-	self.child_of_type(i)
-}
-/// Retrieves all `TerminalNode`s corresponding to token UNDERSCORE in current rule
-fn UNDERSCORE_all(&self) -> Vec<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>>  where Self:Sized{
-	self.children_of_type()
-}
-/// Retrieves 'i's TerminalNode corresponding to token UNDERSCORE, starting from 0.
-/// Returns `None` if number of children corresponding to token UNDERSCORE is less or equal than `i`.
-fn UNDERSCORE(&self, i: usize) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(UNDERSCORE, i)
+impl<'input> IdContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<IdContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            IdContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait IdContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<IdContextExt<'input>>
+{
+    fn simple_id_all(&self) -> Vec<Rc<Simple_idContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    fn simple_id(&self, i: usize) -> Option<Rc<Simple_idContextAll<'input>>>
+    where
+        Self: Sized,
+    {
+        self.child_of_type(i)
+    }
+    /// Retrieves all `TerminalNode`s corresponding to token UNDERSCORE in current rule
+    fn UNDERSCORE_all(&self) -> Vec<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.children_of_type()
+    }
+    /// Retrieves 'i's TerminalNode corresponding to token UNDERSCORE, starting from 0.
+    /// Returns `None` if number of children corresponding to token UNDERSCORE is less or equal than `i`.
+    fn UNDERSCORE(
+        &self,
+        i: usize,
+    ) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(UNDERSCORE, i)
+    }
 }
 
-impl<'input> IdContextAttrs<'input> for IdContext<'input>{}
+impl<'input> IdContextAttrs<'input> for IdContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn id(&mut self,)
-	-> Result<Rc<IdContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = IdContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn id(&mut self) -> Result<Rc<IdContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = IdContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 72, RULE_id);
         let mut _localctx: Rc<IdContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            let mut _alt: isize;
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                /*InvokeRule simple_id*/
+                recog.base.set_state(618);
+                recog.simple_id()?;
 
-			let mut _alt: isize;
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			/*InvokeRule simple_id*/
-			recog.base.set_state(618);
-			recog.simple_id()?;
+                recog.base.set_state(627);
+                recog.err_handler.sync(&mut recog.base)?;
+                _alt = recog.interpreter.adaptive_predict(70, &mut recog.base)?;
+                while { _alt != 2 && _alt != INVALID_ALT } {
+                    if _alt == 1 {
+                        {
+                            {
+                                recog.base.set_state(620);
+                                recog.err_handler.sync(&mut recog.base)?;
+                                _la = recog.base.input.la(1);
+                                loop {
+                                    {
+                                        {
+                                            recog.base.set_state(619);
+                                            recog
+                                                .base
+                                                .match_token(UNDERSCORE, &mut recog.err_handler)?;
+                                        }
+                                    }
+                                    recog.base.set_state(622);
+                                    recog.err_handler.sync(&mut recog.base)?;
+                                    _la = recog.base.input.la(1);
+                                    if !(_la == UNDERSCORE) {
+                                        break;
+                                    }
+                                }
+                                /*InvokeRule simple_id*/
+                                recog.base.set_state(624);
+                                recog.simple_id()?;
+                            }
+                        }
+                    }
+                    recog.base.set_state(629);
+                    recog.err_handler.sync(&mut recog.base)?;
+                    _alt = recog.interpreter.adaptive_predict(70, &mut recog.base)?;
+                }
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			recog.base.set_state(627);
-			recog.err_handler.sync(&mut recog.base)?;
-			_alt = recog.interpreter.adaptive_predict(70,&mut recog.base)?;
-			while { _alt!=2 && _alt!=INVALID_ALT } {
-				if _alt==1 {
-					{
-					{
-					recog.base.set_state(620); 
-					recog.err_handler.sync(&mut recog.base)?;
-					_la = recog.base.input.la(1);
-					loop {
-						{
-						{
-						recog.base.set_state(619);
-						recog.base.match_token(UNDERSCORE,&mut recog.err_handler)?;
-
-						}
-						}
-						recog.base.set_state(622); 
-						recog.err_handler.sync(&mut recog.base)?;
-						_la = recog.base.input.la(1);
-						if !(_la==UNDERSCORE) {break}
-					}
-					/*InvokeRule simple_id*/
-					recog.base.set_state(624);
-					recog.simple_id()?;
-
-					}
-					} 
-				}
-				recog.base.set_state(629);
-				recog.err_handler.sync(&mut recog.base)?;
-				_alt = recog.interpreter.adaptive_predict(70,&mut recog.base)?;
-			}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 //------------------- simple_id ----------------
 pub type Simple_idContextAll<'input> = Simple_idContext<'input>;
 
-
-pub type Simple_idContext<'input> = BaseParserRuleContext<'input,Simple_idContextExt<'input>>;
+pub type Simple_idContext<'input> = BaseParserRuleContext<'input, Simple_idContextExt<'input>>;
 
 #[derive(Clone)]
-pub struct Simple_idContextExt<'input>{
-ph:PhantomData<&'input str>
+pub struct Simple_idContextExt<'input> {
+    ph: PhantomData<&'input str>,
 }
 
-impl<'input> SubstraitPlanParserContext<'input> for Simple_idContext<'input>{}
+impl<'input> SubstraitPlanParserContext<'input> for Simple_idContext<'input> {}
 
-impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Simple_idContext<'input>{
-		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.enter_every_rule(self);
-			listener.enter_simple_id(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-			listener.exit_simple_id(self);
-			listener.exit_every_rule(self);
-		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Simple_idContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_simple_id(self);
-	}
+impl<'input, 'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a>
+    for Simple_idContext<'input>
+{
+    fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.enter_every_rule(self);
+        listener.enter_simple_id(self);
+    }
+    fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+        listener.exit_simple_id(self);
+        listener.exit_every_rule(self);
+    }
 }
 
-impl<'input> CustomRuleContext<'input> for Simple_idContextExt<'input>{
-	type TF = LocalTokenFactory<'input>;
-	type Ctx = SubstraitPlanParserContextType;
-	fn get_rule_index(&self) -> usize { RULE_simple_id }
-	//fn type_rule_index() -> usize where Self: Sized { RULE_simple_id }
-}
-antlr_rust::tid!{Simple_idContextExt<'a>}
-
-impl<'input> Simple_idContextExt<'input>{
-	fn new(parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input > >, invoking_state: isize) -> Rc<Simple_idContextAll<'input>> {
-		Rc::new(
-			BaseParserRuleContext::new_parser_ctx(parent, invoking_state,Simple_idContextExt{
-				ph:PhantomData
-			}),
-		)
-	}
+impl<'input, 'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a>
+    for Simple_idContext<'input>
+{
+    fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
+        visitor.visit_simple_id(self);
+    }
 }
 
-pub trait Simple_idContextAttrs<'input>: SubstraitPlanParserContext<'input> + BorrowMut<Simple_idContextExt<'input>>{
+impl<'input> CustomRuleContext<'input> for Simple_idContextExt<'input> {
+    type TF = LocalTokenFactory<'input>;
+    type Ctx = SubstraitPlanParserContextType;
+    fn get_rule_index(&self) -> usize {
+        RULE_simple_id
+    }
+    //fn type_rule_index() -> usize where Self: Sized { RULE_simple_id }
+}
+antlr_rust::tid! {Simple_idContextExt<'a>}
 
-/// Retrieves first TerminalNode corresponding to token IDENTIFIER
-/// Returns `None` if there is no child corresponding to token IDENTIFIER
-fn IDENTIFIER(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(IDENTIFIER, 0)
-}
-/// Retrieves first TerminalNode corresponding to token FILTER
-/// Returns `None` if there is no child corresponding to token FILTER
-fn FILTER(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(FILTER, 0)
-}
-/// Retrieves first TerminalNode corresponding to token ROOT
-/// Returns `None` if there is no child corresponding to token ROOT
-fn ROOT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ROOT, 0)
-}
-/// Retrieves first TerminalNode corresponding to token SOURCE
-/// Returns `None` if there is no child corresponding to token SOURCE
-fn SOURCE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SOURCE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token SCHEMA
-/// Returns `None` if there is no child corresponding to token SCHEMA
-fn SCHEMA(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SCHEMA, 0)
-}
-/// Retrieves first TerminalNode corresponding to token NULLVAL
-/// Returns `None` if there is no child corresponding to token NULLVAL
-fn NULLVAL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NULLVAL, 0)
-}
-/// Retrieves first TerminalNode corresponding to token SORT
-/// Returns `None` if there is no child corresponding to token SORT
-fn SORT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(SORT, 0)
-}
-/// Retrieves first TerminalNode corresponding to token MEASURE
-/// Returns `None` if there is no child corresponding to token MEASURE
-fn MEASURE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(MEASURE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token GROUPING
-/// Returns `None` if there is no child corresponding to token GROUPING
-fn GROUPING(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(GROUPING, 0)
-}
-/// Retrieves first TerminalNode corresponding to token COUNT
-/// Returns `None` if there is no child corresponding to token COUNT
-fn COUNT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COUNT, 0)
-}
-/// Retrieves first TerminalNode corresponding to token TYPE
-/// Returns `None` if there is no child corresponding to token TYPE
-fn TYPE(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(TYPE, 0)
-}
-/// Retrieves first TerminalNode corresponding to token EMIT
-/// Returns `None` if there is no child corresponding to token EMIT
-fn EMIT(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(EMIT, 0)
-}
-/// Retrieves first TerminalNode corresponding to token NAMED
-/// Returns `None` if there is no child corresponding to token NAMED
-fn NAMED(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(NAMED, 0)
-}
-/// Retrieves first TerminalNode corresponding to token ALL
-/// Returns `None` if there is no child corresponding to token ALL
-fn ALL(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ALL, 0)
-}
-/// Retrieves first TerminalNode corresponding to token ANY
-/// Returns `None` if there is no child corresponding to token ANY
-fn ANY(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(ANY, 0)
-}
-/// Retrieves first TerminalNode corresponding to token COMPARISON
-/// Returns `None` if there is no child corresponding to token COMPARISON
-fn COMPARISON(&self) -> Option<Rc<TerminalNode<'input,SubstraitPlanParserContextType>>> where Self:Sized{
-	self.get_token(COMPARISON, 0)
+impl<'input> Simple_idContextExt<'input> {
+    fn new(
+        parent: Option<Rc<dyn SubstraitPlanParserContext<'input> + 'input>>,
+        invoking_state: isize,
+    ) -> Rc<Simple_idContextAll<'input>> {
+        Rc::new(BaseParserRuleContext::new_parser_ctx(
+            parent,
+            invoking_state,
+            Simple_idContextExt { ph: PhantomData },
+        ))
+    }
 }
 
+pub trait Simple_idContextAttrs<'input>:
+    SubstraitPlanParserContext<'input> + BorrowMut<Simple_idContextExt<'input>>
+{
+    /// Retrieves first TerminalNode corresponding to token IDENTIFIER
+    /// Returns `None` if there is no child corresponding to token IDENTIFIER
+    fn IDENTIFIER(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(IDENTIFIER, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token FILTER
+    /// Returns `None` if there is no child corresponding to token FILTER
+    fn FILTER(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(FILTER, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ROOT
+    /// Returns `None` if there is no child corresponding to token ROOT
+    fn ROOT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ROOT, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SOURCE
+    /// Returns `None` if there is no child corresponding to token SOURCE
+    fn SOURCE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SOURCE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SCHEMA
+    /// Returns `None` if there is no child corresponding to token SCHEMA
+    fn SCHEMA(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SCHEMA, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NULLVAL
+    /// Returns `None` if there is no child corresponding to token NULLVAL
+    fn NULLVAL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NULLVAL, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token SORT
+    /// Returns `None` if there is no child corresponding to token SORT
+    fn SORT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(SORT, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token MEASURE
+    /// Returns `None` if there is no child corresponding to token MEASURE
+    fn MEASURE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(MEASURE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token GROUPING
+    /// Returns `None` if there is no child corresponding to token GROUPING
+    fn GROUPING(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(GROUPING, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token COUNT
+    /// Returns `None` if there is no child corresponding to token COUNT
+    fn COUNT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COUNT, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token TYPE
+    /// Returns `None` if there is no child corresponding to token TYPE
+    fn TYPE(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(TYPE, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token EMIT
+    /// Returns `None` if there is no child corresponding to token EMIT
+    fn EMIT(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(EMIT, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token NAMED
+    /// Returns `None` if there is no child corresponding to token NAMED
+    fn NAMED(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(NAMED, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ALL
+    /// Returns `None` if there is no child corresponding to token ALL
+    fn ALL(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ALL, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token ANY
+    /// Returns `None` if there is no child corresponding to token ANY
+    fn ANY(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(ANY, 0)
+    }
+    /// Retrieves first TerminalNode corresponding to token COMPARISON
+    /// Returns `None` if there is no child corresponding to token COMPARISON
+    fn COMPARISON(&self) -> Option<Rc<TerminalNode<'input, SubstraitPlanParserContextType>>>
+    where
+        Self: Sized,
+    {
+        self.get_token(COMPARISON, 0)
+    }
 }
 
-impl<'input> Simple_idContextAttrs<'input> for Simple_idContext<'input>{}
+impl<'input> Simple_idContextAttrs<'input> for Simple_idContext<'input> {}
 
 impl<'input, I, H> SubstraitPlanParser<'input, I, H>
 where
-    I: TokenStream<'input, TF = LocalTokenFactory<'input> > + TidAble<'input>,
-    H: ErrorStrategy<'input,BaseParserType<'input,I>>
+    I: TokenStream<'input, TF = LocalTokenFactory<'input>> + TidAble<'input>,
+    H: ErrorStrategy<'input, BaseParserType<'input, I>>,
 {
-	pub fn simple_id(&mut self,)
-	-> Result<Rc<Simple_idContextAll<'input>>,ANTLRError> {
-		let mut recog = self;
-		let _parentctx = recog.ctx.take();
-		let mut _localctx = Simple_idContextExt::new(_parentctx.clone(), recog.base.get_state());
+    pub fn simple_id(&mut self) -> Result<Rc<Simple_idContextAll<'input>>, ANTLRError> {
+        let mut recog = self;
+        let _parentctx = recog.ctx.take();
+        let mut _localctx = Simple_idContextExt::new(_parentctx.clone(), recog.base.get_state());
         recog.base.enter_rule(_localctx.clone(), 74, RULE_simple_id);
         let mut _localctx: Rc<Simple_idContextAll> = _localctx;
-		let mut _la: isize = -1;
-		let result: Result<(), ANTLRError> = (|| {
+        let mut _la: isize = -1;
+        let result: Result<(), ANTLRError> = (|| {
+            //recog.base.enter_outer_alt(_localctx.clone(), 1);
+            recog.base.enter_outer_alt(None, 1);
+            {
+                recog.base.set_state(630);
+                _la = recog.base.input.la(1);
+                if {
+                    !((((_la - 5) & !0x3f) == 0
+                        && ((1usize << (_la - 5))
+                            & ((1usize << (NAMED - 5))
+                                | (1usize << (SCHEMA - 5))
+                                | (1usize << (FILTER - 5))
+                                | (1usize << (GROUPING - 5))
+                                | (1usize << (MEASURE - 5))
+                                | (1usize << (SORT - 5))
+                                | (1usize << (COUNT - 5))
+                                | (1usize << (TYPE - 5))
+                                | (1usize << (EMIT - 5))
+                                | (1usize << (ALL - 5))
+                                | (1usize << (ANY - 5))
+                                | (1usize << (COMPARISON - 5))
+                                | (1usize << (SOURCE - 5))
+                                | (1usize << (ROOT - 5))))
+                            != 0)
+                        || _la == NULLVAL
+                        || _la == IDENTIFIER)
+                } {
+                    recog.err_handler.recover_inline(&mut recog.base)?;
+                } else {
+                    if recog.base.input.la(1) == TOKEN_EOF {
+                        recog.base.matched_eof = true
+                    };
+                    recog.err_handler.report_match(&mut recog.base);
+                    recog.base.consume(&mut recog.err_handler);
+                }
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(_) => {}
+            Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
+            Err(ref re) => {
+                //_localctx.exception = re;
+                recog.err_handler.report_error(&mut recog.base, re);
+                recog.err_handler.recover(&mut recog.base, re)?;
+            }
+        }
+        recog.base.exit_rule();
 
-			//recog.base.enter_outer_alt(_localctx.clone(), 1);
-			recog.base.enter_outer_alt(None, 1);
-			{
-			recog.base.set_state(630);
-			_la = recog.base.input.la(1);
-			if { !(((((_la - 5)) & !0x3f) == 0 && ((1usize << (_la - 5)) & ((1usize << (NAMED - 5)) | (1usize << (SCHEMA - 5)) | (1usize << (FILTER - 5)) | (1usize << (GROUPING - 5)) | (1usize << (MEASURE - 5)) | (1usize << (SORT - 5)) | (1usize << (COUNT - 5)) | (1usize << (TYPE - 5)) | (1usize << (EMIT - 5)) | (1usize << (ALL - 5)) | (1usize << (ANY - 5)) | (1usize << (COMPARISON - 5)) | (1usize << (SOURCE - 5)) | (1usize << (ROOT - 5)))) != 0) || _la==NULLVAL || _la==IDENTIFIER) } {
-				recog.err_handler.recover_inline(&mut recog.base)?;
-
-			}
-			else {
-				if  recog.base.input.la(1)==TOKEN_EOF { recog.base.matched_eof = true };
-				recog.err_handler.report_match(&mut recog.base);
-				recog.base.consume(&mut recog.err_handler);
-			}
-			}
-			Ok(())
-		})();
-		match result {
-		Ok(_)=>{},
-        Err(e @ ANTLRError::FallThrough(_)) => return Err(e),
-		Err(ref re) => {
-				//_localctx.exception = re;
-				recog.err_handler.report_error(&mut recog.base, re);
-				recog.err_handler.recover(&mut recog.base, re)?;
-			}
-		}
-		recog.base.exit_rule();
-
-		Ok(_localctx)
-	}
+        Ok(_localctx)
+    }
 }
 
 lazy_static! {
@@ -8847,20 +10781,14 @@ lazy_static! {
         let mut dfa = Vec::new();
         let size = _ATN.decision_to_state.len();
         for i in 0..size {
-            dfa.push(DFA::new(
-                _ATN.clone(),
-                _ATN.get_decision_state(i),
-                i as isize,
-            ).into())
+            dfa.push(DFA::new(_ATN.clone(), _ATN.get_decision_state(i), i as isize).into())
         }
         Arc::new(dfa)
     };
 }
 
-
-
-const _serializedATN:&'static str =
-	"\x03\u{608b}\u{a72a}\u{8133}\u{b9ed}\u{417c}\u{3be7}\u{7786}\u{5964}\x03\
+const _serializedATN: &'static str =
+    "\x03\u{608b}\u{a72a}\u{8133}\u{b9ed}\u{417c}\u{3be7}\u{7786}\u{5964}\x03\
 	\x4d\u{27b}\x04\x02\x09\x02\x04\x03\x09\x03\x04\x04\x09\x04\x04\x05\x09\
 	\x05\x04\x06\x09\x06\x04\x07\x09\x07\x04\x08\x09\x08\x04\x09\x09\x09\x04\
 	\x0a\x09\x0a\x04\x0b\x09\x0b\x04\x0c\x09\x0c\x04\x0d\x09\x0d\x04\x0e\x09\
@@ -9228,4 +11156,3 @@ const _serializedATN:&'static str =
 	\u{181}\u{185}\u{18d}\u{198}\u{19f}\u{1ab}\u{1b2}\u{1b7}\u{1ca}\u{1de}\u{1e4}\
 	\u{1f3}\u{1f7}\u{1fb}\u{207}\u{20b}\u{20e}\u{216}\u{21f}\u{22c}\u{23c}\u{246}\
 	\u{24a}\u{250}\u{259}\u{261}\u{268}\u{270}\u{275}";
-

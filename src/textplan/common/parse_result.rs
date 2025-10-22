@@ -7,7 +7,7 @@ use std::fmt;
 use crate::textplan::symbol_table::SymbolTable;
 
 /// Represents the result of parsing a textplan.
-/// 
+///
 /// This contains the symbol table, any syntax errors, and any semantic errors.
 #[derive(Debug)]
 pub struct ParseResult {
