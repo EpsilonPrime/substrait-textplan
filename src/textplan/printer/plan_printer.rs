@@ -8,7 +8,9 @@ use std::sync::Arc;
 use crate::textplan::common::error::TextPlanError;
 use crate::textplan::common::structured_symbol_data::RelationData;
 use crate::textplan::printer::expression_printer::ExpressionPrinter;
-use crate::textplan::symbol_table::{RelationType, SourceType, SymbolInfo, SymbolTable, SymbolType};
+use crate::textplan::symbol_table::{
+    RelationType, SourceType, SymbolInfo, SymbolTable, SymbolType,
+};
 
 /// Format options for the text plan output.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -304,7 +306,12 @@ impl PlanPrinter {
                 self.add_project_relation_properties(relation, symbol_table, &indent, &mut result)?;
             }
             RelationType::Aggregate => {
-                self.add_aggregate_relation_properties(relation, symbol_table, &indent, &mut result)?;
+                self.add_aggregate_relation_properties(
+                    relation,
+                    symbol_table,
+                    &indent,
+                    &mut result,
+                )?;
             }
             // Add cases for other relation types as needed
             _ => {
@@ -351,8 +358,10 @@ impl PlanPrinter {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
                     // Extract the ReadRel from the protobuf
                     if let Some(RelType::Read(read_rel)) = &relation_data.relation.rel_type {
-                        let source_name = relation_data.source.as_ref().map(|s| s.name().to_string());
-                        let schema_name = relation_data.schema.as_ref().map(|s| s.name().to_string());
+                        let source_name =
+                            relation_data.source.as_ref().map(|s| s.name().to_string());
+                        let schema_name =
+                            relation_data.schema.as_ref().map(|s| s.name().to_string());
                         let filter_expr = read_rel.filter.clone();
                         (source_name, schema_name, filter_expr)
                     } else {
@@ -475,7 +484,9 @@ impl PlanPrinter {
 
         // Print emit from common
         if let Some(common_val) = common {
-            if let Some(::substrait::proto::rel_common::EmitKind::Emit(emit)) = &common_val.emit_kind {
+            if let Some(::substrait::proto::rel_common::EmitKind::Emit(emit)) =
+                &common_val.emit_kind
+            {
                 if !expressions.is_empty() && !emit.output_mapping.is_empty() {
                     result.push('\n');
                 }
@@ -526,7 +537,10 @@ impl PlanPrinter {
             if let Some(agg_func) = &measure.measure {
                 let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
                 // TODO: Print aggregate function properly - for now just placeholder
-                result.push_str(&format!("{}measure AGGREGATE_FUNCTION_NOT_YET_IMPLEMENTED;\n", measure_indent));
+                result.push_str(&format!(
+                    "{}measure AGGREGATE_FUNCTION_NOT_YET_IMPLEMENTED;\n",
+                    measure_indent
+                ));
             }
 
             result.push_str(&format!("{}}}\n", indent));
@@ -545,11 +559,7 @@ impl PlanPrinter {
     /// # Returns
     ///
     /// Vector of relation names in the pipeline
-    fn pipeline_to_path(
-        &self,
-        symbol_table: &SymbolTable,
-        info: &Arc<SymbolInfo>,
-    ) -> Vec<String> {
+    fn pipeline_to_path(&self, symbol_table: &SymbolTable, info: &Arc<SymbolInfo>) -> Vec<String> {
         use crate::textplan::common::structured_symbol_data::RelationData;
 
         let mut pipeline = Vec::new();
@@ -603,7 +613,7 @@ impl PlanPrinter {
             Some(RelType::HashJoin(_)) => RelationType::HashJoin,
             Some(RelType::MergeJoin(_)) => RelationType::MergeJoin,
             Some(RelType::NestedLoopJoin(_)) => RelationType::Join, // Map to generic Join
-            Some(RelType::Window(_)) => RelationType::Unknown, // No specific Window type
+            Some(RelType::Window(_)) => RelationType::Unknown,      // No specific Window type
             Some(RelType::Exchange(_)) => RelationType::Exchange,
             Some(RelType::Expand(_)) => RelationType::Unknown, // No specific Expand type
             Some(RelType::Update(_)) => RelationType::Unknown, // No specific Update type
@@ -733,25 +743,29 @@ impl PlanPrinter {
         for schema in schemas {
             result.push_str(&format!("schema {} {{\n", schema.name()));
 
-            // Get the schema fields from the blob (which contains a NamedStruct)
-            if let Some(blob_lock) = &schema.blob {
-                if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(named_struct) = blob_data.downcast_ref::<::substrait::proto::expression::field_reference::RootType>() {
-                        // TODO: Extract fields from the NamedStruct
-                        // For now, we'll look for field symbols associated with this schema
-                    }
-                }
-            }
-
             // Find field symbols that belong to this schema
             for field in symbol_table.symbols() {
                 if field.symbol_type() == SymbolType::Field {
                     if let Some(field_schema) = field.schema() {
                         if field_schema.name() == schema.name() {
-                            // Print field with its type
-                            result.push_str(&format!("  {} ", field.name()));
-                            // TODO: Get the actual type from the field's blob
-                            result.push_str("UNKNOWN_TYPE;\n");
+                            // Get the type from the field's blob
+                            if let Some(blob_lock) = &field.blob {
+                                if let Ok(blob_data) = blob_lock.lock() {
+                                    if let Some(field_type) =
+                                        blob_data.downcast_ref::<::substrait::proto::Type>()
+                                    {
+                                        // Use ExpressionPrinter to format the type
+                                        let mut expr_printer =
+                                            ExpressionPrinter::new(symbol_table, None);
+                                        let type_text = expr_printer.print_type(field_type)?;
+                                        result.push_str(&format!(
+                                            "  {} {};\n",
+                                            field.name(),
+                                            type_text
+                                        ));
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -769,7 +783,7 @@ impl PlanPrinter {
         symbol_table: &SymbolTable,
         result: &mut String,
     ) -> Result<(), TextPlanError> {
-        use ::substrait::proto::read_rel::{LocalFiles, NamedTable, VirtualTable, ExtensionTable};
+        use ::substrait::proto::read_rel::{ExtensionTable, LocalFiles, NamedTable, VirtualTable};
 
         let sources: Vec<_> = symbol_table
             .symbols()
@@ -791,7 +805,10 @@ impl PlanPrinter {
                     if let Some(blob_lock) = &source.blob {
                         if let Ok(blob_data) = blob_lock.lock() {
                             if let Some(local_files) = blob_data.downcast_ref::<LocalFiles>() {
-                                result.push_str(&format!("source local_files {} {{\n", source.name()));
+                                result.push_str(&format!(
+                                    "source local_files {} {{\n",
+                                    source.name()
+                                ));
                                 result.push_str("  items = [\n");
 
                                 for item in &local_files.items {
@@ -808,10 +825,14 @@ impl PlanPrinter {
                                                 result.push_str(&format!("uri_path: \"{}\"", uri));
                                             }
                                             PathType::UriPathGlob(uri) => {
-                                                result.push_str(&format!("uri_path_glob: \"{}\"", uri));
+                                                result.push_str(&format!(
+                                                    "uri_path_glob: \"{}\"",
+                                                    uri
+                                                ));
                                             }
                                             PathType::UriFolder(uri) => {
-                                                result.push_str(&format!("uri_folder: \"{}\"", uri));
+                                                result
+                                                    .push_str(&format!("uri_folder: \"{}\"", uri));
                                             }
                                         }
                                     }
@@ -830,12 +851,16 @@ impl PlanPrinter {
                                     if let Some(file_format) = &item.file_format {
                                         use ::substrait::proto::read_rel::local_files::file_or_files::FileFormat;
                                         match file_format {
-                                            FileFormat::Parquet(_) => result.push_str(" parquet: {}"),
+                                            FileFormat::Parquet(_) => {
+                                                result.push_str(" parquet: {}")
+                                            }
                                             FileFormat::Arrow(_) => result.push_str(" arrow: {}"),
                                             FileFormat::Orc(_) => result.push_str(" orc: {}"),
                                             FileFormat::Dwrf(_) => result.push_str(" dwrf: {}"),
                                             FileFormat::Text(_) => result.push_str(" text: {}"),
-                                            FileFormat::Extension(_) => result.push_str(" extension: {}"),
+                                            FileFormat::Extension(_) => {
+                                                result.push_str(" extension: {}")
+                                            }
                                         }
                                     }
 
@@ -852,7 +877,10 @@ impl PlanPrinter {
                     if let Some(blob_lock) = &source.blob {
                         if let Ok(blob_data) = blob_lock.lock() {
                             if let Some(named_table) = blob_data.downcast_ref::<NamedTable>() {
-                                result.push_str(&format!("source named_table {} {{\n", source.name()));
+                                result.push_str(&format!(
+                                    "source named_table {} {{\n",
+                                    source.name()
+                                ));
                                 result.push_str("  names = [");
                                 for (i, name) in named_table.names.iter().enumerate() {
                                     if i > 0 {
@@ -870,7 +898,10 @@ impl PlanPrinter {
                     if let Some(blob_lock) = &source.blob {
                         if let Ok(blob_data) = blob_lock.lock() {
                             if let Some(_virtual_table) = blob_data.downcast_ref::<VirtualTable>() {
-                                result.push_str(&format!("source virtual_table {} {{\n", source.name()));
+                                result.push_str(&format!(
+                                    "source virtual_table {} {{\n",
+                                    source.name()
+                                ));
                                 // TODO: Print virtual table values
                                 result.push_str("  // Virtual table values not yet implemented\n");
                                 result.push_str("}\n\n");
@@ -881,9 +912,15 @@ impl PlanPrinter {
                 SourceType::ExtensionTable => {
                     if let Some(blob_lock) = &source.blob {
                         if let Ok(blob_data) = blob_lock.lock() {
-                            if let Some(_extension_table) = blob_data.downcast_ref::<ExtensionTable>() {
-                                result.push_str(&format!("source extension_table {} {{\n", source.name()));
-                                result.push_str("  // Extension table details not yet implemented\n");
+                            if let Some(_extension_table) =
+                                blob_data.downcast_ref::<ExtensionTable>()
+                            {
+                                result.push_str(&format!(
+                                    "source extension_table {} {{\n",
+                                    source.name()
+                                ));
+                                result
+                                    .push_str("  // Extension table details not yet implemented\n");
                                 result.push_str("}\n\n");
                             }
                         }

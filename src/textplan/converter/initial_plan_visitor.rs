@@ -190,10 +190,9 @@ impl InitialPlanVisitor {
         relation: &substrait::Rel,
         relation_location: &ProtoLocation,
     ) {
-        let symbol = self.symbol_table.lookup_symbol_by_location_and_type(
-            relation_location,
-            SymbolType::Relation,
-        );
+        let symbol = self
+            .symbol_table
+            .lookup_symbol_by_location_and_type(relation_location, SymbolType::Relation);
 
         if let Some(symbol_ref) = symbol {
             if symbol_ref.symbol_type() != SymbolType::Relation {
@@ -256,10 +255,15 @@ impl InitialPlanVisitor {
                 // TODO(REVIEW): Verify FieldReference.reference_type vs root_type usage.
                 // The protobuf has both reference_type (DirectReference/MaskedReference) and
                 // root_type (Expression/RootReference/OuterReference) as separate oneofs.
-                if let Some(substrait::expression::field_reference::ReferenceType::DirectReference(ref_seg)) = &selection.reference_type {
-                    if let Some(substrait::expression::reference_segment::ReferenceType::StructField(
-                        struct_field,
-                    )) = &ref_seg.reference_type
+                if let Some(
+                    substrait::expression::field_reference::ReferenceType::DirectReference(ref_seg),
+                ) = &selection.reference_type
+                {
+                    if let Some(
+                        substrait::expression::reference_segment::ReferenceType::StructField(
+                            struct_field,
+                        ),
+                    ) = &ref_seg.reference_type
                     {
                         let mapping = struct_field.field as usize;
                         // TODO -- Figure out if we need to not add fields we've already seen.
@@ -288,19 +292,36 @@ impl InitialPlanVisitor {
             match rel_type {
                 substrait::rel::RelType::Read(read_rel) => {
                     if let Some(base_schema) = &read_rel.base_schema {
-                        for name in &base_schema.names {
+                        for (idx, name) in base_schema.names.iter().enumerate() {
+                            // Get the corresponding type if available
+                            let type_blob: Option<Arc<Mutex<dyn Any + Send + Sync>>> =
+                                if let Some(struct_type) = &base_schema.r#struct {
+                                    if idx < struct_type.types.len() {
+                                        Some(Arc::new(Mutex::new(struct_type.types[idx].clone())))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                };
+
                             let symbol = self.symbol_table.define_symbol(
                                 name.clone(),
                                 self.current_location().field("read").field("base_schema"),
                                 SymbolType::Field,
                                 Some(Box::new(SourceType::Unknown)),
-                                None,
+                                type_blob,
                             );
 
+                            // Set the schema on the field symbol
                             if let Some(scope) = self.current_relation_scope.last() {
                                 let scope_str = scope.as_ref().clone();
-                                if let Some(schema_symbol) = self.read_relation_schemas.get(&scope_str) {
-                                    if let Some(mut_symbol) = Arc::get_mut(&mut symbol.clone()) {
+                                if let Some(schema_symbol) =
+                                    self.read_relation_schemas.get(&scope_str)
+                                {
+                                    if let Some(mut_symbol) =
+                                        self.symbol_table.get_mutable_symbol(&symbol)
+                                    {
                                         mut_symbol.set_schema(schema_symbol.clone());
                                     }
                                 }
@@ -324,14 +345,17 @@ impl InitialPlanVisitor {
                 }
                 substrait::rel::RelType::Aggregate(agg_rel) => {
                     if let Some(input) = &agg_rel.input {
-                        let input_location = self.current_location().field("aggregate").field("input");
+                        let input_location =
+                            self.current_location().field("aggregate").field("input");
                         self.add_fields_to_relation_single(relation_data, input, &input_location);
                     }
                     for grouping in &agg_rel.groupings {
                         self.add_grouping_to_relation(relation_data, grouping);
                     }
                     // Add measures from internal_relation
-                    if let Some(substrait::rel::RelType::Aggregate(internal_agg)) = &internal_relation.rel_type {
+                    if let Some(substrait::rel::RelType::Aggregate(internal_agg)) =
+                        &internal_relation.rel_type
+                    {
                         for measure in &internal_agg.measures {
                             let unique_name = self.symbol_table.get_unique_name("measurename");
                             let symbol = self.symbol_table.define_symbol(
@@ -346,9 +370,9 @@ impl InitialPlanVisitor {
                     }
                     // TODO -- If there are multiple groupings add the additional output.
                     // Aggregate relations are different in that they alter the emitted fields by default.
-                    relation_data.output_field_references.extend(
-                        relation_data.generated_field_references.iter().cloned()
-                    );
+                    relation_data
+                        .output_field_references
+                        .extend(relation_data.generated_field_references.iter().cloned());
                 }
                 substrait::rel::RelType::Sort(sort_rel) => {
                     if let Some(input) = &sort_rel.input {
@@ -360,17 +384,26 @@ impl InitialPlanVisitor {
                     if let (Some(left), Some(right)) = (&join_rel.left, &join_rel.right) {
                         let left_location = self.current_location().field("join").field("left");
                         let right_location = self.current_location().field("join").field("right");
-                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                        self.add_fields_to_relation_two(
+                            relation_data,
+                            left,
+                            &left_location,
+                            right,
+                            &right_location,
+                        );
                     }
                 }
                 substrait::rel::RelType::Project(project_rel) => {
                     if let Some(input) = &project_rel.input {
-                        let input_location = self.current_location().field("project").field("input");
+                        let input_location =
+                            self.current_location().field("project").field("input");
                         self.add_fields_to_relation_single(relation_data, input, &input_location);
                     }
                     for expr in &project_rel.expressions {
                         // TODO -- Add support for other kinds of direct references.
-                        if let Some(substrait::expression::RexType::Selection(selection)) = &expr.rex_type {
+                        if let Some(substrait::expression::RexType::Selection(selection)) =
+                            &expr.rex_type
+                        {
                             // TODO(REVIEW): Verify FieldReference.reference_type vs root_type usage.
                             // The protobuf has both reference_type (DirectReference/MaskedReference) and
                             // root_type (Expression/RootReference/OuterReference) as separate oneofs.
@@ -425,24 +458,39 @@ impl InitialPlanVisitor {
                                 None,
                                 None,
                             );
-                            relation_data.generated_field_references.push(new_symbol.clone());
+                            relation_data
+                                .generated_field_references
+                                .push(new_symbol.clone());
                             self.symbol_table.add_alias(unique_name, &new_symbol);
                         }
                     }
                 }
                 substrait::rel::RelType::Set(set_rel) => {
                     let base_location = self.current_location().field("set");
-                    self.add_fields_to_relation_multiple(relation_data, &set_rel.inputs, &base_location, "inputs");
+                    self.add_fields_to_relation_multiple(
+                        relation_data,
+                        &set_rel.inputs,
+                        &base_location,
+                        "inputs",
+                    );
                 }
                 substrait::rel::RelType::ExtensionSingle(ext_single) => {
                     if let Some(input) = &ext_single.input {
-                        let input_location = self.current_location().field("extension_single").field("input");
+                        let input_location = self
+                            .current_location()
+                            .field("extension_single")
+                            .field("input");
                         self.add_fields_to_relation_single(relation_data, input, &input_location);
                     }
                 }
                 substrait::rel::RelType::ExtensionMulti(ext_multi) => {
                     let base_location = self.current_location().field("extension_multi");
-                    self.add_fields_to_relation_multiple(relation_data, &ext_multi.inputs, &base_location, "inputs");
+                    self.add_fields_to_relation_multiple(
+                        relation_data,
+                        &ext_multi.inputs,
+                        &base_location,
+                        "inputs",
+                    );
                 }
                 substrait::rel::RelType::ExtensionLeaf(_) => {
                     // There is no defined way to get the schema for a leaf.
@@ -451,7 +499,13 @@ impl InitialPlanVisitor {
                     if let (Some(left), Some(right)) = (&cross_rel.left, &cross_rel.right) {
                         let left_location = self.current_location().field("cross").field("left");
                         let right_location = self.current_location().field("cross").field("right");
-                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                        self.add_fields_to_relation_two(
+                            relation_data,
+                            left,
+                            &left_location,
+                            right,
+                            &right_location,
+                        );
                     }
                 }
                 substrait::rel::RelType::Reference(_) => {
@@ -465,29 +519,64 @@ impl InitialPlanVisitor {
                 }
                 substrait::rel::RelType::Ddl(ddl_rel) => {
                     if let Some(view_def) = &ddl_rel.view_definition {
-                        let input_location = self.current_location().field("ddl").field("view_definition");
-                        self.add_fields_to_relation_single(relation_data, view_def, &input_location);
+                        let input_location = self
+                            .current_location()
+                            .field("ddl")
+                            .field("view_definition");
+                        self.add_fields_to_relation_single(
+                            relation_data,
+                            view_def,
+                            &input_location,
+                        );
                     }
                 }
                 substrait::rel::RelType::HashJoin(hash_join) => {
                     if let (Some(left), Some(right)) = (&hash_join.left, &hash_join.right) {
-                        let left_location = self.current_location().field("hash_join").field("left");
-                        let right_location = self.current_location().field("hash_join").field("right");
-                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                        let left_location =
+                            self.current_location().field("hash_join").field("left");
+                        let right_location =
+                            self.current_location().field("hash_join").field("right");
+                        self.add_fields_to_relation_two(
+                            relation_data,
+                            left,
+                            &left_location,
+                            right,
+                            &right_location,
+                        );
                     }
                 }
                 substrait::rel::RelType::MergeJoin(merge_join) => {
                     if let (Some(left), Some(right)) = (&merge_join.left, &merge_join.right) {
-                        let left_location = self.current_location().field("merge_join").field("left");
-                        let right_location = self.current_location().field("merge_join").field("right");
-                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                        let left_location =
+                            self.current_location().field("merge_join").field("left");
+                        let right_location =
+                            self.current_location().field("merge_join").field("right");
+                        self.add_fields_to_relation_two(
+                            relation_data,
+                            left,
+                            &left_location,
+                            right,
+                            &right_location,
+                        );
                     }
                 }
                 substrait::rel::RelType::NestedLoopJoin(nested_join) => {
                     if let (Some(left), Some(right)) = (&nested_join.left, &nested_join.right) {
-                        let left_location = self.current_location().field("nested_loop_join").field("left");
-                        let right_location = self.current_location().field("nested_loop_join").field("right");
-                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                        let left_location = self
+                            .current_location()
+                            .field("nested_loop_join")
+                            .field("left");
+                        let right_location = self
+                            .current_location()
+                            .field("nested_loop_join")
+                            .field("right");
+                        self.add_fields_to_relation_two(
+                            relation_data,
+                            left,
+                            &left_location,
+                            right,
+                            &right_location,
+                        );
                     }
                 }
                 substrait::rel::RelType::Window(window_rel) => {
@@ -498,7 +587,8 @@ impl InitialPlanVisitor {
                 }
                 substrait::rel::RelType::Exchange(exchange_rel) => {
                     if let Some(input) = &exchange_rel.input {
-                        let input_location = self.current_location().field("exchange").field("input");
+                        let input_location =
+                            self.current_location().field("exchange").field("input");
                         self.add_fields_to_relation_single(relation_data, input, &input_location);
                     }
                 }
@@ -517,15 +607,18 @@ impl InitialPlanVisitor {
         // Revamp the output based on the output mapping if present.
         let mapping = Self::get_output_mapping(relation);
         if !mapping.is_empty() {
-            if matches!(relation.rel_type, Some(substrait::rel::RelType::Aggregate(_))) {
+            if matches!(
+                relation.rel_type,
+                Some(substrait::rel::RelType::Aggregate(_))
+            ) {
                 let generated_field_reference_size = relation_data.generated_field_references.len();
                 relation_data.output_field_references.clear(); // Start over.
                 for item in mapping {
                     let item_usize = item as usize;
                     if item_usize < generated_field_reference_size {
-                        relation_data.output_field_references.push(
-                            relation_data.generated_field_references[item_usize].clone()
-                        );
+                        relation_data
+                            .output_field_references
+                            .push(relation_data.generated_field_references[item_usize].clone());
                     } else {
                         // TODO -- Add support for grouping fields (needs text syntax).
                         // errorListener_->addError("Asked to emit a field beyond what the aggregate produced.");
@@ -537,12 +630,15 @@ impl InitialPlanVisitor {
                 let item_usize = item as usize;
                 let field_reference_size = relation_data.field_references.len();
                 if item_usize < field_reference_size {
+                    relation_data
+                        .output_field_references
+                        .push(relation_data.field_references[item_usize].clone());
+                } else if item_usize
+                    < field_reference_size + relation_data.generated_field_references.len()
+                {
                     relation_data.output_field_references.push(
-                        relation_data.field_references[item_usize].clone()
-                    );
-                } else if item_usize < field_reference_size + relation_data.generated_field_references.len() {
-                    relation_data.output_field_references.push(
-                        relation_data.generated_field_references[item_usize - field_reference_size].clone()
+                        relation_data.generated_field_references[item_usize - field_reference_size]
+                            .clone(),
                     );
                 } else {
                     // errorListener_->addError("Asked to emit field which isn't available.");

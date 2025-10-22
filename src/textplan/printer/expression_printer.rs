@@ -53,14 +53,14 @@ impl<'a> ExpressionPrinter<'a> {
             Some(RexType::SingularOrList(_)) => {
                 Ok("SINGULAR_OR_LIST_NOT_YET_IMPLEMENTED".to_string())
             }
-            Some(RexType::MultiOrList(_)) => {
-                Ok("MULTI_OR_LIST_NOT_YET_IMPLEMENTED".to_string())
-            }
+            Some(RexType::MultiOrList(_)) => Ok("MULTI_OR_LIST_NOT_YET_IMPLEMENTED".to_string()),
             Some(RexType::Cast(cast)) => self.print_cast(cast),
             Some(RexType::Subquery(_)) => Ok("SUBQUERY_NOT_YET_IMPLEMENTED".to_string()),
             Some(RexType::Nested(_)) => Ok("NESTED_NOT_YET_IMPLEMENTED".to_string()),
             Some(RexType::Enum(_)) => Ok("ENUM_NOT_YET_IMPLEMENTED".to_string()),
-            Some(RexType::DynamicParameter(_)) => Ok("DYNAMIC_PARAMETER_NOT_YET_IMPLEMENTED".to_string()),
+            Some(RexType::DynamicParameter(_)) => {
+                Ok("DYNAMIC_PARAMETER_NOT_YET_IMPLEMENTED".to_string())
+            }
             None => Err(TextPlanError::InvalidExpression(
                 "Expression has no rex_type".to_string(),
             )),
@@ -84,9 +84,7 @@ impl<'a> ExpressionPrinter<'a> {
             Some(LiteralType::Fp64(v)) => format!("{}_fp64", v),
             Some(LiteralType::String(s)) => format!("\"{}\"", escape_string(s)),
             Some(LiteralType::Binary(_)) => "BINARY_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
-            Some(LiteralType::Timestamp(_)) => {
-                "TIMESTAMP_LITERAL_NOT_YET_IMPLEMENTED".to_string()
-            }
+            Some(LiteralType::Timestamp(_)) => "TIMESTAMP_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
             Some(LiteralType::Date(_)) => "DATE_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
             Some(LiteralType::Time(_)) => "TIME_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
             Some(LiteralType::IntervalYearToMonth(_)) => {
@@ -152,7 +150,11 @@ impl<'a> ExpressionPrinter<'a> {
             Some(ReferenceType::DirectReference(direct_ref)) => {
                 // Extract outer reference if it exists from root_type
                 let outer_ref = match &field_ref.root_type {
-                    Some(::substrait::proto::expression::field_reference::RootType::OuterReference(o)) => Some(o),
+                    Some(
+                        ::substrait::proto::expression::field_reference::RootType::OuterReference(
+                            o,
+                        ),
+                    ) => Some(o),
                     _ => None,
                 };
                 self.print_direct_reference(direct_ref, outer_ref)
@@ -341,7 +343,7 @@ impl<'a> ExpressionPrinter<'a> {
     }
 
     /// Prints a type annotation.
-    fn print_type(&self, type_val: &::substrait::proto::Type) -> Result<String, TextPlanError> {
+    pub fn print_type(&self, type_val: &::substrait::proto::Type) -> Result<String, TextPlanError> {
         use ::substrait::proto::r#type::Kind;
 
         let mut result = String::new();
@@ -397,11 +399,13 @@ impl<'a> ExpressionPrinter<'a> {
             ),
             Some(Kind::IntervalYear(interval_type)) => (
                 "interval_year",
-                interval_type.nullability == ::substrait::proto::r#type::Nullability::Nullable as i32,
+                interval_type.nullability
+                    == ::substrait::proto::r#type::Nullability::Nullable as i32,
             ),
             Some(Kind::IntervalDay(interval_type)) => (
                 "interval_day",
-                interval_type.nullability == ::substrait::proto::r#type::Nullability::Nullable as i32,
+                interval_type.nullability
+                    == ::substrait::proto::r#type::Nullability::Nullable as i32,
             ),
             Some(Kind::TimestampTz(ts_type)) => (
                 "timestamp_tz",
@@ -437,7 +441,8 @@ impl<'a> ExpressionPrinter<'a> {
             }
             Some(Kind::Decimal(dec_type)) => {
                 result.push_str("decimal");
-                if dec_type.nullability == ::substrait::proto::r#type::Nullability::Nullable as i32 {
+                if dec_type.nullability == ::substrait::proto::r#type::Nullability::Nullable as i32
+                {
                     result.push('?');
                 }
                 result.push_str(&format!("<{},{}>", dec_type.precision, dec_type.scale));
@@ -464,9 +469,7 @@ impl<'a> ExpressionPrinter<'a> {
             Some(Kind::PrecisionTimestampTz(_)) => {
                 return Ok("PRECISION_TIMESTAMP_TZ_TYPE_NOT_YET_IMPLEMENTED".to_string())
             }
-            Some(Kind::Alias(_)) => {
-                return Ok("ALIAS_TYPE_NOT_YET_IMPLEMENTED".to_string())
-            }
+            Some(Kind::Alias(_)) => return Ok("ALIAS_TYPE_NOT_YET_IMPLEMENTED".to_string()),
             None => {
                 return Err(TextPlanError::InvalidExpression(
                     "Type has no kind".to_string(),
