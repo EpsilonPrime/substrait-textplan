@@ -319,11 +319,7 @@ impl InitialPlanVisitor {
                                 if let Some(schema_symbol) =
                                     self.read_relation_schemas.get(&scope_str)
                                 {
-                                    if let Some(mut_symbol) =
-                                        self.symbol_table.get_mutable_symbol(&symbol)
-                                    {
-                                        mut_symbol.set_schema(schema_symbol.clone());
-                                    }
+                                    symbol.set_schema(schema_symbol.clone());
                                 }
                             }
 
