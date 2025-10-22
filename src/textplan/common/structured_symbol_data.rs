@@ -95,7 +95,7 @@ impl ExtensionSpaceData {
 pub struct FunctionData {
     name: String,
     extension_uri_reference: Option<u32>,
-    anchor: u32,
+    pub anchor: u32,
 }
 
 impl FunctionData {

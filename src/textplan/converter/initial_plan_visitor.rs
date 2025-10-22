@@ -60,7 +60,7 @@ fn plan_rel_type_case_name(obj: &substrait::PlanRel) -> &'static str {
 fn rel_type_case_name(relation: &substrait::Rel) -> &'static str {
     if let Some(oneof) = &relation.rel_type {
         match oneof {
-            substrait::rel::RelType::Read(_) => "rel",
+            substrait::rel::RelType::Read(_) => "read",
             substrait::rel::RelType::Filter(_) => "filter",
             substrait::rel::RelType::Fetch(_) => "root",
             substrait::rel::RelType::Aggregate(_) => "aggregate",

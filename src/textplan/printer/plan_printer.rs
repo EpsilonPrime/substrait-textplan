@@ -6,6 +6,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::textplan::common::error::TextPlanError;
+use crate::textplan::common::structured_symbol_data::RelationData;
+use crate::textplan::printer::expression_printer::ExpressionPrinter;
 use crate::textplan::symbol_table::{RelationType, SymbolInfo, SymbolTable, SymbolType};
 
 /// Format options for the text plan output.
@@ -326,94 +328,44 @@ impl PlanPrinter {
         indent: &str,
         result: &mut String,
     ) -> Result<(), TextPlanError> {
-        // Look for table information
-        let table_symbols: Vec<_> = symbol_table
-            .symbols()
-            .iter()
-            .filter(|s| {
-                s.symbol_type() == SymbolType::Table
-                    && s.name().starts_with(&format!("{}.", relation.name()))
-            })
-            .cloned()
-            .collect();
+        use ::substrait::proto::rel::RelType;
 
-        if !table_symbols.is_empty() {
-            // Add BASE_SCHEMA if available
-            if let Some(_schema) = relation.schema() {
-                result.push_str(&format!("{}BASE_SCHEMA = {{\n", indent));
-
-                let schema_indent = " ".repeat(indent.len() + self.indent_size);
-
-                // Add schema names if available
-                result.push_str(&format!("{}NAMES = [", schema_indent));
-                // In a real implementation, we would get the column names from the schema
-                result.push_str("\"column1\", \"column2\"");
-                result.push_str("]\n");
-
-                result.push_str(&format!("{}}}\n", indent));
-            }
-
-            // Process each table
-            for table in table_symbols {
-                // Get table names from the blob
-                table.with_blob::<Vec<String>, _, _>(|names| {
-                    result.push_str(&format!("{}SOURCE = NAMED_TABLE {{\n", indent));
-
-                    let source_indent = " ".repeat(indent.len() + self.indent_size);
-
-                    // Add table names
-                    result.push_str(&format!("{}NAMES = [", source_indent));
-                    for (i, name) in names.iter().enumerate() {
-                        if i > 0 {
-                            result.push_str(", ");
-                        }
-                        result.push_str(&format!("\"{}\"", name));
+        // Extract the data we need (clone to avoid holding the lock)
+        let (source_name, schema_name, filter_expr) = if let Some(blob_lock) = &relation.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    // Extract the ReadRel from the protobuf
+                    if let Some(RelType::Read(read_rel)) = &relation_data.relation.rel_type {
+                        let source_name = relation_data.source.as_ref().map(|s| s.name().to_string());
+                        let schema_name = relation_data.schema.as_ref().map(|s| s.name().to_string());
+                        let filter_expr = read_rel.filter.clone();
+                        (source_name, schema_name, filter_expr)
+                    } else {
+                        (None, None, None)
                     }
-                    result.push_str("]\n");
-
-                    result.push_str(&format!("{}}}\n", indent));
-                });
+                } else {
+                    (None, None, None)
+                }
+            } else {
+                (None, None, None)
             }
+        } else {
+            (None, None, None)
+        };
+
+        // Now print the properties (lock is released)
+        if let Some(source) = source_name {
+            result.push_str(&format!("{}source {};\n", indent, source));
         }
 
-        // Look for file/folder sources
-        let source_symbols: Vec<_> = symbol_table
-            .symbols()
-            .iter()
-            .filter(|s| {
-                s.symbol_type() == SymbolType::Source
-                    && s.name().starts_with(&format!("{}.", relation.name()))
-            })
-            .cloned()
-            .collect();
+        if let Some(schema) = schema_name {
+            result.push_str(&format!("{}base_schema {};\n", indent, schema));
+        }
 
-        if !source_symbols.is_empty() {
-            for source in source_symbols {
-                if source.name().contains(".file") {
-                    // Process file source
-                    source.with_blob::<String, _, _>(|uri| {
-                        result.push_str(&format!("{}SOURCE = LOCAL_FILES {{\n", indent));
-                        let source_indent = " ".repeat(indent.len() + self.indent_size);
-                        result.push_str(&format!("{}ITEMS = [\n", source_indent));
-                        let item_indent = " ".repeat(indent.len() + 2 * self.indent_size);
-                        result.push_str(&format!("{}{{ URI_FILE = \"{}\" }},\n", item_indent, uri));
-                        result.push_str(&format!("{}]\n", source_indent));
-                        result.push_str(&format!("{}}}\n", indent));
-                    });
-                } else if source.name().contains(".folder") {
-                    // Process folder source
-                    source.with_blob::<String, _, _>(|uri| {
-                        result.push_str(&format!("{}SOURCE = LOCAL_FILES {{\n", indent));
-                        let source_indent = " ".repeat(indent.len() + self.indent_size);
-                        result.push_str(&format!("{}ITEMS = [\n", source_indent));
-                        let item_indent = " ".repeat(indent.len() + 2 * self.indent_size);
-                        result
-                            .push_str(&format!("{}{{ URI_FOLDER = \"{}\" }},\n", item_indent, uri));
-                        result.push_str(&format!("{}]\n", source_indent));
-                        result.push_str(&format!("{}}}\n", indent));
-                    });
-                }
-            }
+        if let Some(filter) = filter_expr {
+            let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
+            let filter_text = expr_printer.print_expression(&filter)?;
+            result.push_str(&format!("{}filter {};\n", indent, filter_text));
         }
 
         Ok(())
@@ -433,18 +385,39 @@ impl PlanPrinter {
     /// Result indicating success or an error
     fn add_filter_relation_properties(
         &self,
-        _relation: &Arc<SymbolInfo>,
-        _symbol_table: &SymbolTable,
+        relation: &Arc<SymbolInfo>,
+        symbol_table: &SymbolTable,
         indent: &str,
         result: &mut String,
     ) -> Result<(), TextPlanError> {
-        // In a real implementation, we would add the filter condition and input relation
+        use ::substrait::proto::rel::RelType;
 
-        // Add a placeholder for the condition
-        result.push_str(&format!("{}CONDITION = /* expression */\n", indent));
+        // Extract the condition expression (clone it to avoid holding the lock)
+        let condition_expr = if let Some(blob_lock) = &relation.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    // Extract the FilterRel from the protobuf
+                    if let Some(RelType::Filter(filter_rel)) = &relation_data.relation.rel_type {
+                        filter_rel.condition.clone()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
-        // Add a placeholder for the input relation
-        result.push_str(&format!("{}INPUT = /* relation reference */\n", indent));
+        // Now print the condition (lock is released)
+        if let Some(condition) = condition_expr {
+            let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
+            let condition_text = expr_printer.print_expression(&condition)?;
+            result.push_str(&format!("{}filter {};\n", indent, condition_text));
+        }
 
         Ok(())
     }

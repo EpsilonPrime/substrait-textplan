@@ -26,6 +26,10 @@ pub enum TextPlanError {
     /// An error that occurred when working with the symbol table.
     #[error("Symbol table error: {0}")]
     SymbolTableError(String),
+
+    /// An error that occurred when printing an expression.
+    #[error("Invalid expression: {0}")]
+    InvalidExpression(String),
 }
 
 /// Result type for textplan operations.
