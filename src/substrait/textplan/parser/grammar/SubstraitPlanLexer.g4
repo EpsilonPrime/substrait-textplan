@@ -101,7 +101,7 @@ QUESTIONMARK: '?';
 ATSIGN: '@';
 
 IDENTIFIER
-    : [A-Z][A-Z0-9$]*
+    : [A-Z][A-Z0-9_$]*
     ;
 
 NUMBER

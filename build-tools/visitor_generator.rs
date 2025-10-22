@@ -431,7 +431,7 @@ impl Traversable for {type_path} \{
         let context = MethodContext {
             indent: indent_str.clone(),
             top_level: full_name == "substrait.Plan" || full_name == "substrait.ExtendedExpression",
-            name: method_name,
+            name: method_name.clone(),
             type_path: rust_type_path.clone(),
         };
 
@@ -539,12 +539,19 @@ impl Traversable for {type_path} \{
                     "{}        {}.traverse(visitor);\n",
                     indent_str, field_name
                 ));
+
                 output.push_str(&format!(
                     "{}        visitor.set_location(prev_location.clone());\n",
                     indent_str
                 ));
             }
         }
+
+        output.push_str(&format!(
+            "\n{}    visitor.post_process_{}(self);\n",
+            indent_str, method_name,
+        ));
+
         // Restore the original location
         output.push_str(&format!(
             "\n{}    // Restore previous location\n",

@@ -11,7 +11,6 @@ use crate::textplan::common::ProtoLocation;
 use crate::textplan::converter::generated::base_plan_visitor::Traversable;
 use crate::textplan::converter::generated::PlanProtoVisitor;
 use crate::textplan::SymbolType;
-use scopeguard::guard;
 use std::sync::Arc;
 use ::substrait::proto as substrait;
 
@@ -74,13 +73,11 @@ impl PlanProtoVisitor for PipelineVisitor {
 
         let previous_relation_scope = self.current_relation_scope.clone();
         self.current_relation_scope = symbol.clone();
-        let _reset_scope = guard((), |_| {
-            self.current_relation_scope = previous_relation_scope;
-        });
 
-        symbol
-            .unwrap()
-            .with_blob::<RelationData, _, _>(|relation_data| match &rel.rel_type {
+        // TODO -- Consider using rel_type_case to simplify this block.
+        // Process the relation data before changing the scope back
+        if let Some(symbol_ref) = &symbol {
+            symbol_ref.with_blob::<RelationData, _, _>(|relation_data| match &rel.rel_type {
                 Some(substrait::rel::RelType::Read(_)) => {
                     // No relations beyond this one.
                 }
@@ -264,6 +261,10 @@ impl PlanProtoVisitor for PipelineVisitor {
                 }
                 None => {}
             });
+        }
+
+        // Restore the previous scope
+        self.current_relation_scope = previous_relation_scope;
     }
 
     fn post_process_plan_rel(&mut self, relation: &substrait::PlanRel) {
@@ -280,10 +281,10 @@ impl PlanProtoVisitor for PipelineVisitor {
                 relation_data.new_pipelines.push(rel_symbol.unwrap());
             }
             Some(substrait::plan_rel::RelType::Root(_)) => {
-                let input_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
-                    &self.current_location().field("rotation"),
-                    SymbolType::Relation,
-                );
+                let lookup_location = self.current_location().field("root").field("input");
+                let input_symbol = self
+                    .symbol_table
+                    .lookup_symbol_by_location_and_type(&lookup_location, SymbolType::Relation);
                 relation_data.new_pipelines.push(input_symbol.unwrap());
             }
             None => {}

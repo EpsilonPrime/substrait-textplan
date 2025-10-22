@@ -93,6 +93,17 @@ pub enum RelationType {
     ExtensionMulti,
 }
 
+/// Types of relations in a plan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SourceType {
+    // Logical relations
+    Unknown,
+    LocalFiles,
+    NamedTable,
+    VirtualTable,
+    ExtensionTable,
+}
+
 /// Information about a symbol in the symbol table.
 #[derive(Debug)]
 pub struct SymbolInfo {
@@ -103,6 +114,8 @@ pub struct SymbolInfo {
     /// The location of the symbol in the source text.
     source_location: Box<dyn Location>,
     /// A permanent location for the symbol (if different from source_location).
+    /// TODO: This field is obsolete in the Rust implementation since locations are tracked
+    /// through traversal. Consider removing this field and related methods.
     permanent_location: Box<dyn Location>,
     /// The location of the parent query, if this symbol is in a subquery.
     parent_query_location: Box<dyn Location>,

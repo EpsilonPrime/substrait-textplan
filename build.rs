@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Generate ANTLR code using the antlr4 tool with Rust support.
 ///
 /// Note: You must download the special ANTLR4 JAR with Rust support from:
-/// https://github.com/rrevenantt/antlr4rust/releases/download/antlr4-4.8-2-Rust-0.3.0-beta/antlr4-4.8-2-SNAPSHOT-complete.jar
+/// https://github.com/rrevenantt/antlr4rust/releases/download/antlr4-4.8-2-Rust0.3.0-beta/antlr4-4.8-2-SNAPSHOT-complete.jar
 ///
 /// Regular ANTLR4 JAR files DO NOT support generating Rust code!
 fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
@@ -71,7 +71,7 @@ fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
     }).unwrap_or_else(|| {
         println!("cargo:warning=ANTLR_JAR environment variable not set!");
         println!("cargo:warning=You must download the special ANTLR4 JAR with Rust support from:");
-        println!("cargo:warning=https://github.com/rrevenantt/antlr4rust/releases/download/antlr4-4.8-2-Rust-0.3.0-beta/antlr4-4.8-2-SNAPSHOT-complete.jar");
+        println!("cargo:warning=https://github.com/rrevenantt/antlr4rust/releases/download/antlr4-4.8-2-Rust0.3.0-beta/antlr4-4.8-2-SNAPSHOT-complete.jar");
         println!("cargo:warning=Regular ANTLR4 JAR files DO NOT support generating Rust code!");
         println!("cargo:warning=Using default 'antlr4rust.jar' - make sure this is the correct version with Rust support");
         "antlr4rust.jar".to_string()
@@ -79,14 +79,17 @@ fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check if the JAR file exists
     if !PathBuf::from(&antlr_jar).exists() {
-        println!(
-            "cargo:warning=Could not find ANTLR4 JAR file at '{}'",
-            antlr_jar
-        );
-        println!("cargo:warning=Please download it from:");
-        println!("cargo:warning=https://github.com/rrevenantt/antlr4rust/releases/download/antlr4-4.8-2-Rust-0.3.0-beta/antlr4-4.8-2-SNAPSHOT-complete.jar");
-        println!("cargo:warning=And place it in build-tools/antlr4rust.jar or set ANTLR_JAR environment variable");
-        return Err("ANTLR4 JAR file not found".into());
+        eprintln!("\n");
+        eprintln!("ERROR: Could not find ANTLR4 JAR file at '{}'", antlr_jar);
+        eprintln!("\nTo generate ANTLR code, you must download the special ANTLR4 JAR with Rust support.");
+        eprintln!("Download it from:");
+        eprintln!("  https://github.com/rrevenantt/antlr4rust/releases/download/antlr4-4.8-2-Rust0.3.0-beta/antlr4-4.8-2-SNAPSHOT-complete.jar");
+        eprintln!("\nThen either:");
+        eprintln!("  1. Place it in build-tools/antlr4rust.jar");
+        eprintln!("  2. Set ANTLR_JAR environment variable to the JAR path");
+        eprintln!("\nRegular ANTLR4 JAR files DO NOT support generating Rust code!");
+        eprintln!("\n");
+        return Err("ANTLR4 JAR file not found - cannot generate parser code".into());
     }
 
     // Run the ANTLR tool to generate the parser code

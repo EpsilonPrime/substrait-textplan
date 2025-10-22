@@ -1,4 +1,4 @@
-// Generated from /var/folders/8v/grx9b3v9755c2rmx1dqnw7nr0000gn/T/substrait_antlr/SubstraitPlanParser.g4 by ANTLR 4.8
+// Generated from /var/folders/0f/rd3736xj3hb75w3nt4wsjzyr0000gn/T/substrait_antlr/SubstraitPlanParser.g4 by ANTLR 4.8
 #![allow(dead_code)]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
@@ -3134,7 +3134,7 @@ where
 					recog.base.set_state(228);
 					recog.err_handler.sync(&mut recog.base)?;
 					_la = recog.base.input.la(1);
-					while ((_la) & !0x3f) == 0 && ((1usize << _la) & ((1usize << FILTER) | (1usize << MEASURE) | (1usize << INVOCATION) | (1usize << SORT))) != 0 {
+					while (((_la) & !0x3f) == 0 && ((1usize << _la) & ((1usize << FILTER) | (1usize << MEASURE) | (1usize << INVOCATION) | (1usize << SORT))) != 0) {
 						{
 						{
 						/*InvokeRule measure_detail*/
@@ -6478,7 +6478,7 @@ where
 			recog.base.set_state(482);
 			recog.err_handler.sync(&mut recog.base)?;
 			_la = recog.base.input.la(1);
-			while (((_la - 38)) & !0x3f) == 0 && ((1usize << (_la - 38)) & ((1usize << (URI_FILE - 38)) | (1usize << (URI_PATH - 38)) | (1usize << (URI_PATH_GLOB - 38)) | (1usize << (URI_FOLDER - 38)) | (1usize << (PARTITION_INDEX - 38)) | (1usize << (START - 38)) | (1usize << (LENGTH - 38)) | (1usize << (ORC - 38)) | (1usize << (PARQUET - 38)))) != 0 {
+			while ((((_la - 38)) & !0x3f) == 0 && ((1usize << (_la - 38)) & ((1usize << (URI_FILE - 38)) | (1usize << (URI_PATH - 38)) | (1usize << (URI_PATH_GLOB - 38)) | (1usize << (URI_FOLDER - 38)) | (1usize << (PARTITION_INDEX - 38)) | (1usize << (START - 38)) | (1usize << (LENGTH - 38)) | (1usize << (ORC - 38)) | (1usize << (PARQUET - 38)))) != 0) {
 				{
 				{
 				/*InvokeRule file_detail*/

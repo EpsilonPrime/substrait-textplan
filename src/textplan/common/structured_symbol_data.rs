@@ -21,9 +21,9 @@ pub struct RelationData {
     // other relations or inputs.
     relation: substrait::proto::Rel,
     // Source stores the input symbol of a read relation.
-    source: Option<Arc<SymbolInfo>>,
+    pub source: Option<Arc<SymbolInfo>>,
     // Schema keeps track schema used in this relation.
-    schema: Option<Arc<SymbolInfo>>,
+    pub schema: Option<Arc<SymbolInfo>>,
     // Column name for each field known to this relation (in field order). Used
     // to determine what fields are coming in as well and fields are going out.
     field_references: Vec<Arc<SymbolInfo>>,
