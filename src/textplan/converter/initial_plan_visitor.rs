@@ -736,5 +736,77 @@ impl PlanProtoVisitor for InitialPlanVisitor {
             // Traverse the named struct to process its contents
             base_schema.traverse(self);
         }
+
+        // Handle the read_type (source) variants
+        if let Some(read_type) = &obj.read_type {
+            use substrait::read_rel::ReadType;
+            match read_type {
+                ReadType::LocalFiles(local_files) => {
+                    let name = self.symbol_table.get_unique_name("local");
+                    let symbol = self.symbol_table.define_symbol(
+                        name,
+                        self.current_location().field("local_files"),
+                        SymbolType::Source,
+                        Some(Box::new(SourceType::LocalFiles)),
+                        Some(Arc::new(Mutex::new(local_files.clone()))),
+                    );
+                    if let Some(scope) = self.current_relation_scope.last() {
+                        self.read_relation_sources.insert(scope.to_string(), symbol);
+                    }
+                }
+                ReadType::VirtualTable(virtual_table) => {
+                    let name = self.symbol_table.get_unique_name("virtual");
+                    let symbol = self.symbol_table.define_symbol(
+                        name,
+                        self.current_location().field("virtual_table"),
+                        SymbolType::Source,
+                        Some(Box::new(SourceType::VirtualTable)),
+                        Some(Arc::new(Mutex::new(virtual_table.clone()))),
+                    );
+                    if let Some(scope) = self.current_relation_scope.last() {
+                        self.read_relation_sources.insert(scope.to_string(), symbol);
+                    }
+                }
+                ReadType::NamedTable(named_table) => {
+                    let name = self.symbol_table.get_unique_name("named");
+                    let symbol = self.symbol_table.define_symbol(
+                        name,
+                        self.current_location().field("named_table"),
+                        SymbolType::Source,
+                        Some(Box::new(SourceType::NamedTable)),
+                        Some(Arc::new(Mutex::new(named_table.clone()))),
+                    );
+                    if let Some(scope) = self.current_relation_scope.last() {
+                        self.read_relation_sources.insert(scope.to_string(), symbol);
+                    }
+                }
+                ReadType::ExtensionTable(extension_table) => {
+                    let name = self.symbol_table.get_unique_name("extensiontable");
+                    let symbol = self.symbol_table.define_symbol(
+                        name,
+                        self.current_location().field("extension_table"),
+                        SymbolType::Source,
+                        Some(Box::new(SourceType::ExtensionTable)),
+                        Some(Arc::new(Mutex::new(extension_table.clone()))),
+                    );
+                    if let Some(scope) = self.current_relation_scope.last() {
+                        self.read_relation_sources.insert(scope.to_string(), symbol);
+                    }
+                }
+                ReadType::IcebergTable(iceberg_table) => {
+                    let name = self.symbol_table.get_unique_name("iceberg");
+                    let symbol = self.symbol_table.define_symbol(
+                        name,
+                        self.current_location().field("iceberg_table"),
+                        SymbolType::Source,
+                        Some(Box::new(SourceType::IcebergTable)),
+                        Some(Arc::new(Mutex::new(iceberg_table.clone()))),
+                    );
+                    if let Some(scope) = self.current_relation_scope.last() {
+                        self.read_relation_sources.insert(scope.to_string(), symbol);
+                    }
+                }
+            }
+        }
     }
 }

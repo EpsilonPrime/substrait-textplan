@@ -102,6 +102,7 @@ pub enum SourceType {
     NamedTable,
     VirtualTable,
     ExtensionTable,
+    IcebergTable,
 }
 
 /// Information about a symbol in the symbol table.
