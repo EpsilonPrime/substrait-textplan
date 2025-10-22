@@ -128,6 +128,428 @@ impl InitialPlanVisitor {
 
         Ok(())
     }
+
+    /// Get the output mapping from a relation's common emit field.
+    fn get_output_mapping(relation: &substrait::Rel) -> Vec<i32> {
+        if let Some(rel_type) = &relation.rel_type {
+            let common_opt = match rel_type {
+                substrait::rel::RelType::Read(r) => r.common.as_ref(),
+                substrait::rel::RelType::Filter(f) => f.common.as_ref(),
+                substrait::rel::RelType::Fetch(f) => f.common.as_ref(),
+                substrait::rel::RelType::Aggregate(a) => a.common.as_ref(),
+                substrait::rel::RelType::Sort(s) => s.common.as_ref(),
+                substrait::rel::RelType::Join(j) => j.common.as_ref(),
+                substrait::rel::RelType::Project(p) => p.common.as_ref(),
+                substrait::rel::RelType::Set(s) => s.common.as_ref(),
+                substrait::rel::RelType::ExtensionSingle(e) => e.common.as_ref(),
+                substrait::rel::RelType::ExtensionMulti(e) => e.common.as_ref(),
+                substrait::rel::RelType::ExtensionLeaf(e) => e.common.as_ref(),
+                substrait::rel::RelType::Cross(c) => c.common.as_ref(),
+                substrait::rel::RelType::Reference(_) => None, // No common in ReferenceRel
+                substrait::rel::RelType::Write(w) => w.common.as_ref(),
+                substrait::rel::RelType::Ddl(d) => d.common.as_ref(),
+                substrait::rel::RelType::HashJoin(h) => h.common.as_ref(),
+                substrait::rel::RelType::MergeJoin(m) => m.common.as_ref(),
+                substrait::rel::RelType::NestedLoopJoin(n) => n.common.as_ref(),
+                substrait::rel::RelType::Window(w) => w.common.as_ref(),
+                substrait::rel::RelType::Exchange(e) => e.common.as_ref(),
+                substrait::rel::RelType::Expand(e) => e.common.as_ref(),
+                substrait::rel::RelType::Update(_) => None, // UpdateRel has no common field
+            };
+
+            if let Some(common) = common_opt {
+                if let Some(substrait::rel_common::EmitKind::Emit(emit)) = &common.emit_kind {
+                    return emit.output_mapping.clone();
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// Get the schema name from a field's schema reference.
+    fn get_schema_name(field: &Arc<crate::textplan::SymbolInfo>) -> String {
+        if let Some(schema) = field.schema() {
+            schema.name().to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Add a single field to a relation's field references.
+    fn add_field_to_relation(
+        relation_data: &mut RelationData,
+        field: Arc<crate::textplan::SymbolInfo>,
+    ) {
+        relation_data.field_references.push(field);
+    }
+
+    /// Add fields from a single input relation to the current relation.
+    fn add_fields_to_relation_single(
+        &self,
+        relation_data: &mut RelationData,
+        relation: &substrait::Rel,
+        relation_location: &ProtoLocation,
+    ) {
+        let symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+            relation_location,
+            SymbolType::Relation,
+        );
+
+        if let Some(symbol_ref) = symbol {
+            if symbol_ref.symbol_type() != SymbolType::Relation {
+                return;
+            }
+
+            symbol_ref.with_blob::<RelationData, _, _>(|input_relation_data| {
+                if !input_relation_data.output_field_references.is_empty() {
+                    for field in &input_relation_data.output_field_references {
+                        Self::add_field_to_relation(relation_data, field.clone());
+                    }
+                } else {
+                    for field in &input_relation_data.field_references {
+                        Self::add_field_to_relation(relation_data, field.clone());
+                    }
+                    for field in &input_relation_data.generated_field_references {
+                        Self::add_field_to_relation(relation_data, field.clone());
+                    }
+                }
+            });
+        }
+    }
+
+    /// Add fields from left and right input relations to the current relation.
+    fn add_fields_to_relation_two(
+        &self,
+        relation_data: &mut RelationData,
+        left: &substrait::Rel,
+        left_location: &ProtoLocation,
+        right: &substrait::Rel,
+        right_location: &ProtoLocation,
+    ) {
+        self.add_fields_to_relation_single(relation_data, left, left_location);
+        self.add_fields_to_relation_single(relation_data, right, right_location);
+    }
+
+    /// Add fields from multiple input relations (for Set, ExtensionMulti, etc.)
+    fn add_fields_to_relation_multiple(
+        &self,
+        relation_data: &mut RelationData,
+        relations: &[substrait::Rel],
+        base_location: &ProtoLocation,
+        field_name: &str,
+    ) {
+        for (i, relation) in relations.iter().enumerate() {
+            let relation_location = base_location.indexed_field(field_name, i);
+            self.add_fields_to_relation_single(relation_data, relation, &relation_location);
+        }
+    }
+
+    /// Add grouping fields to a relation from an aggregate grouping.
+    fn add_grouping_to_relation(
+        &self,
+        relation_data: &mut RelationData,
+        grouping: &substrait::aggregate_rel::Grouping,
+    ) {
+        for expr in &grouping.grouping_expressions {
+            // TODO -- Add support for groupings made up of complicated expressions.
+            if let Some(substrait::expression::RexType::Selection(selection)) = &expr.rex_type {
+                // TODO(REVIEW): Verify FieldReference.reference_type vs root_type usage.
+                // The protobuf has both reference_type (DirectReference/MaskedReference) and
+                // root_type (Expression/RootReference/OuterReference) as separate oneofs.
+                if let Some(substrait::expression::field_reference::ReferenceType::DirectReference(ref_seg)) = &selection.reference_type {
+                    if let Some(substrait::expression::reference_segment::ReferenceType::StructField(
+                        struct_field,
+                    )) = &ref_seg.reference_type
+                    {
+                        let mapping = struct_field.field as usize;
+                        // TODO -- Figure out if we need to not add fields we've already seen.
+                        if mapping >= relation_data.field_references.len() {
+                            // errorListener_->addError("Grouping attempted to use a field reference not in the input field mapping.");
+                            continue;
+                        }
+                        relation_data
+                            .generated_field_references
+                            .push(relation_data.field_references[mapping].clone());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Update the local schema for a relation based on its type and inputs.
+    /// This populates field_references, generated_field_references, and output_field_references.
+    fn update_local_schema(
+        &mut self,
+        relation_data: &mut RelationData,
+        relation: &substrait::Rel,
+        internal_relation: &substrait::Rel,
+    ) {
+        if let Some(rel_type) = &relation.rel_type {
+            match rel_type {
+                substrait::rel::RelType::Read(read_rel) => {
+                    if let Some(base_schema) = &read_rel.base_schema {
+                        for name in &base_schema.names {
+                            let symbol = self.symbol_table.define_symbol(
+                                name.clone(),
+                                self.current_location().field("read").field("base_schema"),
+                                SymbolType::Field,
+                                Some(Box::new(SourceType::Unknown)),
+                                None,
+                            );
+
+                            if let Some(scope) = self.current_relation_scope.last() {
+                                let scope_str = scope.as_ref().clone();
+                                if let Some(schema_symbol) = self.read_relation_schemas.get(&scope_str) {
+                                    if let Some(mut_symbol) = Arc::get_mut(&mut symbol.clone()) {
+                                        mut_symbol.set_schema(schema_symbol.clone());
+                                    }
+                                }
+                            }
+
+                            relation_data.field_references.push(symbol);
+                        }
+                    }
+                }
+                substrait::rel::RelType::Filter(filter_rel) => {
+                    if let Some(input) = &filter_rel.input {
+                        let input_location = self.current_location().field("filter").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                }
+                substrait::rel::RelType::Fetch(fetch_rel) => {
+                    if let Some(input) = &fetch_rel.input {
+                        let input_location = self.current_location().field("fetch").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                }
+                substrait::rel::RelType::Aggregate(agg_rel) => {
+                    if let Some(input) = &agg_rel.input {
+                        let input_location = self.current_location().field("aggregate").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                    for grouping in &agg_rel.groupings {
+                        self.add_grouping_to_relation(relation_data, grouping);
+                    }
+                    // Add measures from internal_relation
+                    if let Some(substrait::rel::RelType::Aggregate(internal_agg)) = &internal_relation.rel_type {
+                        for measure in &internal_agg.measures {
+                            let unique_name = self.symbol_table.get_unique_name("measurename");
+                            let symbol = self.symbol_table.define_symbol(
+                                unique_name,
+                                self.current_location().field("aggregate").field("measures"),
+                                SymbolType::Measure,
+                                Some(Box::new(SourceType::Unknown)),
+                                None,
+                            );
+                            relation_data.generated_field_references.push(symbol);
+                        }
+                    }
+                    // TODO -- If there are multiple groupings add the additional output.
+                    // Aggregate relations are different in that they alter the emitted fields by default.
+                    relation_data.output_field_references.extend(
+                        relation_data.generated_field_references.iter().cloned()
+                    );
+                }
+                substrait::rel::RelType::Sort(sort_rel) => {
+                    if let Some(input) = &sort_rel.input {
+                        let input_location = self.current_location().field("sort").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                }
+                substrait::rel::RelType::Join(join_rel) => {
+                    if let (Some(left), Some(right)) = (&join_rel.left, &join_rel.right) {
+                        let left_location = self.current_location().field("join").field("left");
+                        let right_location = self.current_location().field("join").field("right");
+                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                    }
+                }
+                substrait::rel::RelType::Project(project_rel) => {
+                    if let Some(input) = &project_rel.input {
+                        let input_location = self.current_location().field("project").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                    for expr in &project_rel.expressions {
+                        // TODO -- Add support for other kinds of direct references.
+                        if let Some(substrait::expression::RexType::Selection(selection)) = &expr.rex_type {
+                            // TODO(REVIEW): Verify FieldReference.reference_type vs root_type usage.
+                            // The protobuf has both reference_type (DirectReference/MaskedReference) and
+                            // root_type (Expression/RootReference/OuterReference) as separate oneofs.
+                            if let Some(substrait::expression::field_reference::ReferenceType::DirectReference(ref_seg)) = &selection.reference_type {
+                                if let Some(substrait::expression::reference_segment::ReferenceType::StructField(struct_field)) = &ref_seg.reference_type {
+                                    let mapping = struct_field.field as usize;
+                                    if mapping < relation_data.field_references.len() {
+                                        let field = relation_data.field_references[mapping].clone();
+                                        relation_data.generated_field_references.push(field.clone());
+
+                                        // Handle duplicate field names needing schema qualification
+                                        let prev_instance = relation_data.seen_field_reference_names.get(field.name());
+                                        if field.alias().is_none() && prev_instance.is_some() {
+                                            // Add a version with the schema supplied.
+                                            let schema_name = Self::get_schema_name(&field);
+                                            if !schema_name.is_empty() {
+                                                relation_data.generated_field_reference_alternative_expression.insert(
+                                                    relation_data.generated_field_references.len() - 1,
+                                                    format!("{}.{}", schema_name, field.name())
+                                                );
+                                            }
+                                            // Now update the first occurrence if it hasn't already.
+                                            if let Some(&prev_idx) = prev_instance {
+                                                let schema_name_prev = Self::get_schema_name(&relation_data.generated_field_references[prev_idx]);
+                                                if !schema_name_prev.is_empty() {
+                                                    relation_data.generated_field_reference_alternative_expression.insert(
+                                                        prev_idx,
+                                                        format!("{}.{}", schema_name_prev, field.name())
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        if field.alias().is_none() {
+                                            relation_data.seen_field_reference_names.insert(
+                                                field.name().to_string(),
+                                                relation_data.generated_field_references.len() - 1
+                                            );
+                                        }
+                                    } else {
+                                        // TODO -- Add error handling
+                                        // errorListener_->addError("Asked to project a field that isn't available");
+                                    }
+                                }
+                            }
+                        } else {
+                            // Non-selection expression - create intermediate node
+                            let unique_name = self.symbol_table.get_unique_name("intermediate");
+                            let new_symbol = self.symbol_table.define_symbol(
+                                unique_name.clone(),
+                                self.current_location().field("project"),
+                                SymbolType::Unknown,
+                                None,
+                                None,
+                            );
+                            relation_data.generated_field_references.push(new_symbol.clone());
+                            self.symbol_table.add_alias(unique_name, &new_symbol);
+                        }
+                    }
+                }
+                substrait::rel::RelType::Set(set_rel) => {
+                    let base_location = self.current_location().field("set");
+                    self.add_fields_to_relation_multiple(relation_data, &set_rel.inputs, &base_location, "inputs");
+                }
+                substrait::rel::RelType::ExtensionSingle(ext_single) => {
+                    if let Some(input) = &ext_single.input {
+                        let input_location = self.current_location().field("extension_single").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                }
+                substrait::rel::RelType::ExtensionMulti(ext_multi) => {
+                    let base_location = self.current_location().field("extension_multi");
+                    self.add_fields_to_relation_multiple(relation_data, &ext_multi.inputs, &base_location, "inputs");
+                }
+                substrait::rel::RelType::ExtensionLeaf(_) => {
+                    // There is no defined way to get the schema for a leaf.
+                }
+                substrait::rel::RelType::Cross(cross_rel) => {
+                    if let (Some(left), Some(right)) = (&cross_rel.left, &cross_rel.right) {
+                        let left_location = self.current_location().field("cross").field("left");
+                        let right_location = self.current_location().field("cross").field("right");
+                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                    }
+                }
+                substrait::rel::RelType::Reference(_) => {
+                    // No schema for references
+                }
+                substrait::rel::RelType::Write(write_rel) => {
+                    if let Some(input) = &write_rel.input {
+                        let input_location = self.current_location().field("write").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                }
+                substrait::rel::RelType::Ddl(ddl_rel) => {
+                    if let Some(view_def) = &ddl_rel.view_definition {
+                        let input_location = self.current_location().field("ddl").field("view_definition");
+                        self.add_fields_to_relation_single(relation_data, view_def, &input_location);
+                    }
+                }
+                substrait::rel::RelType::HashJoin(hash_join) => {
+                    if let (Some(left), Some(right)) = (&hash_join.left, &hash_join.right) {
+                        let left_location = self.current_location().field("hash_join").field("left");
+                        let right_location = self.current_location().field("hash_join").field("right");
+                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                    }
+                }
+                substrait::rel::RelType::MergeJoin(merge_join) => {
+                    if let (Some(left), Some(right)) = (&merge_join.left, &merge_join.right) {
+                        let left_location = self.current_location().field("merge_join").field("left");
+                        let right_location = self.current_location().field("merge_join").field("right");
+                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                    }
+                }
+                substrait::rel::RelType::NestedLoopJoin(nested_join) => {
+                    if let (Some(left), Some(right)) = (&nested_join.left, &nested_join.right) {
+                        let left_location = self.current_location().field("nested_loop_join").field("left");
+                        let right_location = self.current_location().field("nested_loop_join").field("right");
+                        self.add_fields_to_relation_two(relation_data, left, &left_location, right, &right_location);
+                    }
+                }
+                substrait::rel::RelType::Window(window_rel) => {
+                    if let Some(input) = &window_rel.input {
+                        let input_location = self.current_location().field("window").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                }
+                substrait::rel::RelType::Exchange(exchange_rel) => {
+                    if let Some(input) = &exchange_rel.input {
+                        let input_location = self.current_location().field("exchange").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                }
+                substrait::rel::RelType::Expand(expand_rel) => {
+                    if let Some(input) = &expand_rel.input {
+                        let input_location = self.current_location().field("expand").field("input");
+                        self.add_fields_to_relation_single(relation_data, input, &input_location);
+                    }
+                }
+                substrait::rel::RelType::Update(update_rel) => {
+                    // TODO -- Add support for update relations
+                }
+            }
+        }
+
+        // Revamp the output based on the output mapping if present.
+        let mapping = Self::get_output_mapping(relation);
+        if !mapping.is_empty() {
+            if matches!(relation.rel_type, Some(substrait::rel::RelType::Aggregate(_))) {
+                let generated_field_reference_size = relation_data.generated_field_references.len();
+                relation_data.output_field_references.clear(); // Start over.
+                for item in mapping {
+                    let item_usize = item as usize;
+                    if item_usize < generated_field_reference_size {
+                        relation_data.output_field_references.push(
+                            relation_data.generated_field_references[item_usize].clone()
+                        );
+                    } else {
+                        // TODO -- Add support for grouping fields (needs text syntax).
+                        // errorListener_->addError("Asked to emit a field beyond what the aggregate produced.");
+                    }
+                }
+                return;
+            }
+            for item in mapping {
+                let item_usize = item as usize;
+                let field_reference_size = relation_data.field_references.len();
+                if item_usize < field_reference_size {
+                    relation_data.output_field_references.push(
+                        relation_data.field_references[item_usize].clone()
+                    );
+                } else if item_usize < field_reference_size + relation_data.generated_field_references.len() {
+                    relation_data.output_field_references.push(
+                        relation_data.generated_field_references[item_usize - field_reference_size].clone()
+                    );
+                } else {
+                    // errorListener_->addError("Asked to emit field which isn't available.");
+                }
+            }
+        }
+    }
 }
 
 impl PlanProtoVisitor for InitialPlanVisitor {
@@ -254,8 +676,11 @@ impl PlanProtoVisitor for InitialPlanVisitor {
         // Create relation data to store with the symbol.
         let mut relation_data = RelationData::new(obj.clone());
 
+        // Clone the internal relation before the mutable borrow
+        let internal_relation = relation_data.relation.clone();
+
         // Update the relation data for long term use.
-        // TODO: updateLocalSchema(relationData, relation, relationData->relation);
+        self.update_local_schema(&mut relation_data, obj, &internal_relation);
 
         if let Some(scope) = self.current_relation_scope.last() {
             let scope_str = scope.as_ref().clone();
@@ -295,20 +720,21 @@ impl PlanProtoVisitor for InitialPlanVisitor {
     }
 
     fn pre_process_read_rel(&mut self, obj: &substrait::ReadRel) {
-        if obj.base_schema.is_some() {
+        if let Some(base_schema) = &obj.base_schema {
             let name = self.symbol_table.get_unique_name("schema");
             let symbol = self.symbol_table.define_symbol(
                 name,
                 self.current_location().field("base_schema"),
                 SymbolType::Schema,
                 None,
-                Some(Arc::new(Mutex::new(obj.base_schema.clone().unwrap()))),
+                Some(Arc::new(Mutex::new(base_schema.clone()))),
             );
             self.read_relation_schemas.insert(
                 self.current_relation_scope.last().unwrap().to_string(),
                 symbol,
             );
-            //visit_named_struct(&obj.base_schema);
+            // Traverse the named struct to process its contents
+            base_schema.traverse(self);
         }
     }
 }

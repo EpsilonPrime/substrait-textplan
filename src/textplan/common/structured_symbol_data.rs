@@ -10,39 +10,39 @@ pub struct RelationData {
     // it is in another pipeline (which in that case the value will be the node
     // that starts that pipeline). As such this will only have None as a value
     // when it is a root node.
-    pipeline_start: Option<Arc<SymbolInfo>>,
+    pub pipeline_start: Option<Arc<SymbolInfo>>,
     // The next node in the pipeline that this node is part of.
     pub continuing_pipeline: Option<Arc<SymbolInfo>>,
     // The next nodes in the pipelines that this node starts.
     pub new_pipelines: Vec<Arc<SymbolInfo>>,
     // Expressions in this relation consume subqueries with these symbols.
-    sub_query_pipelines: Vec<Arc<SymbolInfo>>,
+    pub sub_query_pipelines: Vec<Arc<SymbolInfo>>,
     // The information corresponding to the relation without any references to
     // other relations or inputs.
-    relation: substrait::proto::Rel,
+    pub relation: substrait::proto::Rel,
     // Source stores the input symbol of a read relation.
     pub source: Option<Arc<SymbolInfo>>,
     // Schema keeps track schema used in this relation.
     pub schema: Option<Arc<SymbolInfo>>,
     // Column name for each field known to this relation (in field order). Used
     // to determine what fields are coming in as well and fields are going out.
-    field_references: Vec<Arc<SymbolInfo>>,
+    pub field_references: Vec<Arc<SymbolInfo>>,
     // Each field reference here was generated within the current relation.
-    generated_field_references: Vec<Arc<SymbolInfo>>,
+    pub generated_field_references: Vec<Arc<SymbolInfo>>,
     // Local aliases for field references in this relation. Used to replace the
     // normal form symbols would take for this relation's use only. (Later
     // references to the symbol would use the alias.)
-    generated_field_reference_alternative_expression: HashMap<usize, String>,
+    pub generated_field_reference_alternative_expression: HashMap<usize, String>,
     // Temporary storage for global aliases for expressions. Used during the
     // construction of a relation.
-    generated_field_reference_aliases: HashMap<usize, String>,
+    pub generated_field_reference_aliases: HashMap<usize, String>,
     // If populated, supersedes the combination of fieldReferences and
     // generatedFieldReferences for the field symbols exposed by this relation.
-    output_field_references: Vec<Arc<SymbolInfo>>,
+    pub output_field_references: Vec<Arc<SymbolInfo>>,
     // Contains the field reference names seen so far while processing this
     // relation along with the id of the first occurrence. Used to detect when
     // fully qualified references are necessary.
-    seen_field_reference_names: HashMap<String, usize>,
+    pub seen_field_reference_names: HashMap<String, usize>,
 }
 
 impl RelationData {
