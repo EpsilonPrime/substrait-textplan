@@ -82,7 +82,14 @@ impl PlanPrinter {
             ));
         }
 
-        // Process ROOT relations first
+        // Output pipelines section first
+        let pipelines_text = self.output_pipelines_section(symbol_table)?;
+        if !pipelines_text.is_empty() {
+            result.push_str(&pipelines_text);
+            result.push('\n');
+        }
+
+        // Process ROOT relations
         self.process_root_relations(symbol_table, &mut result)?;
 
         // Process all other relations
@@ -242,39 +249,31 @@ impl PlanPrinter {
         relation: &Arc<SymbolInfo>,
         symbol_table: &SymbolTable,
     ) -> Result<String, TextPlanError> {
+        use crate::textplan::common::structured_symbol_data::RelationData;
+
         let mut result = String::new();
 
-        // Get the relation type
-        let rel_type = relation
-            .subtype::<RelationType>()
-            .cloned()
-            .unwrap_or(RelationType::Unknown);
+        // Get the relation type from the RelationData blob (which contains the protobuf)
+        let rel_type = if let Some(blob_lock) = &relation.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    Self::rel_type_from_proto(&relation_data.relation)
+                } else {
+                    RelationType::Unknown
+                }
+            } else {
+                RelationType::Unknown
+            }
+        } else {
+            RelationType::Unknown
+        };
 
         // Convert the relation type to a string
-        let rel_type_str = match rel_type {
-            RelationType::Unknown => "UNKNOWN",
-            RelationType::Read => "READ",
-            RelationType::Project => "PROJECT",
-            RelationType::Join => "JOIN",
-            RelationType::Cross => "CROSS",
-            RelationType::Fetch => "FETCH",
-            RelationType::Aggregate => "AGGREGATE",
-            RelationType::Sort => "SORT",
-            RelationType::Filter => "FILTER",
-            RelationType::Set => "SET",
-            RelationType::HashJoin => "HASH_JOIN",
-            RelationType::MergeJoin => "MERGE_JOIN",
-            RelationType::Exchange => "EXCHANGE",
-            RelationType::Ddl => "DDL",
-            RelationType::Write => "WRITE",
-            RelationType::ExtensionLeaf => "EXTENSION_LEAF",
-            RelationType::ExtensionSingle => "EXTENSION_SINGLE",
-            RelationType::ExtensionMulti => "EXTENSION_MULTI",
-        };
+        let rel_type_str = Self::rel_type_to_string(rel_type);
 
         // Start the relation definition
         result.push_str(&format!(
-            "{} RELATION {} {{\n",
+            "{} relation {} {{\n",
             rel_type_str,
             relation.display_name()
         ));
@@ -448,6 +447,188 @@ impl PlanPrinter {
         result.push_str(&format!("{}INPUT = /* relation reference */\n", indent));
 
         Ok(())
+    }
+
+    /// Builds a pipeline path by following the continuing_pipeline chain.
+    ///
+    /// # Arguments
+    ///
+    /// * `symbol_table` - The symbol table
+    /// * `info` - Starting symbol for the pipeline
+    ///
+    /// # Returns
+    ///
+    /// Vector of relation names in the pipeline
+    fn pipeline_to_path(
+        &self,
+        symbol_table: &SymbolTable,
+        info: &Arc<SymbolInfo>,
+    ) -> Vec<String> {
+        use crate::textplan::common::structured_symbol_data::RelationData;
+
+        let mut pipeline = Vec::new();
+
+        // Get the relation data
+        if let Some(relation_data_lock) = &info.blob {
+            if let Ok(relation_data) = relation_data_lock.lock() {
+                if let Some(relation_data) = relation_data.downcast_ref::<RelationData>() {
+                    pipeline.push(info.name().to_string());
+
+                    // Follow the continuing pipeline
+                    if let Some(continuing) = &relation_data.continuing_pipeline {
+                        let tail_pipe = self.pipeline_to_path(symbol_table, continuing);
+                        pipeline.extend(tail_pipe);
+                    }
+                }
+            }
+        }
+
+        pipeline
+    }
+
+    /// Converts a protobuf Rel to a RelationType enum.
+    ///
+    /// # Arguments
+    ///
+    /// * `rel` - The protobuf relation
+    ///
+    /// # Returns
+    ///
+    /// The RelationType enum value
+    fn rel_type_from_proto(rel: &::substrait::proto::Rel) -> RelationType {
+        use ::substrait::proto::rel::RelType;
+
+        match &rel.rel_type {
+            Some(RelType::Read(_)) => RelationType::Read,
+            Some(RelType::Filter(_)) => RelationType::Filter,
+            Some(RelType::Fetch(_)) => RelationType::Fetch,
+            Some(RelType::Aggregate(_)) => RelationType::Aggregate,
+            Some(RelType::Sort(_)) => RelationType::Sort,
+            Some(RelType::Join(_)) => RelationType::Join,
+            Some(RelType::Project(_)) => RelationType::Project,
+            Some(RelType::Set(_)) => RelationType::Set,
+            Some(RelType::ExtensionSingle(_)) => RelationType::ExtensionSingle,
+            Some(RelType::ExtensionMulti(_)) => RelationType::ExtensionMulti,
+            Some(RelType::ExtensionLeaf(_)) => RelationType::ExtensionLeaf,
+            Some(RelType::Cross(_)) => RelationType::Cross,
+            Some(RelType::Reference(_)) => RelationType::Unknown, // No specific type for Reference
+            Some(RelType::Write(_)) => RelationType::Write,
+            Some(RelType::Ddl(_)) => RelationType::Ddl,
+            Some(RelType::HashJoin(_)) => RelationType::HashJoin,
+            Some(RelType::MergeJoin(_)) => RelationType::MergeJoin,
+            Some(RelType::NestedLoopJoin(_)) => RelationType::Join, // Map to generic Join
+            Some(RelType::Window(_)) => RelationType::Unknown, // No specific Window type
+            Some(RelType::Exchange(_)) => RelationType::Exchange,
+            Some(RelType::Expand(_)) => RelationType::Unknown, // No specific Expand type
+            Some(RelType::Update(_)) => RelationType::Unknown, // No specific Update type
+            None => RelationType::Unknown,
+        }
+    }
+
+    /// Converts a RelationType enum to a lowercase string.
+    ///
+    /// # Arguments
+    ///
+    /// * `rel_type` - The relation type
+    ///
+    /// # Returns
+    ///
+    /// The lowercase string representation
+    fn rel_type_to_string(rel_type: RelationType) -> &'static str {
+        match rel_type {
+            RelationType::Unknown => "unknown",
+            RelationType::Read => "read",
+            RelationType::Project => "project",
+            RelationType::Join => "join",
+            RelationType::Cross => "cross",
+            RelationType::Fetch => "fetch",
+            RelationType::Aggregate => "aggregate",
+            RelationType::Sort => "sort",
+            RelationType::Filter => "filter",
+            RelationType::Set => "set",
+            RelationType::HashJoin => "hash_join",
+            RelationType::MergeJoin => "merge_join",
+            RelationType::Exchange => "exchange",
+            RelationType::Ddl => "ddl",
+            RelationType::Write => "write",
+            RelationType::ExtensionLeaf => "extension_leaf",
+            RelationType::ExtensionSingle => "extension_single",
+            RelationType::ExtensionMulti => "extension_multi",
+        }
+    }
+
+    /// Outputs the pipelines section of the textplan.
+    ///
+    /// # Arguments
+    ///
+    /// * `symbol_table` - The symbol table
+    ///
+    /// # Returns
+    ///
+    /// The pipelines section as a string
+    fn output_pipelines_section(
+        &self,
+        symbol_table: &SymbolTable,
+    ) -> Result<String, TextPlanError> {
+        use crate::textplan::common::structured_symbol_data::RelationData;
+
+        let mut text = String::new();
+        let mut has_previous_text = false;
+
+        for info in symbol_table.symbols() {
+            // Only process PlanRelation and Relation symbols
+            if info.symbol_type() != SymbolType::PlanRelation
+                && info.symbol_type() != SymbolType::Relation
+            {
+                continue;
+            }
+
+            // Get the relation data
+            if let Some(relation_data_lock) = &info.blob {
+                if let Ok(relation_data) = relation_data_lock.lock() {
+                    if let Some(relation_data) = relation_data.downcast_ref::<RelationData>() {
+                        // Process new pipelines
+                        for pipeline_start in &relation_data.new_pipelines {
+                            let mut pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
+                            pipeline.insert(0, info.name().to_string());
+
+                            // Output in reverse order (from leaf to root)
+                            text.push_str("  ");
+                            for (i, pipe_name) in pipeline.iter().rev().enumerate() {
+                                if i > 0 {
+                                    text.push_str(" -> ");
+                                }
+                                text.push_str(pipe_name);
+                            }
+                            text.push_str(";\n");
+                            has_previous_text = true;
+                        }
+
+                        // Process subquery pipelines
+                        for pipeline_start in &relation_data.sub_query_pipelines {
+                            let pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
+
+                            // Output in reverse order
+                            text.push_str("  ");
+                            for (i, pipe_name) in pipeline.iter().rev().enumerate() {
+                                if i > 0 {
+                                    text.push_str(" -> ");
+                                }
+                                text.push_str(pipe_name);
+                            }
+                            text.push_str(";\n");
+                            has_previous_text = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if has_previous_text {
+            Ok(format!("pipelines {{\n{}}}", text))
+        } else {
+            Ok(String::new())
+        }
     }
 }
 
