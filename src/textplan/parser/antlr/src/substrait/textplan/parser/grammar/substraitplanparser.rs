@@ -1,4 +1,4 @@
-// Generated from /var/folders/0f/rd3736xj3hb75w3nt4wsjzyr0000gn/T/substrait_antlr/SubstraitPlanParser.g4 by ANTLR 4.8
+// Generated from src/substrait/textplan/parser/grammar/SubstraitPlanParser.g4 by ANTLR 4.8
 #![allow(dead_code)]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
@@ -25,8 +25,6 @@ use antlr_rust::int_stream::EOF;
 use antlr_rust::vocabulary::{Vocabulary,VocabularyImpl};
 use antlr_rust::token_factory::{CommonTokenFactory,TokenFactory, TokenAware};
 use super::substraitplanparserlistener::*;
-use super::substraitplanparservisitor::*;
-
 use antlr_rust::lazy_static;
 use antlr_rust::{TidAble,TidExt};
 
@@ -165,14 +163,21 @@ use std::any::{Any,TypeId};
 
 
 	pub const _LITERAL_NAMES: [Option<&'static str>;71] = [
-		None, None, None, None, None, None, None, None, None, None, None, None, 
-		None, None, None, None, None, None, None, None, None, None, None, None, 
-		None, None, None, None, None, None, None, None, None, None, None, None, 
-		None, None, None, None, None, None, None, None, None, None, None, None, 
-		None, None, None, None, None, Some("'->'"), Some("':'"), Some("';'"), 
-		Some("'{'"), Some("'}'"), Some("'('"), Some("')'"), Some("','"), Some("'.'"), 
-		Some("'='"), Some("'['"), Some("']'"), Some("'_'"), Some("'-'"), Some("'<'"), 
-		Some("'>'"), Some("'?'"), Some("'@'")
+		None, None, Some("'EXTENSION_SPACE'"), Some("'FUNCTION'"), Some("'AS'"), 
+		Some("'NAMED'"), Some("'SCHEMA'"), Some("'RELATION'"), Some("'PIPELINES'"), 
+		Some("'COMMON'"), Some("'BASE_SCHEMA'"), Some("'FILTER'"), Some("'PROJECTION'"), 
+		Some("'EXPRESSION'"), Some("'ADVANCED_EXTENSION'"), Some("'GROUPING'"), 
+		Some("'MEASURE'"), Some("'INVOCATION'"), Some("'SORT'"), Some("'BY'"), 
+		Some("'COUNT'"), Some("'TYPE'"), Some("'EMIT'"), Some("'SUBQUERY'"), Some("'EXISTS'"), 
+		Some("'UNIQUE'"), Some("'IN'"), Some("'ALL'"), Some("'ANY'"), None, Some("'VIRTUAL_TABLE'"), 
+		Some("'LOCAL_FILES'"), Some("'NAMED_TABLE'"), Some("'EXTENSION_TABLE'"), 
+		Some("'SOURCE'"), Some("'ROOT'"), Some("'ITEMS'"), Some("'NAMES'"), Some("'URI_FILE'"), 
+		Some("'URI_PATH'"), Some("'URI_PATH_GLOB'"), Some("'URI_FOLDER'"), Some("'PARTITION_INDEX'"), 
+		Some("'START'"), Some("'LENGTH'"), Some("'ORC'"), Some("'PARQUET'"), Some("'NULL'"), 
+		Some("'TRUE'"), Some("'FALSE'"), Some("'LIST'"), Some("'MAP'"), Some("'STRUCT'"), 
+		Some("'->'"), Some("':'"), Some("';'"), Some("'{'"), Some("'}'"), Some("'('"), 
+		Some("')'"), Some("','"), Some("'.'"), Some("'='"), Some("'['"), Some("']'"), 
+		Some("'_'"), Some("'-'"), Some("'<'"), Some("'>'"), Some("'?'"), Some("'@'")
 	];
 	pub const _SYMBOLIC_NAMES: [Option<&'static str>;76]  = [
 		None, Some("SPACES"), Some("EXTENSION_SPACE"), Some("FUNCTION"), Some("AS"), 
@@ -277,20 +282,10 @@ where
 /// Trait for monomorphized trait object that corresponds to the nodes of parse tree generated for SubstraitPlanParser
 pub trait SubstraitPlanParserContext<'input>:
 	for<'x> Listenable<dyn SubstraitPlanParserListener<'input> + 'x > + 
-	for<'x> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'x > + 
 	ParserRuleContext<'input, TF=LocalTokenFactory<'input>, Ctx=SubstraitPlanParserContextType>
 {}
 
 antlr_rust::coerce_from!{ 'input : SubstraitPlanParserContext<'input> }
-
-impl<'input, 'x, T> VisitableDyn<T> for dyn SubstraitPlanParserContext<'input> + 'input
-where
-    T: SubstraitPlanParserVisitor<'input> + 'x,
-{
-    fn accept_dyn(&self, visitor: &mut T) {
-        self.accept(visitor as &mut (dyn SubstraitPlanParserVisitor<'input> + 'x))
-    }
-}
 
 impl<'input> SubstraitPlanParserContext<'input> for TerminalNode<'input,SubstraitPlanParserContextType> {}
 impl<'input> SubstraitPlanParserContext<'input> for ErrorNode<'input,SubstraitPlanParserContextType> {}
@@ -405,17 +400,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Pla
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_plan(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_plan(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for PlanContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_plan(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for PlanContextExt<'input>{
@@ -525,17 +513,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Pla
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_plan_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_plan_detail(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Plan_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_plan_detail(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Plan_detailContextExt<'input>{
@@ -699,17 +680,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Pip
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_pipelines(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_pipelines(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for PipelinesContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_pipelines(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for PipelinesContextExt<'input>{
@@ -847,17 +821,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Pip
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_pipeline(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_pipeline(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for PipelineContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_pipeline(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for PipelineContextExt<'input>{
@@ -994,17 +961,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_relation(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_relation(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relation(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for RelationContextExt<'input>{
@@ -1144,17 +1104,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Roo
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_root_relation(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_root_relation(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Root_relationContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_root_relation(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Root_relationContextExt<'input>{
@@ -1342,17 +1295,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_relation_type(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_relation_type(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_typeContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relation_type(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Relation_typeContextExt<'input>{
@@ -1438,17 +1384,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_relation_ref(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_relation_ref(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_refContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relation_ref(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Relation_refContextExt<'input>{
@@ -1575,17 +1514,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_relation_filter_behavior(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_relation_filter_behavior(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_filter_behaviorContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relation_filter_behavior(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Relation_filter_behaviorContextExt<'input>{
@@ -1720,17 +1652,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Mea
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_measure_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_measure_detail(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Measure_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_measure_detail(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Measure_detailContextExt<'input>{
@@ -1976,7 +1901,7 @@ antlr_rust::tid!{Relation_detailContextAll<'a>}
 
 impl<'input> antlr_rust::parser_rule_context::DerefSeal for Relation_detailContextAll<'input>{}
 
-impl<'input> SubstraitPlanParserContext<'input> for Relation_detailContextAll<'input>{}
+impl<'input> SubstraitPlanParserParserContext<'input> for Relation_detailContextAll<'input>{}
 
 impl<'input> Deref for Relation_detailContextAll<'input>{
 	type Target = dyn Relation_detailContextAttrs<'input> + 'input;
@@ -1999,9 +1924,6 @@ Error(inner) => inner
 		}
 	}
 }
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_detailContextAll<'input>{
-	fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) { self.deref().accept(visitor) }
-}
 impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Relation_detailContextAll<'input>{
     fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().enter(listener) }
     fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().exit(listener) }
@@ -2019,9 +1941,6 @@ ph:PhantomData<&'input str>
 impl<'input> SubstraitPlanParserContext<'input> for Relation_detailContext<'input>{}
 
 impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Relation_detailContext<'input>{
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Relation_detailContext<'input>{
 }
 
 impl<'input> CustomRuleContext<'input> for Relation_detailContextExt<'input>{
@@ -2079,16 +1998,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_relationSourceReference(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationSourceReference(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationSourceReferenceContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationSourceReference(self);
 	}
 }
 
@@ -2154,16 +2063,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_relationEmit(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationEmit(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationEmitContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationEmit(self);
 	}
 }
 
@@ -2232,16 +2131,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_relationFilter(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationFilter(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationFilterContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationFilter(self);
 	}
 }
 
@@ -2316,16 +2205,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		listener.enter_every_rule(self);
 		listener.enter_relationMeasure(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationMeasure(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationMeasureContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationMeasure(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for RelationMeasureContextExt<'input>{
@@ -2390,16 +2269,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_relationUsesSchema(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationUsesSchema(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationUsesSchemaContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationUsesSchema(self);
 	}
 }
 
@@ -2466,16 +2335,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		listener.enter_every_rule(self);
 		listener.enter_relationJoinType(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationJoinType(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationJoinTypeContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationJoinType(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for RelationJoinTypeContextExt<'input>{
@@ -2537,16 +2396,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_relationAdvancedExtension(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationAdvancedExtension(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationAdvancedExtensionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationAdvancedExtension(self);
 	}
 }
 
@@ -2621,16 +2470,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		listener.enter_every_rule(self);
 		listener.enter_relationExpression(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationExpression(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationExpressionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationExpression(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for RelationExpressionContextExt<'input>{
@@ -2698,16 +2537,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		listener.enter_every_rule(self);
 		listener.enter_relationCount(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationCount(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationCountContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationCount(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for RelationCountContextExt<'input>{
@@ -2770,16 +2599,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 		listener.enter_every_rule(self);
 		listener.enter_relationCommon(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationCommon(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationCommonContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationCommon(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for RelationCommonContextExt<'input>{
@@ -2834,16 +2653,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_relationSort(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationSort(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationSortContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationSort(self);
 	}
 }
 
@@ -2909,16 +2718,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Rel
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_relationGrouping(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_relationGrouping(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for RelationGroupingContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_relationGrouping(self);
 	}
 }
 
@@ -3246,7 +3045,7 @@ antlr_rust::tid!{ExpressionContextAll<'a>}
 
 impl<'input> antlr_rust::parser_rule_context::DerefSeal for ExpressionContextAll<'input>{}
 
-impl<'input> SubstraitPlanParserContext<'input> for ExpressionContextAll<'input>{}
+impl<'input> SubstraitPlanParserParserContext<'input> for ExpressionContextAll<'input>{}
 
 impl<'input> Deref for ExpressionContextAll<'input>{
 	type Target = dyn ExpressionContextAttrs<'input> + 'input;
@@ -3265,9 +3064,6 @@ Error(inner) => inner
 		}
 	}
 }
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionContextAll<'input>{
-	fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) { self.deref().accept(visitor) }
-}
 impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionContextAll<'input>{
     fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().enter(listener) }
     fn exit(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().exit(listener) }
@@ -3285,9 +3081,6 @@ ph:PhantomData<&'input str>
 impl<'input> SubstraitPlanParserContext<'input> for ExpressionContext<'input>{}
 
 impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for ExpressionContext<'input>{
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionContext<'input>{
 }
 
 impl<'input> CustomRuleContext<'input> for ExpressionContextExt<'input>{
@@ -3346,16 +3139,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 		listener.enter_every_rule(self);
 		listener.enter_expressionScalarSubquery(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionScalarSubquery(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionScalarSubqueryContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionScalarSubquery(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for ExpressionScalarSubqueryContextExt<'input>{
@@ -3410,16 +3193,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_expressionConstant(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionConstant(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionConstantContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionConstant(self);
 	}
 }
 
@@ -3509,16 +3282,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 		listener.enter_every_rule(self);
 		listener.enter_expressionFunctionUse(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionFunctionUse(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionFunctionUseContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionFunctionUse(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for ExpressionFunctionUseContextExt<'input>{
@@ -3573,16 +3336,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_expressionColumn(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionColumn(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionColumnContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionColumn(self);
 	}
 }
 
@@ -3662,16 +3415,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 		listener.enter_every_rule(self);
 		listener.enter_expressionSetComparisonSubquery(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionSetComparisonSubquery(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionSetComparisonSubqueryContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionSetComparisonSubquery(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for ExpressionSetComparisonSubqueryContextExt<'input>{
@@ -3740,16 +3483,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 		listener.enter_every_rule(self);
 		listener.enter_expressionInPredicateSubquery(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionInPredicateSubquery(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionInPredicateSubqueryContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionInPredicateSubquery(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for ExpressionInPredicateSubqueryContextExt<'input>{
@@ -3812,16 +3545,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_expressionCast(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionCast(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionCastContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionCast(self);
 	}
 }
 
@@ -3897,16 +3620,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_expressionSetPredicateSubquery(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_expressionSetPredicateSubquery(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExpressionSetPredicateSubqueryContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expressionSetPredicateSubquery(self);
 	}
 }
 
@@ -4239,17 +3952,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Exp
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_expression_list(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_expression_list(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Expression_listContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_expression_list(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Expression_listContextExt<'input>{
@@ -4383,17 +4089,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Con
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_constant(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_constant(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ConstantContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_constant(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for ConstantContextExt<'input>{
@@ -4706,17 +4405,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Lit
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_literal_basic_type(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_literal_basic_type(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Literal_basic_typeContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_literal_basic_type(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Literal_basic_typeContextExt<'input>{
@@ -4837,17 +4529,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Lit
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_literal_complex_type(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_literal_complex_type(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Literal_complex_typeContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_literal_complex_type(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Literal_complex_typeContextExt<'input>{
@@ -5153,17 +4838,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Lit
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_literal_specifier(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_literal_specifier(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Literal_specifierContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_literal_specifier(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Literal_specifierContextExt<'input>{
@@ -5298,17 +4976,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Map
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_map_literal(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_map_literal(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Map_literalContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_map_literal(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Map_literalContextExt<'input>{
@@ -5463,17 +5134,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Map
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_map_literal_value(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_map_literal_value(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Map_literal_valueContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_map_literal_value(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Map_literal_valueContextExt<'input>{
@@ -5574,17 +5238,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Str
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_struct_literal(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_struct_literal(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Struct_literalContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_struct_literal(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Struct_literalContextExt<'input>{
@@ -5739,17 +5396,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Col
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_column_name(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_column_name(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Column_nameContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_column_name(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Column_nameContextExt<'input>{
@@ -5860,17 +5510,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Sou
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_source_reference(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_source_reference(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Source_referenceContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_source_reference(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Source_referenceContextExt<'input>{
@@ -5964,17 +5607,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Fil
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_file_location(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_file_location(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for File_locationContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_file_location(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for File_locationContextExt<'input>{
@@ -6152,17 +5788,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Fil
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_file_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_file_detail(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for File_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_file_detail(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for File_detailContextExt<'input>{
@@ -6393,17 +6022,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Fil
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_file(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_file(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for FileContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_file(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for FileContextExt<'input>{
@@ -6521,17 +6143,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Loc
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_local_files_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_local_files_detail(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Local_files_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_local_files_detail(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Local_files_detailContextExt<'input>{
@@ -6727,17 +6342,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Nam
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_named_table_detail(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_named_table_detail(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Named_table_detailContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_named_table_detail(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Named_table_detailContextExt<'input>{
@@ -6934,17 +6542,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Sch
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_schema_definition(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_schema_definition(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Schema_definitionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_schema_definition(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Schema_definitionContextExt<'input>{
@@ -7077,17 +6678,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Sch
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_schema_item(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_schema_item(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Schema_itemContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_schema_item(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Schema_itemContextExt<'input>{
@@ -7212,17 +6806,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Sou
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_source_definition(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_source_definition(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Source_definitionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_source_definition(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Source_definitionContextExt<'input>{
@@ -7312,7 +6899,7 @@ antlr_rust::tid!{Read_typeContextAll<'a>}
 
 impl<'input> antlr_rust::parser_rule_context::DerefSeal for Read_typeContextAll<'input>{}
 
-impl<'input> SubstraitPlanParserContext<'input> for Read_typeContextAll<'input>{}
+impl<'input> SubstraitPlanParserParserContext<'input> for Read_typeContextAll<'input>{}
 
 impl<'input> Deref for Read_typeContextAll<'input>{
 	type Target = dyn Read_typeContextAttrs<'input> + 'input;
@@ -7326,9 +6913,6 @@ impl<'input> Deref for Read_typeContextAll<'input>{
 Error(inner) => inner
 		}
 	}
-}
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Read_typeContextAll<'input>{
-	fn accept(&self, visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) { self.deref().accept(visitor) }
 }
 impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Read_typeContextAll<'input>{
     fn enter(&self, listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) { self.deref().enter(listener) }
@@ -7347,9 +6931,6 @@ ph:PhantomData<&'input str>
 impl<'input> SubstraitPlanParserContext<'input> for Read_typeContext<'input>{}
 
 impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Read_typeContext<'input>{
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Read_typeContext<'input>{
 }
 
 impl<'input> CustomRuleContext<'input> for Read_typeContextExt<'input>{
@@ -7423,16 +7004,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Nam
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_namedTable(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_namedTable(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for NamedTableContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_namedTable(self);
 	}
 }
 
@@ -7510,16 +7081,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Loc
 		listener.enter_every_rule(self);
 		listener.enter_localFiles(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_localFiles(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for LocalFilesContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_localFiles(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for LocalFilesContextExt<'input>{
@@ -7590,16 +7151,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Vir
 		listener.enter_every_rule(self);
 		listener.enter_virtualTable(self);
 	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_virtualTable(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for VirtualTableContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_virtualTable(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for VirtualTableContextExt<'input>{
@@ -7669,16 +7220,6 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Ext
 	fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 		listener.enter_every_rule(self);
 		listener.enter_extensionTable(self);
-	}
-	fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
-		listener.exit_extensionTable(self);
-		listener.exit_every_rule(self);
-	}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExtensionTableContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_extensionTable(self);
 	}
 }
 
@@ -7884,17 +7425,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Ext
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_extensionspace(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_extensionspace(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for ExtensionspaceContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_extensionspace(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for ExtensionspaceContextExt<'input>{
@@ -8036,17 +7570,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Fun
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_function(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_function(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for FunctionContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_function(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for FunctionContextExt<'input>{
@@ -8172,17 +7699,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Sor
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_sort_field(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_sort_field(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Sort_fieldContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_sort_field(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Sort_fieldContextExt<'input>{
@@ -8308,17 +7828,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Nam
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_name(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_name(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for NameContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_name(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for NameContextExt<'input>{
@@ -8428,17 +7941,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Sig
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_signature(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_signature(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for SignatureContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_signature(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for SignatureContextExt<'input>{
@@ -8524,17 +8030,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for IdC
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_id(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_id(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for IdContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_id(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for IdContextExt<'input>{
@@ -8668,17 +8167,10 @@ impl<'input,'a> Listenable<dyn SubstraitPlanParserListener<'input> + 'a> for Sim
 		fn enter(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.enter_every_rule(self);
 			listener.enter_simple_id(self);
-		}
-		fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
+		}fn exit(&self,listener: &mut (dyn SubstraitPlanParserListener<'input> + 'a)) {
 			listener.exit_simple_id(self);
 			listener.exit_every_rule(self);
 		}
-}
-
-impl<'input,'a> Visitable<dyn SubstraitPlanParserVisitor<'input> + 'a> for Simple_idContext<'input>{
-	fn accept(&self,visitor: &mut (dyn SubstraitPlanParserVisitor<'input> + 'a)) {
-		visitor.visit_simple_id(self);
-	}
 }
 
 impl<'input> CustomRuleContext<'input> for Simple_idContextExt<'input>{

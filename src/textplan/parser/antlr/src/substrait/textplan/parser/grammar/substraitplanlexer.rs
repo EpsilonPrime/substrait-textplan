@@ -1,4 +1,4 @@
-// Generated from /var/folders/0f/rd3736xj3hb75w3nt4wsjzyr0000gn/T/substrait_antlr/SubstraitPlanLexer.g4 by ANTLR 4.8
+// Generated from src/substrait/textplan/parser/grammar/SubstraitPlanLexer.g4 by ANTLR 4.8
 #![allow(dead_code)]
 #![allow(nonstandard_style)]
 #![allow(unused_imports)]

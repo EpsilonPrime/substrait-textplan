@@ -1,5 +1,5 @@
 #![allow(nonstandard_style)]
-// Generated from /var/folders/0f/rd3736xj3hb75w3nt4wsjzyr0000gn/T/substrait_antlr/SubstraitPlanParser.g4 by ANTLR 4.8
+// Generated from src/substrait/textplan/parser/grammar/SubstraitPlanParser.g4 by ANTLR 4.8
 use antlr_rust::tree::ParseTreeListener;
 use super::substraitplanparser::*;
 
