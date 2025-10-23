@@ -209,7 +209,10 @@ fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
         let content = fs::read_to_string(&parser_file)?;
         if content.contains("SubstraitPlanParserParserContext") {
             println!("cargo:warning=Fixing antlr4rust code generation bug in parser file");
-            let fixed_content = content.replace("SubstraitPlanParserParserContext", "SubstraitPlanParserContext");
+            let fixed_content = content.replace(
+                "SubstraitPlanParserParserContext",
+                "SubstraitPlanParserContext",
+            );
             fs::write(&parser_file, fixed_content)?;
             println!("cargo:warning=Parser bug fix applied successfully");
         }

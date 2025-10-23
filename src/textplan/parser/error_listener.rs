@@ -133,14 +133,11 @@ where
         _ambig_alts: &bit_set::BitSet,
         _configs: &ATNConfigSet,
     ) {
-        // Log the ambiguity as an info message
-        self.error_listener.add_error(
-            format!(
-                "Grammar ambiguity detected at indices {}-{}",
-                start_index, stop_index
-            ),
-            TextLocation::new(start_index as i32, stop_index as i32),
-        );
+        // Treat ambiguity as a warning, not an error
+        // ANTLR automatically resolves ambiguities, so this is just informational
+        // The C++ version likely logs these but doesn't fail the parse
+        // Uncomment below to log ambiguities for debugging:
+        // eprintln!("Warning: Grammar ambiguity at indices {}-{}", start_index, stop_index);
     }
 
     fn report_attempting_full_context(
@@ -152,14 +149,10 @@ where
         _conflict_alts: &bit_set::BitSet,
         _configs: &ATNConfigSet,
     ) {
-        // Log full context attempt
-        self.error_listener.add_error(
-            format!(
-                "Parser attempting full context parsing at indices {}-{}",
-                start_index, stop_index
-            ),
-            TextLocation::new(start_index as i32, stop_index as i32),
-        );
+        // Treat full context attempts as informational, not errors
+        // This is normal ANTLR behavior when resolving ambiguities
+        // Uncomment below to log for debugging:
+        // eprintln!("Info: Parser attempting full context parsing at indices {}-{}", start_index, stop_index);
     }
 
     fn report_context_sensitivity(

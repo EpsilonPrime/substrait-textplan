@@ -149,20 +149,52 @@ impl<'input> TypeVisitor<'input> {
     }
 
     /// Converts a text representation of a type to a Substrait protobuf Type.
+    /// This follows the C++ substrait type library logic for handling nullable markers.
     pub fn text_to_type_proto(
         &self,
         ctx: &dyn SubstraitPlanParserContext<'input>,
         type_text: &str,
     ) -> Type {
-        // This method decodes a type text like "boolean", "i32", "string", etc., into a Type protobuf
         let mut proto_type = Type::default();
 
-        // Check for nullability
-        let nullable = type_text.ends_with('?');
-        let base_type_str = if nullable {
-            &type_text[0..type_text.len() - 1]
+        // Find positions of special characters
+        let question_pos = type_text.find('?');
+        let left_angle_pos = type_text.find('<');
+
+        // Determine nullability following C++ logic:
+        // - For parameterized types: check if ? appears immediately before <
+        // - For simple types: check if last character is ?
+        let nullable = if let Some(angle_pos) = left_angle_pos {
+            // Parameterized type case: "decimal?<19,0>"
+            angle_pos > 0 && question_pos == Some(angle_pos - 1)
+        } else {
+            // Simple type case: "i32?"
+            question_pos == Some(type_text.len() - 1)
+        };
+
+        // Extract base type name (without the ? marker)
+        let base_type_name = if nullable {
+            if let Some(q_pos) = question_pos {
+                &type_text[..q_pos]
+            } else {
+                type_text
+            }
         } else {
             type_text
+        };
+
+        // Reconstruct the type string for parsing (base name + parameters)
+        // For "decimal?<19,0>" this becomes "decimal<19,0>"
+        // For "i32?" this becomes "i32"
+        let base_type_str = if let Some(angle_pos) = left_angle_pos {
+            if nullable {
+                // Concatenate base name + everything from < onwards
+                format!("{}{}", base_type_name, &type_text[angle_pos..])
+            } else {
+                type_text.to_string()
+            }
+        } else {
+            base_type_name.to_string()
         };
 
         let nullability = if nullable {
@@ -319,7 +351,7 @@ impl<'input> TypeVisitor<'input> {
         }
 
         // Handle basic types
-        match base_type_str {
+        match base_type_str.as_str() {
             "boolean" | "bool" => {
                 let mut boolean = Boolean::default();
                 boolean.nullability = nullability.into();
