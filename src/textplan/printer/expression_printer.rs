@@ -290,6 +290,15 @@ impl<'a> ExpressionPrinter<'a> {
     ) -> Result<String, TextPlanError> {
         let mut result = String::new();
 
+        // Add newline and indentation for nested functions (mimics C++ behavior)
+        if self.function_depth > 1 {
+            result.push('\n');
+            // Indent with 2 spaces per depth level
+            for _ in 0..self.function_depth {
+                result.push_str("  ");
+            }
+        }
+
         // Look up the function name from the symbol table
         let function_name = self.lookup_function_reference(func.function_reference);
 
@@ -300,35 +309,47 @@ impl<'a> ExpressionPrinter<'a> {
 
         // Print arguments (newer protobuf style)
         for arg in &func.arguments {
-            if !first {
-                result.push_str(", ");
-            }
-            first = false;
-
             use ::substrait::proto::function_argument::ArgType;
-            match &arg.arg_type {
+            let arg_str = match &arg.arg_type {
                 Some(ArgType::Enum(enum_val)) => {
-                    result.push_str(&format!("{}_enum", enum_val));
+                    format!("{}_enum", enum_val)
                 }
                 Some(ArgType::Type(type_val)) => {
-                    result.push_str(&self.print_type(type_val)?);
+                    self.print_type(type_val)?
                 }
                 Some(ArgType::Value(expr)) => {
-                    result.push_str(&self.print_expression(expr)?);
+                    self.print_expression(expr)?
                 }
                 None => {
-                    result.push_str("MISSING_ARGUMENT");
+                    "MISSING_ARGUMENT".to_string()
+                }
+            };
+
+            // Add comma/space separator for non-first arguments
+            if !first {
+                result.push(',');
+                // Add space before arg unless it starts with newline
+                if !arg_str.starts_with('\n') {
+                    result.push(' ');
                 }
             }
+            first = false;
+            result.push_str(&arg_str);
         }
 
         // Print args (older protobuf style, for compatibility)
         for arg in &func.args {
+            let arg_str = self.print_expression(arg)?;
+            // Add comma/space separator for non-first arguments
             if !first {
-                result.push_str(", ");
+                result.push(',');
+                // Add space before arg unless it starts with newline
+                if !arg_str.starts_with('\n') {
+                    result.push(' ');
+                }
             }
             first = false;
-            result.push_str(&self.print_expression(arg)?);
+            result.push_str(&arg_str);
         }
 
         result.push(')');
@@ -338,6 +359,118 @@ impl<'a> ExpressionPrinter<'a> {
             result.push_str("->");
             result.push_str(&self.print_type(output_type)?);
         }
+
+        Ok(result)
+    }
+
+    /// Prints an aggregate function.
+    pub fn print_aggregate_function(
+        &mut self,
+        func: &::substrait::proto::AggregateFunction,
+    ) -> Result<String, TextPlanError> {
+        self.function_depth += 1;
+        let result = self.print_aggregate_function_impl(func);
+        self.function_depth -= 1;
+        result
+    }
+
+    /// Implementation of aggregate function printing.
+    fn print_aggregate_function_impl(
+        &mut self,
+        func: &::substrait::proto::AggregateFunction,
+    ) -> Result<String, TextPlanError> {
+        let mut result = String::new();
+
+        // Add newline and indentation for nested functions (mimics C++ behavior)
+        if self.function_depth > 1 {
+            result.push('\n');
+            // Indent with 2 spaces per depth level
+            for _ in 0..self.function_depth {
+                result.push_str("  ");
+            }
+        }
+
+        // Look up the function name from the symbol table
+        let function_name = self.lookup_function_reference(func.function_reference);
+
+        result.push_str(&function_name);
+        result.push('(');
+
+        let mut first = true;
+
+        // Print arguments (newer protobuf style)
+        for arg in &func.arguments {
+            use ::substrait::proto::function_argument::ArgType;
+            let arg_str = match &arg.arg_type {
+                Some(ArgType::Enum(enum_val)) => {
+                    format!("{}_enum", enum_val)
+                }
+                Some(ArgType::Type(type_val)) => {
+                    self.print_type(type_val)?
+                }
+                Some(ArgType::Value(expr)) => {
+                    self.print_expression(expr)?
+                }
+                None => {
+                    "MISSING_ARGUMENT".to_string()
+                }
+            };
+
+            // Add comma/space separator for non-first arguments
+            if !first {
+                result.push(',');
+                // Add space before arg unless it starts with newline
+                if !arg_str.starts_with('\n') {
+                    result.push(' ');
+                }
+            }
+            first = false;
+            result.push_str(&arg_str);
+        }
+
+        // Print args (older protobuf style, for compatibility)
+        for arg in &func.args {
+            let arg_str = self.print_expression(arg)?;
+            // Add comma/space separator for non-first arguments
+            if !first {
+                result.push(',');
+                // Add space before arg unless it starts with newline
+                if !arg_str.starts_with('\n') {
+                    result.push(' ');
+                }
+            }
+            first = false;
+            result.push_str(&arg_str);
+        }
+
+        result.push(')');
+
+        // Add options (if any)
+        for option in &func.options {
+            result.push('#');
+            result.push_str(&option.name);
+            for pref in &option.preference {
+                result.push(';');
+                result.push_str(pref);
+            }
+        }
+
+        // Add return type annotation
+        if let Some(output_type) = &func.output_type {
+            result.push_str("->");
+            result.push_str(&self.print_type(output_type)?);
+        }
+
+        // Add aggregation phase
+        result.push('@');
+        let phase_name = match func.phase {
+            0 => "AGGREGATION_PHASE_UNSPECIFIED",
+            1 => "AGGREGATION_PHASE_INITIAL_TO_INTERMEDIATE",
+            2 => "AGGREGATION_PHASE_INTERMEDIATE_TO_INTERMEDIATE",
+            3 => "AGGREGATION_PHASE_INTERMEDIATE_TO_RESULT",
+            _ => "UNKNOWN_PHASE",
+        };
+        result.push_str(phase_name);
 
         Ok(result)
     }

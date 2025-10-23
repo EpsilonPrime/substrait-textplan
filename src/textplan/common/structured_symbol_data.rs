@@ -93,8 +93,8 @@ impl ExtensionSpaceData {
 // Used by Function symbols to keep track of the name and assigned anchors.
 #[derive(Debug, Clone)]
 pub struct FunctionData {
-    name: String,
-    extension_uri_reference: Option<u32>,
+    pub name: String,
+    pub extension_uri_reference: Option<u32>,
     pub anchor: u32,
 }
 

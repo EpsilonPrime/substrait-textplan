@@ -49,7 +49,7 @@ impl PlanPrinter {
     /// Creates a new PlanPrinter with the specified format.
     pub fn new(format: TextPlanFormat) -> Self {
         let (indent_size, include_comments) = match format {
-            TextPlanFormat::Standard => (4, true),
+            TextPlanFormat::Standard => (2, true),
             TextPlanFormat::Compact => (2, false),
             TextPlanFormat::Verbose => (4, true),
         };
@@ -90,6 +90,7 @@ impl PlanPrinter {
         let pipelines_text = self.output_pipelines_section(symbol_table)?;
         if !pipelines_text.is_empty() {
             result.push_str(&pipelines_text);
+            result.push('\n');
             result.push('\n');
         }
 
@@ -491,8 +492,9 @@ impl PlanPrinter {
                     result.push('\n');
                 }
                 for &field_idx in &emit.output_mapping {
-                    // TODO: Look up field name from relation data
-                    result.push_str(&format!("{}emit field#{};\n", indent, field_idx));
+                    // Look up field name from relation data
+                    let field_name = self.lookup_field_for_emit(relation, field_idx as usize);
+                    result.push_str(&format!("{}emit {};\n", indent, field_name));
                 }
             }
         }
@@ -536,11 +538,16 @@ impl PlanPrinter {
 
             if let Some(agg_func) = &measure.measure {
                 let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
-                // TODO: Print aggregate function properly - for now just placeholder
-                result.push_str(&format!(
-                    "{}measure AGGREGATE_FUNCTION_NOT_YET_IMPLEMENTED;\n",
-                    measure_indent
-                ));
+                let agg_text = expr_printer.print_aggregate_function(agg_func)?;
+
+                // Look up measure symbol name
+                let measure_name = self.lookup_measure_name(symbol_table, measure);
+
+                result.push_str(&format!("{}measure {}", measure_indent, agg_text));
+                if let Some(name) = measure_name {
+                    result.push_str(&format!(" NAMED {}", name));
+                }
+                result.push_str(";\n");
             }
 
             result.push_str(&format!("{}}}\n", indent));
@@ -837,10 +844,8 @@ impl PlanPrinter {
                                         }
                                     }
 
-                                    // Print start if non-zero
-                                    if item.start != 0 {
-                                        result.push_str(&format!(" start: {}", item.start));
-                                    }
+                                    // Always print start
+                                    result.push_str(&format!(" start: {}", item.start));
 
                                     // Print length if non-zero
                                     if item.length != 0 {
@@ -939,7 +944,7 @@ impl PlanPrinter {
         symbol_table: &SymbolTable,
         result: &mut String,
     ) -> Result<(), TextPlanError> {
-        let functions: Vec<_> = symbol_table
+        let mut functions: Vec<_> = symbol_table
             .symbols()
             .iter()
             .filter(|s| s.symbol_type() == SymbolType::Function)
@@ -950,16 +955,86 @@ impl PlanPrinter {
             return Ok(());
         }
 
+        // Sort functions alphabetically by their short name (alias)
+        functions.sort_by(|a, b| a.name().cmp(b.name()));
+
         result.push_str("extension_space {\n");
 
         for func in functions {
-            // Format: function name:signature as alias;
-            result.push_str(&format!("  function {} as {};\n", func.name(), func.name()));
+            // Extract FunctionData from blob to get the full signature
+            // func.name() is the short alias like "and"
+            // FunctionData.name is the canonical name with signature like "and:bool_bool"
+            if let Some(blob_lock) = &func.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(func_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::FunctionData>() {
+                        result.push_str(&format!("  function {} as {};\n", func_data.name, func.name()));
+                    }
+                }
+            }
         }
 
         result.push_str("}\n");
 
         Ok(())
+    }
+
+    /// Looks up the field name for an emit statement.
+    fn lookup_field_for_emit(&self, relation: &Arc<SymbolInfo>, field_idx: usize) -> String {
+        // Get the relation data from the blob
+        if let Some(blob_lock) = &relation.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) =
+                    blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>()
+                {
+                    // Check in field_references first
+                    if field_idx < relation_data.field_references.len() {
+                        let symbol = &relation_data.field_references[field_idx];
+                        return self.format_field_name_for_emit(symbol);
+                    }
+
+                    // Then check in generated_field_references
+                    let adjusted_index = field_idx - relation_data.field_references.len();
+                    if adjusted_index < relation_data.generated_field_references.len() {
+                        let symbol = &relation_data.generated_field_references[adjusted_index];
+                        return self.format_field_name_for_emit(symbol);
+                    }
+                }
+            }
+        }
+
+        // Fall back to field#N if we can't resolve it
+        format!("field#{}", field_idx)
+    }
+
+    /// Formats a field name for emit statements (similar to expression_printer's format_field_name).
+    fn format_field_name_for_emit(&self, symbol: &Arc<SymbolInfo>) -> String {
+        // If the symbol has an alias, use it
+        if let Some(alias) = symbol.alias() {
+            return alias.to_string();
+        }
+
+        // Otherwise, use fully qualified name if schema is available
+        if let Some(schema) = symbol.schema() {
+            format!("{}.{}", schema.name(), symbol.name())
+        } else {
+            symbol.name().to_string()
+        }
+    }
+
+    /// Looks up the measure symbol name from the symbol table.
+    fn lookup_measure_name(
+        &self,
+        symbol_table: &SymbolTable,
+        _measure: &::substrait::proto::aggregate_rel::Measure,
+    ) -> Option<String> {
+        // Search for a Measure symbol
+        // For now, return a simple search - in the future we might need to match by location
+        for symbol in symbol_table.symbols() {
+            if symbol.symbol_type() == SymbolType::Measure {
+                return Some(symbol.name().to_string());
+            }
+        }
+        None
     }
 }
 
