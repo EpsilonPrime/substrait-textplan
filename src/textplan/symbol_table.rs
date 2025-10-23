@@ -111,7 +111,7 @@ pub struct SymbolInfo {
     /// The name of the symbol.
     name: String,
     /// An optional alias for the symbol.
-    alias: Option<String>,
+    alias: std::sync::RwLock<Option<String>>,
     /// The location of the symbol in the source text.
     source_location: Box<dyn Location>,
     /// A permanent location for the symbol (if different from source_location).
@@ -143,7 +143,7 @@ impl SymbolInfo {
     ) -> Self {
         Self {
             name,
-            alias: None,
+            alias: std::sync::RwLock::new(None),
             source_location: location.into(),
             permanent_location: Box::new(TextLocation::UNKNOWN_LOCATION),
             parent_query_location: Box::new(TextLocation::UNKNOWN_LOCATION),
@@ -161,13 +161,17 @@ impl SymbolInfo {
     }
 
     /// Returns the alias of the symbol, if any.
-    pub fn alias(&self) -> Option<&str> {
-        self.alias.as_deref()
+    pub fn alias(&self) -> Option<String> {
+        self.alias.read().unwrap().clone()
     }
 
     /// Returns the display name of the symbol (alias if present, otherwise name).
-    pub fn display_name(&self) -> &str {
-        self.alias.as_deref().unwrap_or(&self.name)
+    pub fn display_name(&self) -> String {
+        self.alias
+            .read()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| self.name.clone())
     }
 
     /// Returns a reference to the location of the symbol in the source text.
@@ -196,8 +200,8 @@ impl SymbolInfo {
     }
 
     /// Sets the alias of the symbol.
-    pub fn set_alias(&mut self, alias: String) {
-        self.alias = Some(alias);
+    pub fn set_alias(&self, alias: String) {
+        *self.alias.write().unwrap() = Some(alias);
     }
 
     /// Sets the schema associated with this symbol.
@@ -257,7 +261,7 @@ impl SymbolInfo {
 impl PartialEq for SymbolInfo {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
-            && self.alias == other.alias
+            && *self.alias.read().unwrap() == *other.alias.read().unwrap()
             && self.source_location.equals(other.source_location.as_ref())
             && self
                 .permanent_location
@@ -397,9 +401,8 @@ impl SymbolTable {
     pub fn add_alias(&mut self, alias: String, symbol: &Arc<SymbolInfo>) {
         // Find the index of the symbol
         if let Some(&index) = self.names.get(symbol.name()) {
-            // Mutate the symbol to add the alias
-            let mut_symbol = Arc::get_mut(self.symbols.get_mut(index).unwrap()).unwrap();
-            mut_symbol.set_alias(alias.clone());
+            // Set the alias using interior mutability
+            symbol.set_alias(alias.clone());
 
             // Add it to the aliases map
             self.aliases.insert(alias, index);

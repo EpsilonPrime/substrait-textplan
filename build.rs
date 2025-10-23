@@ -17,6 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=src/substrait/textplan/parser/grammar");
     println!("cargo:rerun-if-changed=build-tools/visitor_generator.rs");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=GENERATE_ANTLR");
 
     // Configure parser to use ANTLR4
     println!("cargo:rustc-cfg=use_antlr4");
@@ -199,6 +200,18 @@ fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(entry) = entry {
                 println!("cargo:warning=- {}", entry.path().display());
             }
+        }
+    }
+
+    // Fix known antlr4rust code generation bug: SubstraitPlanParserParserContext -> SubstraitPlanParserContext
+    let parser_file = output_dir.join("substraitplanparser.rs");
+    if parser_file.exists() {
+        let content = fs::read_to_string(&parser_file)?;
+        if content.contains("SubstraitPlanParserParserContext") {
+            println!("cargo:warning=Fixing antlr4rust code generation bug in parser file");
+            let fixed_content = content.replace("SubstraitPlanParserParserContext", "SubstraitPlanParserContext");
+            fs::write(&parser_file, fixed_content)?;
+            println!("cargo:warning=Parser bug fix applied successfully");
         }
     }
 

@@ -124,36 +124,46 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
     // Process the parse tree in multiple phases using our visitors
     // Phase 1: Type visitor
     println!("Applying TypeVisitor");
-    let mut type_visitor =
-        crate::textplan::parser::antlr_visitor::TypeVisitor::new(symbol_table, error_listener.clone());
+    let mut type_visitor = crate::textplan::parser::antlr_visitor::TypeVisitor::new(
+        symbol_table,
+        error_listener.clone(),
+    );
     crate::textplan::parser::antlr_visitor::visit_plan(&mut type_visitor, plan_result.as_ref());
     symbol_table = type_visitor.symbol_table();
 
     // Phase 2: Main plan visitor
     println!("Applying MainPlanVisitor");
-    let mut plan_visitor =
-        crate::textplan::parser::antlr_visitor::MainPlanVisitor::new(symbol_table, error_listener.clone());
+    let mut plan_visitor = crate::textplan::parser::antlr_visitor::MainPlanVisitor::new(
+        symbol_table,
+        error_listener.clone(),
+    );
     crate::textplan::parser::antlr_visitor::visit_plan(&mut plan_visitor, plan_result.as_ref());
     symbol_table = plan_visitor.symbol_table();
 
     // Phase 3: Pipeline visitor
     println!("Applying PipelineVisitor");
-    let mut pipeline_visitor =
-        crate::textplan::parser::antlr_visitor::PipelineVisitor::new(symbol_table, error_listener.clone());
+    let mut pipeline_visitor = crate::textplan::parser::antlr_visitor::PipelineVisitor::new(
+        symbol_table,
+        error_listener.clone(),
+    );
     crate::textplan::parser::antlr_visitor::visit_plan(&mut pipeline_visitor, plan_result.as_ref());
     symbol_table = pipeline_visitor.symbol_table();
 
     // Phase 4: Relation visitor
     println!("Applying RelationVisitor");
-    let mut relation_visitor =
-        crate::textplan::parser::antlr_visitor::RelationVisitor::new(symbol_table, error_listener.clone());
+    let mut relation_visitor = crate::textplan::parser::antlr_visitor::RelationVisitor::new(
+        symbol_table,
+        error_listener.clone(),
+    );
     crate::textplan::parser::antlr_visitor::visit_plan(&mut relation_visitor, plan_result.as_ref());
     symbol_table = relation_visitor.symbol_table();
 
     // Phase 5: Subquery relation visitor
     println!("Applying SubqueryRelationVisitor");
-    let mut subquery_visitor =
-        crate::textplan::parser::antlr_visitor::SubqueryRelationVisitor::new(symbol_table, error_listener.clone());
+    let mut subquery_visitor = crate::textplan::parser::antlr_visitor::SubqueryRelationVisitor::new(
+        symbol_table,
+        error_listener.clone(),
+    );
     crate::textplan::parser::antlr_visitor::visit_plan(&mut subquery_visitor, plan_result.as_ref());
     symbol_table = subquery_visitor.symbol_table();
 

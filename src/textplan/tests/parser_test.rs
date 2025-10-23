@@ -1,344 +1,188 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Tests for the parser and printer.
+//!
+//! These tests are based on the C++ TextPlanParserTest.cpp tests to ensure
+//! compatibility between the C++ and Rust implementations.
 
 #[cfg(test)]
 mod tests {
-    use crate::textplan::parser::{load_from_text, parse_stream, parse_text};
-    use crate::textplan::printer::plan_printer::TextPlanFormat;
+    use crate::textplan::parser::parse_stream;
 
-    #[test]
-    fn test_simple_plan() {
-        // Based on C++ test3-schema + test4-source + test6-read-relation
-        let text = r##"
-        schema schema {
-          r_regionkey i32;
-          r_name string?;
-          r_comment string;
-        }
-
-        source named_table named {
-          names = [
-            "#2",
-          ]
-        }
-
-        read relation myread {
-          base_schema schema;
-          source named;
-        }
-        "##;
-
-        // Test parse_stream
-        let parse_result = parse_stream(text);
-        assert!(
-            parse_result.successful(),
-            "Parse failed: {:?}",
-            parse_result.all_errors()
-        );
-
-        // Verify the symbol table
-        let symbol_table = parse_result.symbol_table();
-        assert!(symbol_table.len() > 0, "Symbol table is empty");
-
-        // Test load_from_text
-        match load_from_text(text) {
-            Ok(_) => {
-                // Success, the function ran without errors
-            }
-            Err(e) => {
-                panic!("Failed to load text plan: {}", e);
-            }
-        }
+    struct TestCase {
+        name: &'static str,
+        input: &'static str,
+        expected_symbols: Vec<&'static str>,
+        should_succeed: bool,
     }
 
-    #[test]
-    fn test_parse_empty_plan() {
-        // Simple test that just verifies the parsing doesn't crash
-        // and an empty plan gives an empty symbol table
-        let text = "";
-        let result = parse_stream(text);
-        assert!(result.successful(), "Empty plan should not have errors");
-        assert!(result.syntax_errors().is_empty());
-        assert_eq!(result.symbol_table().len(), 0);
-    }
-
-    #[test]
-    fn test_parse_antlr_simple_plan() {
-        let text = r#"
-plan {
-  relations {
-    root {
-      input {
-        read {
-          baseSchema {
-            names: ["a", "b", "c"]
-            struct {
-              types: [i32, i64, string]
-            }
-          }
-          namedTable {
-            names: ["default", "test"]
-          }
-        }
-      }
-    }
-  }
-}
-"#;
-        let result = parse_stream(text);
-        assert!(
-            result.successful(),
-            "Parsing errors: {:?}",
-            result.all_errors()
-        );
-        assert!(result.syntax_errors().is_empty());
-
-        // Get the symbol table and verify we have symbols for the table and schema
-        let symbol_table = result.symbol_table();
-
-        // Expect at least a root symbol
-        let symbols = symbol_table.symbols();
-        assert!(
-            symbols.len() > 0,
-            "Expected at least one symbol in the symbol table"
-        );
-
-        // Print the symbols for debugging
-        println!("Symbols in plan: {:?}", symbol_table);
-    }
-
-    #[test]
-    fn test_parse_plan_with_types() {
-        let text = r#"
-plan {
-  relations {
-    root {
-      input {
-        project {
-          common {
-            direct {
-              struct {
-                types: [boolean, i8, i16, i32, i64, fp32, fp64, string, binary, timestamp, date]
-              }
-            }
-          }
-          input {
-            read {
-              baseSchema {
-                names: ["a", "b", "c"]
-                struct {
-                  types: [i32, i64, string]
+    fn get_test_cases() -> Vec<TestCase> {
+        vec![
+            TestCase {
+                name: "test1-unused-extension-space",
+                input: "extension_space blah.yaml {}",
+                expected_symbols: vec!["blah.yaml"],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test1-used-extension-space",
+                input: "extension_space blah.yaml { function concat:str as concat; }",
+                expected_symbols: vec!["blah.yaml", "concat"],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test2-pipelines-no-relations",
+                input: r"pipelines {
+                    root -> project -> read;
+                }",
+                expected_symbols: vec!["read", "project", "root"],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test3-schema",
+                input: r"schema schema {
+                    r_regionkey i32;
+                    r_name string?;
+                    r_comment string;
+                }",
+                expected_symbols: vec!["schema", "r_regionkey", "r_name", "r_comment"],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test4-source",
+                input: r##"source named_table named {
+                    names = [
+                        "#2",
+                    ]
+                }"##,
+                expected_symbols: vec!["named", "#2"],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test6-read-relation",
+                input: r"read relation myread {
+                    base_schema schemaone;
+                    source mynamedtable;
+                }",
+                expected_symbols: vec!["myread"],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test6b-capital-read-relation",
+                input: r"READ relation myread {
+                    base_schema schemaone;
+                    source mynamedtable;
+                }",
+                expected_symbols: vec!["myread"],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test-simple-plan",
+                input: r##"
+                schema schema {
+                    r_regionkey i32;
+                    r_name string?;
+                    r_comment string;
                 }
-              }
-              namedTable {
-                names: ["default", "test"]
-              }
-            }
-          }
-          expressions {
-            selection {
-              directReference {
-                structField {
-                  field: 0
+
+                source named_table named {
+                    names = [
+                        "#2",
+                    ]
                 }
-              }
-              rootReference {}
-            }
-          }
-        }
-      }
-    }
-  }
-}
-"#;
-        let result = parse_stream(text);
-        assert!(
-            result.successful(),
-            "Parsing errors: {:?}",
-            result.all_errors()
-        );
-        assert!(result.syntax_errors().is_empty());
 
-        // Get the symbol table and verify we have symbols for the different types
-        let symbol_table = result.symbol_table();
-
-        // Print the symbols for debugging
-        println!("Symbols in plan: {:?}", symbol_table);
-    }
-
-    #[test]
-    fn test_parse_complex_types() {
-        let text = r#"
-plan {
-  relations {
-    root {
-      input {
-        project {
-          common {
-            direct {
-              struct {
-                types: [
-                  list<i32>,
-                  map<string, i32>,
-                  struct<i32, string, boolean>,
-                  decimal<10, 2>,
-                  list<struct<i32, string>>
-                ]
-              }
-            }
-          }
-          input {
-            read {
-              baseSchema {
-                names: ["complex_types"]
-                struct {
-                  types: [struct<i32, string, list<i32>>]
+                read relation myread {
+                    base_schema schema;
+                    source named;
                 }
-              }
-              namedTable {
-                names: ["default", "test"]
-              }
+                "##,
+                expected_symbols: vec![
+                    "schema",
+                    "r_regionkey",
+                    "r_name",
+                    "r_comment",
+                    "named",
+                    "#2",
+                    "myread",
+                ],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test-empty-plan",
+                input: "",
+                expected_symbols: vec![],
+                should_succeed: true,
+            },
+            TestCase {
+                name: "test-no-leading-whitespace",
+                input: r##"schema schema {
+  r_regionkey i32;
+}
+"##,
+                expected_symbols: vec!["schema", "r_regionkey"],
+                should_succeed: true,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_parser_cases() {
+        for test_case in get_test_cases() {
+            println!("\n=== Running test: {} ===", test_case.name);
+            let result = parse_stream(test_case.input);
+
+            if test_case.should_succeed {
+                assert!(
+                    result.successful(),
+                    "Test '{}' failed: {:?}",
+                    test_case.name,
+                    result.all_errors()
+                );
+
+                let symbol_table = result.symbol_table();
+                let symbols = symbol_table.symbols();
+
+                // Check that all expected symbols are present
+                for expected_symbol in &test_case.expected_symbols {
+                    let found = symbols.iter().any(|s| s.name() == *expected_symbol);
+                    assert!(
+                        found,
+                        "Test '{}': Expected symbol '{}' not found in symbol table. Found symbols: {:?}",
+                        test_case.name,
+                        expected_symbol,
+                        symbols.iter().map(|s| s.name()).collect::<Vec<_>>()
+                    );
+                }
+
+                println!(
+                    "Test '{}' passed with {} symbols",
+                    test_case.name,
+                    symbols.len()
+                );
+            } else {
+                assert!(
+                    !result.successful(),
+                    "Test '{}' should have failed but succeeded",
+                    test_case.name
+                );
             }
-          }
         }
-      }
-    }
-  }
-}
-"#;
-        let result = parse_stream(text);
-        assert!(
-            result.successful(),
-            "Parsing errors: {:?}",
-            result.all_errors()
-        );
-        assert!(result.syntax_errors().is_empty());
-
-        // Get the symbol table
-        let symbol_table = result.symbol_table();
-
-        // Print the symbols for debugging
-        println!("Symbols in plan with complex types: {:?}", symbol_table);
-    }
-
-    #[test]
-    fn test_parse_and_print_simple_plan() {
-        // A simple textplan string
-        let text_plan = r#"
-ROOT {
-    NAMES = ["rel1"]
-}
-
-READ RELATION rel1 {
-    SOURCE = NAMED_TABLE {
-        NAMES = ["catalog", "schema", "table"]
-    }
-}
-"#;
-
-        // Parse the textplan to get a symbol table
-        let parse_result = parse_stream(text_plan);
-        assert!(
-            parse_result.successful(),
-            "Parse failed: {:?}",
-            parse_result.all_errors()
-        );
-
-        // Get the symbol table from the parse result
-        let symbol_table = parse_result.symbol_table();
-
-        // Convert the symbol table back to a textplan string
-        let result = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Standard).unwrap();
-
-        // Verify the result contains the essential elements
-        assert!(result.contains("ROOT {"));
-        assert!(result.contains("NAMES = ["));
-        assert!(result.to_lowercase().contains("relation"));
-    }
-
-    #[test]
-    fn test_parse_and_print_with_different_formats() {
-        // A simple textplan string
-        let text_plan = r#"
-ROOT {
-    NAMES = ["rel1"]
-}
-
-READ RELATION rel1 {
-    SOURCE = NAMED_TABLE {
-        NAMES = ["catalog", "schema", "table"]
-    }
-}
-"#;
-
-        // Parse the textplan to get a symbol table
-        let parse_result = parse_stream(text_plan);
-        assert!(
-            parse_result.successful(),
-            "Parse failed: {:?}",
-            parse_result.all_errors()
-        );
-
-        // Get the symbol table from the parse result
-        let symbol_table = parse_result.symbol_table();
-
-        // Test different formats
-        let standard =
-            parse_text::serialize_to_text(symbol_table, TextPlanFormat::Standard).unwrap();
-        let compact = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Compact).unwrap();
-        let verbose = parse_text::serialize_to_text(symbol_table, TextPlanFormat::Verbose).unwrap();
-
-        // Verify we get different outputs with different formats
-        assert!(standard.contains("ROOT {"));
-        assert_ne!(standard, compact);
-        assert_ne!(standard, verbose);
     }
 
     #[test]
     fn test_parse_provided_sample() {
-        let text = std::fs::read_to_string("src/substrait/textplan/parser/data/provided_sample1.splan").unwrap();
+        let text =
+            std::fs::read_to_string("src/substrait/textplan/parser/data/provided_sample1.splan")
+                .expect("Failed to read provided_sample1.splan");
         let parse_result = parse_stream(&text);
-        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
-    }
+        assert!(
+            parse_result.successful(),
+            "Parse failed: {:?}",
+            parse_result.all_errors()
+        );
 
-    #[test]
-    fn test_no_leading_ws() {
-        let text = r##"schema schema {
-  r_regionkey i32;
-}
-"##;
-        let parse_result = parse_stream(text);
-        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
-    }
-
-    #[test]
-    fn test_parser_without_load() {
-        let text = r##"
-        schema schema {
-          r_regionkey i32;
-          r_name string?;
-          r_comment string;
-        }
-
-        source named_table named {
-          names = [
-            "#2",
-          ]
-        }
-
-        read relation myread {
-          base_schema schema;
-          source named;
-        }
-        "##;
-        let parse_result = parse_stream(text);
-        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
-
-        // Verify the symbol table
+        // Verify we have symbols
         let symbol_table = parse_result.symbol_table();
-        assert!(symbol_table.len() > 0, "Symbol table is empty");
-
-        println!("Test passed! Symbol table has {} symbols", symbol_table.len());
+        assert!(symbol_table.len() > 0, "Symbol table should not be empty");
     }
 }

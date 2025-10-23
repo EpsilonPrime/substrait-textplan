@@ -7,13 +7,16 @@ mod tests {
     use crate::proto::save_plan_to_json;
     use crate::textplan::converter::load_json;
     use crate::textplan::converter::process_plan_with_visitor;
+    use crate::textplan::converter::save_binary::save_to_binary;
+    use crate::textplan::parser::parse_text::parse_stream;
     use std::fs;
     use std::path::{Path, PathBuf};
 
     /// Find all test data files with a specific extension
     fn find_test_files(extension: &str) -> Vec<PathBuf> {
         // Find the source directory containing the test data
-        let data_dir = Path::new("src/textplan/tests/data/converter");
+        // Use the main data directory with TPC-H files
+        let data_dir = Path::new("src/substrait/textplan/data");
 
         // Collect all files with the specified extension
         let mut test_files = Vec::new();
@@ -163,6 +166,88 @@ mod tests {
                 println!("  No golden splan file found at: {}", splan_path.display());
                 println!("  Skipping golden file comparison");
             }
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_binary_to_text_to_binary() {
+        // Find all the JSON test files
+        let test_files = find_test_files("json");
+
+        assert!(!test_files.is_empty(), "No test files found for roundtrip");
+
+        println!("Found {} test files for roundtrip", test_files.len());
+
+        for test_file in test_files {
+            println!("\n=== Roundtrip test for: {} ===", test_file.display());
+
+            // Step 1: Load JSON → Binary Plan
+            let plan_or_error = load_json::load_from_json_file(&test_file.to_str().unwrap());
+            let original_plan = match plan_or_error {
+                Ok(plan) => plan,
+                Err(err) => {
+                    panic!("Failed to load test file {}: {}", test_file.display(), err);
+                }
+            };
+
+            // Step 2: Binary Plan → TextPlan
+            let text_plan = match process_plan_with_visitor(&original_plan) {
+                Ok(text) => text,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert binary to text for {}: {}",
+                        test_file.display(),
+                        err
+                    );
+                }
+            };
+
+            assert!(!text_plan.is_empty(), "Empty textplan from binary");
+            println!("Generated textplan ({} bytes)", text_plan.len());
+
+            // Step 3: TextPlan → Parse → Symbol Table
+            let parse_result = parse_stream(&text_plan);
+
+            if !parse_result.successful() {
+                println!("Generated textplan that failed to parse:");
+                println!("{}", add_line_numbers(&text_plan));
+                panic!(
+                    "Failed to parse generated textplan for {}: {:?}",
+                    test_file.display(),
+                    parse_result.all_errors()
+                );
+            }
+
+            let symbol_table = parse_result.symbol_table();
+            println!(
+                "Parsed successfully, symbol table has {} symbols",
+                symbol_table.len()
+            );
+
+            // Step 4: Symbol Table → Binary Plan
+            let roundtrip_binary = match save_to_binary(&symbol_table) {
+                Ok(binary) => binary,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert symbol table to binary for {}: {}",
+                        test_file.display(),
+                        err
+                    );
+                }
+            };
+
+            println!(
+                "Roundtrip completed successfully for {}",
+                test_file.display()
+            );
+
+            // Note: We're not doing deep comparison of the binary plans yet
+            // as that would require implementing plan normalization (like ReferenceNormalizer in C++)
+            // For now, we just verify the roundtrip doesn't crash and produces some output
+            assert!(
+                !roundtrip_binary.is_empty(),
+                "Roundtrip produced empty binary"
+            );
         }
     }
 }

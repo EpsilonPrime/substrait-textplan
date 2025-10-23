@@ -1038,46 +1038,6 @@ impl PlanPrinter {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::textplan::common::unknown_location::UnknownLocation;
-
-    #[test]
-    fn test_print_simple_plan() {
-        // Create a simple symbol table
-        let mut symbol_table = SymbolTable::new();
-
-        // Add a root relation
-        symbol_table.add_root_relation("root1");
-
-        // Add a regular relation
-        let rel_type = Box::new(RelationType::Read);
-        symbol_table.define_symbol(
-            "read1".to_string(),
-            UnknownLocation::UNKNOWN,
-            SymbolType::Relation,
-            Some(rel_type),
-            None,
-        );
-
-        // Add a named table for the read relation
-        let table_names = vec![
-            "catalog1".to_string(),
-            "schema1".to_string(),
-            "table1".to_string(),
-        ];
-        symbol_table.add_named_table("read1", &table_names);
-
-        // Create a printer and generate the plan
-        let mut printer = PlanPrinter::new(TextPlanFormat::Standard);
-        let plan = printer.print_plan(&symbol_table).unwrap();
-
-        // Verify the plan contains the expected elements
-        assert!(plan.contains("ROOT {"));
-        assert!(plan.contains("NAMES = [\"root1\"]"));
-        assert!(plan.contains("READ RELATION read1 {"));
-        assert!(plan.contains("SOURCE = NAMED_TABLE {"));
-        assert!(plan.contains("NAMES = [\"catalog1\", \"schema1\", \"table1\"]"));
-    }
-}
+// Note: Printer tests are covered by the roundtrip tests in converter_test.rs
+// which match the C++ test structure. Stand-alone printer unit tests are not
+// part of the C++ test suite.

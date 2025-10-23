@@ -94,7 +94,6 @@ pub fn parse_stream(text: &str) -> ParseResult {
     }
 }
 
-
 /// Serializes a symbol table back to a textplan string.
 ///
 /// # Arguments

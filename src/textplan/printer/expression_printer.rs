@@ -314,15 +314,9 @@ impl<'a> ExpressionPrinter<'a> {
                 Some(ArgType::Enum(enum_val)) => {
                     format!("{}_enum", enum_val)
                 }
-                Some(ArgType::Type(type_val)) => {
-                    self.print_type(type_val)?
-                }
-                Some(ArgType::Value(expr)) => {
-                    self.print_expression(expr)?
-                }
-                None => {
-                    "MISSING_ARGUMENT".to_string()
-                }
+                Some(ArgType::Type(type_val)) => self.print_type(type_val)?,
+                Some(ArgType::Value(expr)) => self.print_expression(expr)?,
+                None => "MISSING_ARGUMENT".to_string(),
             };
 
             // Add comma/space separator for non-first arguments
@@ -405,15 +399,9 @@ impl<'a> ExpressionPrinter<'a> {
                 Some(ArgType::Enum(enum_val)) => {
                     format!("{}_enum", enum_val)
                 }
-                Some(ArgType::Type(type_val)) => {
-                    self.print_type(type_val)?
-                }
-                Some(ArgType::Value(expr)) => {
-                    self.print_expression(expr)?
-                }
-                None => {
-                    "MISSING_ARGUMENT".to_string()
-                }
+                Some(ArgType::Type(type_val)) => self.print_type(type_val)?,
+                Some(ArgType::Value(expr)) => self.print_expression(expr)?,
+                None => "MISSING_ARGUMENT".to_string(),
             };
 
             // Add comma/space separator for non-first arguments
