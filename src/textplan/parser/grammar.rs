@@ -35,11 +35,10 @@ use crate::textplan::parser::error_listener::create_boxed_error_listener;
 use crate::textplan::parser::error_listener::AntlrErrorListener;
 
 /// Result from parsing a string using ANTLR.
-/// This represents the parse tree from the ANTLR parser.
+/// This now contains the processed symbol table instead of the raw parse tree.
 pub struct ParseResult {
-    /// The root node of the parse tree, which is the plan context.
-    /// This is what will be passed to our visitors for processing.
-    pub plan_ctx: Option<Box<PlanContext<'static>>>,
+    /// The symbol table built by processing the parse tree.
+    pub symbol_table: crate::textplan::symbol_table::SymbolTable,
     /// The error listener that captured any syntax errors.
     pub error_listener: Arc<ErrorListener>,
 }
@@ -47,6 +46,7 @@ pub struct ParseResult {
 /// Parses a string using ANTLR.
 ///
 /// Creates a lexer, parser, and runs the parsing process on the input text.
+/// Processes the parse tree with visitors while the lexer/parser are still alive.
 ///
 /// # Arguments
 ///
@@ -54,8 +54,11 @@ pub struct ParseResult {
 ///
 /// # Returns
 ///
-/// A result containing either a parsed tree or an error message.
+/// A result containing either a processed symbol table or an error message.
 pub fn parse_string(text: &str) -> Result<ParseResult, String> {
+    use crate::textplan::parser::antlr_visitor::PlanVisitor as PlanVisitorTrait;
+    use crate::textplan::symbol_table::SymbolTable;
+
     // Create an error listener
     let error_listener = Arc::new(ErrorListener::new());
 
@@ -114,15 +117,49 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
         return Err(format!("Parsing errors: {}", error_messages.join(", ")));
     }
 
-    // Return the parse result with the plan context
+    // Process the parse tree with visitors while the lexer/parser are still alive.
+    // This is critical because the parse tree has references to the token stream.
+    let mut symbol_table = SymbolTable::new();
+
+    // Process the parse tree in multiple phases using our visitors
+    // Phase 1: Type visitor
+    println!("Applying TypeVisitor");
+    let mut type_visitor =
+        crate::textplan::parser::antlr_visitor::TypeVisitor::new(symbol_table, error_listener.clone());
+    crate::textplan::parser::antlr_visitor::visit_plan(&mut type_visitor, plan_result.as_ref());
+    symbol_table = type_visitor.symbol_table();
+
+    // Phase 2: Main plan visitor
+    println!("Applying MainPlanVisitor");
+    let mut plan_visitor =
+        crate::textplan::parser::antlr_visitor::MainPlanVisitor::new(symbol_table, error_listener.clone());
+    crate::textplan::parser::antlr_visitor::visit_plan(&mut plan_visitor, plan_result.as_ref());
+    symbol_table = plan_visitor.symbol_table();
+
+    // Phase 3: Pipeline visitor
+    println!("Applying PipelineVisitor");
+    let mut pipeline_visitor =
+        crate::textplan::parser::antlr_visitor::PipelineVisitor::new(symbol_table, error_listener.clone());
+    crate::textplan::parser::antlr_visitor::visit_plan(&mut pipeline_visitor, plan_result.as_ref());
+    symbol_table = pipeline_visitor.symbol_table();
+
+    // Phase 4: Relation visitor
+    println!("Applying RelationVisitor");
+    let mut relation_visitor =
+        crate::textplan::parser::antlr_visitor::RelationVisitor::new(symbol_table, error_listener.clone());
+    crate::textplan::parser::antlr_visitor::visit_plan(&mut relation_visitor, plan_result.as_ref());
+    symbol_table = relation_visitor.symbol_table();
+
+    // Phase 5: Subquery relation visitor
+    println!("Applying SubqueryRelationVisitor");
+    let mut subquery_visitor =
+        crate::textplan::parser::antlr_visitor::SubqueryRelationVisitor::new(symbol_table, error_listener.clone());
+    crate::textplan::parser::antlr_visitor::visit_plan(&mut subquery_visitor, plan_result.as_ref());
+    symbol_table = subquery_visitor.symbol_table();
+
+    // Return the parse result with the processed symbol table
     Ok(ParseResult {
-        // Convert the Rc<PlanContext> to a Box<PlanContext> for ownership transfer
-        // We use unsafe here because we need to convert a reference-counted pointer to a Box
-        // This works because we're the only owner of the Rc at this point
-        plan_ctx: Some(unsafe {
-            let rc_ptr = Rc::into_raw(plan_result);
-            Box::from_raw(rc_ptr as *mut PlanContext)
-        }),
+        symbol_table,
         error_listener,
     })
 }

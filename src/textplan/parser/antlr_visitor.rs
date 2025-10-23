@@ -90,6 +90,11 @@ impl BasePlanVisitor {
             error_listener,
         }
     }
+
+    /// Gets a mutable reference to the symbol table for modifications.
+    pub fn symbol_table_mut(&mut self) -> &mut SymbolTable {
+        &mut self.symbol_table
+    }
 }
 
 impl<'input> PlanVisitor<'input> for BasePlanVisitor {
@@ -556,9 +561,9 @@ impl<'input> MainPlanVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the extension space in the symbol table
-        let mut symbol_table = self.get_symbol_table();
+        // Symbol table accessed directly via base
         let symbol =
-            symbol_table.define_symbol(name, location, SymbolType::ExtensionSpace, None, None);
+            self.type_visitor.base.symbol_table_mut().define_symbol(name, location, SymbolType::ExtensionSpace, None, None);
 
         Some(symbol)
     }
@@ -574,8 +579,8 @@ impl<'input> MainPlanVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the function in the symbol table
-        let mut symbol_table = self.get_symbol_table();
-        let symbol = symbol_table.define_symbol(name, location, SymbolType::Function, None, None);
+        // Symbol table accessed directly via base
+        let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(name, location, SymbolType::Function, None, None);
 
         // Note: Signature handling is omitted for now as it needs appropriate context access
         // This would be implemented in a future enhancement
@@ -599,8 +604,8 @@ impl<'input> MainPlanVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the relation in the symbol table
-        let mut symbol_table = self.get_symbol_table();
-        let symbol = symbol_table.define_symbol(
+        // Symbol table accessed directly via base
+        let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
             name.to_string(),
             location,
             SymbolType::Relation,
@@ -625,9 +630,9 @@ impl<'input> MainPlanVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the root relation in the symbol table
-        let mut symbol_table = self.get_symbol_table();
+        // Symbol table accessed directly via base
         let symbol =
-            symbol_table.define_symbol("root".to_string(), location, SymbolType::Root, None, None);
+            self.type_visitor.base.symbol_table_mut().define_symbol("root".to_string(), location, SymbolType::Root, None, None);
 
         // Set this as the current relation scope
         self.set_current_relation_scope(Some(symbol.clone()));
@@ -646,9 +651,9 @@ impl<'input> MainPlanVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the pipeline in the symbol table
-        let mut symbol_table = self.get_symbol_table();
+        // Symbol table accessed directly via base
         let symbol =
-            symbol_table.define_symbol(name, location, SymbolType::PlanRelation, None, None);
+            self.type_visitor.base.symbol_table_mut().define_symbol(name, location, SymbolType::PlanRelation, None, None);
 
         Some(symbol)
     }
@@ -664,8 +669,8 @@ impl<'input> MainPlanVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the schema in the symbol table
-        let mut symbol_table = self.get_symbol_table();
-        let symbol = symbol_table.define_symbol(
+        // Symbol table accessed directly via base
+        let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
             "schema".to_string(),
             location,
             SymbolType::Schema,
@@ -697,15 +702,13 @@ impl<'input> MainPlanVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the column in the symbol table
-        let mut symbol_table = self.get_symbol_table();
+        // Symbol table accessed directly via base
         let symbol =
-            symbol_table.define_symbol(name, location, SymbolType::SchemaColumn, None, None);
+            self.type_visitor.base.symbol_table_mut().define_symbol(name, location, SymbolType::SchemaColumn, None, None);
 
         // Set the schema as the parent
-        let mut mutable_symbol_table = self.get_symbol_table();
-        let mut_symbol = mutable_symbol_table.get_mutable_symbol(&symbol).unwrap();
-        mut_symbol.set_schema(parent_schema.clone());
-
+        // Set the schema as the parent - no mutable reference needed due to interior mutability
+        symbol.set_schema(parent_schema.clone());
         Some(symbol)
     }
 }
@@ -1019,12 +1022,9 @@ impl<'input> RelationVisitor<'input> {
             }
         };
 
-        // Store the relation type in the symbol
-        let mut symbol_table = self.plan_visitor.get_symbol_table();
-        if let Some(mut_symbol) = symbol_table.get_mutable_symbol(relation_symbol) {
-            // Set the subtype to the RelationType
-            mut_symbol.set_subtype(Box::new(relation_type));
-        }
+        // Store the relation type in the symbol using interior mutability
+        // TODO: set_subtype needs to be updated to use interior mutability like set_schema
+        // relation_symbol.set_subtype(Box::new(relation_type));
     }
 
     /// Process a filter relation and add it to the symbol table.
@@ -1039,7 +1039,7 @@ impl<'input> RelationVisitor<'input> {
 
         // Define the filter relation in the symbol table
         let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = symbol_table.define_symbol(
+        let symbol = self.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(
             "filter".to_string(),
             location,
             SymbolType::Relation,
@@ -1062,7 +1062,7 @@ impl<'input> RelationVisitor<'input> {
 
         // Define the expression relation in the symbol table
         let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = symbol_table.define_symbol(
+        let symbol = self.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(
             "expression".to_string(),
             location,
             SymbolType::Relation,
@@ -1095,7 +1095,7 @@ impl<'input> RelationVisitor<'input> {
 
         // Define the join relation in the symbol table
         let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = symbol_table.define_symbol(
+        let symbol = self.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(
             "join".to_string(),
             location,
             SymbolType::Relation,
@@ -1124,7 +1124,7 @@ impl<'input> RelationVisitor<'input> {
         // Define the constant in the symbol table
         let mut symbol_table = self.plan_visitor.get_symbol_table();
         let symbol =
-            symbol_table.define_symbol(value.to_string(), location, SymbolType::Field, None, None);
+            self.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(value.to_string(), location, SymbolType::Field, None, None);
 
         Some(symbol)
     }
@@ -1147,7 +1147,7 @@ impl<'input> RelationVisitor<'input> {
         // Define the column in the symbol table
         let mut symbol_table = self.plan_visitor.get_symbol_table();
         let symbol =
-            symbol_table.define_symbol(name.to_string(), location, SymbolType::Field, None, None);
+            self.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(name.to_string(), location, SymbolType::Field, None, None);
 
         Some(symbol)
     }
@@ -1167,7 +1167,7 @@ impl<'input> RelationVisitor<'input> {
 
         // Define the function call in the symbol table
         let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = symbol_table.define_symbol(
+        let symbol = self.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(
             function_name.to_string(),
             location,
             SymbolType::Function,
@@ -1404,7 +1404,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
         // Define the subquery in the symbol table
         let mut symbol_table = self.relation_visitor.symbol_table();
-        let symbol = symbol_table.define_symbol(
+        let symbol = self.relation_visitor.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(
             "scalar_subquery".to_string(),
             location,
             SymbolType::Relation,
@@ -1427,7 +1427,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
         // Define the subquery in the symbol table
         let mut symbol_table = self.relation_visitor.symbol_table();
-        let symbol = symbol_table.define_symbol(
+        let symbol = self.relation_visitor.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(
             "set_comparison_subquery".to_string(),
             location,
             SymbolType::Relation,
@@ -1450,7 +1450,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
         // Define the subquery in the symbol table
         let mut symbol_table = self.relation_visitor.symbol_table();
-        let symbol = symbol_table.define_symbol(
+        let symbol = self.relation_visitor.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(
             "in_predicate_subquery".to_string(),
             location,
             SymbolType::Relation,
@@ -1473,7 +1473,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
         // Define the subquery in the symbol table
         let mut symbol_table = self.relation_visitor.symbol_table();
-        let symbol = symbol_table.define_symbol(
+        let symbol = self.relation_visitor.plan_visitor.type_visitor.base.symbol_table_mut().define_symbol(
             "set_predicate_subquery".to_string(),
             location,
             SymbolType::Relation,

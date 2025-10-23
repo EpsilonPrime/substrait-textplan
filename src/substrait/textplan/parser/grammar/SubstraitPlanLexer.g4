@@ -117,9 +117,9 @@ RAW_LITERAL_SINGLE_BACKTICK : '`' ~[`]+? '`' -> type(STRING) ;
 RAW_LITERAL_DOUBLE_BACKTICK : '``' .+? '``' -> type(STRING) ;
 RAW_LITERAL_TRIPLE_BACKTICK : '```' .+? '```' -> type(STRING) ;
 
-SINGLE_LINE_COMMENT: '//' ~[\r\n]* (('\r'? '\n') | EOF) -> channel(HIDDEN);
+SINGLE_LINE_COMMENT: '//' ~[\r\n]* (('\r'? '\n') | EOF) -> skip;
 
-SPACES: [ \u000B\t\r\n] -> channel(HIDDEN);
+SPACES: [ \u000B\t\r\n]+ -> skip;
 
 mode EXTENSIONS;
 fragment SCHEME: [A-Za-z]+ ;
@@ -134,4 +134,4 @@ URI
 
 EXTENSIONS_LEFTBRACE: '{' -> mode(DEFAULT_MODE), type(LEFTBRACE);
 
-EXTENSIONS_SPACES: [ \u000B\t\r\n] -> channel(HIDDEN), type(SPACES);
+EXTENSIONS_SPACES: [ \u000B\t\r\n]+ -> skip;

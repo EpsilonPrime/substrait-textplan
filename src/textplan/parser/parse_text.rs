@@ -68,17 +68,24 @@ pub fn parse_stream(text: &str) -> ParseResult {
         return ParseResult::new(SymbolTable::new(), Vec::new(), Vec::new());
     }
 
-    // Create a shared error listener
-    let error_listener = Arc::new(ErrorListener::new());
-
     // Try to parse the text using ANTLR
+    // The parse_string function now handles the visitor processing internally
     match grammar::parse_string(text) {
-        Ok(parse_tree) => {
-            // Create a symbol table
-            let symbol_table = SymbolTable::new();
+        Ok(grammar_result) => {
+            // Get any errors from the error listener
+            let error_messages = if grammar_result.error_listener.has_errors() {
+                grammar_result
+                    .error_listener
+                    .format_errors()
+                    .into_iter()
+                    .map(|msg| format!("ANTLR parsing error: {}", msg))
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
-            // Process the parse tree in multiple phases using our visitors
-            process_parse_tree(parse_tree, symbol_table, error_listener.clone())
+            // Return the parse result with the symbol table and any errors
+            ParseResult::new(grammar_result.symbol_table, error_messages, Vec::new())
         }
         Err(err) => {
             // If parsing fails, return an error result
@@ -87,50 +94,6 @@ pub fn parse_stream(text: &str) -> ParseResult {
     }
 }
 
-/// Processes an ANTLR parse tree using our visitors.
-///
-/// This function implements the multiphase parsing approach used in the C++ code:
-/// 1. Process types with TypeVisitor
-/// 2. Process plan structure with MainPlanVisitor
-/// 3. Process pipelines with PipelineVisitor
-/// 4. Process relations with RelationVisitor
-/// 5. Process subqueries with SubqueryRelationVisitor
-fn process_parse_tree(
-    parse_tree: grammar::ParseResult,
-    symbol_table: SymbolTable,
-    error_listener: Arc<ErrorListener>,
-) -> ParseResult {
-    // Create a fresh symbol table for this processing
-    let mut symbol_table = symbol_table;
-
-    // If we have a valid parse tree, process it with our visitors
-    if let Some(plan_ctx) = parse_tree.plan_ctx {
-        // Process the parse tree in multiple phases, passing updated symbol table between phases
-        let mut next_symbol_table =
-            apply_type_visitor(&plan_ctx, symbol_table, error_listener.clone());
-        next_symbol_table =
-            apply_plan_visitor(&plan_ctx, next_symbol_table, error_listener.clone());
-        next_symbol_table =
-            apply_pipeline_visitor(&plan_ctx, next_symbol_table, error_listener.clone());
-        next_symbol_table =
-            apply_relation_visitor(&plan_ctx, next_symbol_table, error_listener.clone());
-        symbol_table = apply_subquery_visitor(&plan_ctx, next_symbol_table, error_listener.clone());
-    }
-
-    // Get all errors from the error listener
-    let error_messages = if error_listener.has_errors() {
-        error_listener
-            .format_errors()
-            .into_iter()
-            .map(|msg| format!("ANTLR parsing error: {}", msg))
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    // Return the parse result with the updated symbol table and any errors
-    ParseResult::new(symbol_table, error_messages, Vec::new())
-}
 
 /// Serializes a symbol table back to a textplan string.
 ///

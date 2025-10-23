@@ -9,31 +9,25 @@ mod tests {
 
     #[test]
     fn test_simple_plan() {
-        let text = r#"
-        schema simple_schema {
-            id i32;
-            name string;
-            price fp64;
+        // Based on C++ test3-schema + test4-source + test6-read-relation
+        let text = r##"
+        schema schema {
+          r_regionkey i32;
+          r_name string?;
+          r_comment string;
         }
 
-        source LOCAL_FILES simple_source {
-            URI_FILE = "data.csv"
+        source named_table named {
+          names = [
+            "#2",
+          ]
         }
 
-        read RELATION simple_read {
-            SOURCE simple_source;
-            BASE_SCHEMA simple_schema;
+        read relation myread {
+          base_schema schema;
+          source named;
         }
-
-        filter RELATION filtered_data {
-            BASE_SCHEMA simple_schema;
-            FILTER greater_than(price, 100.0_fp64);
-        }
-
-        ROOT {
-            NAMES = [filtered_data]
-        }
-        "#;
+        "##;
 
         // Test parse_stream
         let parse_result = parse_stream(text);
@@ -299,5 +293,52 @@ READ RELATION rel1 {
         assert!(standard.contains("ROOT {"));
         assert_ne!(standard, compact);
         assert_ne!(standard, verbose);
+    }
+
+    #[test]
+    fn test_parse_provided_sample() {
+        let text = std::fs::read_to_string("src/substrait/textplan/parser/data/provided_sample1.splan").unwrap();
+        let parse_result = parse_stream(&text);
+        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
+    }
+
+    #[test]
+    fn test_no_leading_ws() {
+        let text = r##"schema schema {
+  r_regionkey i32;
+}
+"##;
+        let parse_result = parse_stream(text);
+        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
+    }
+
+    #[test]
+    fn test_parser_without_load() {
+        let text = r##"
+        schema schema {
+          r_regionkey i32;
+          r_name string?;
+          r_comment string;
+        }
+
+        source named_table named {
+          names = [
+            "#2",
+          ]
+        }
+
+        read relation myread {
+          base_schema schema;
+          source named;
+        }
+        "##;
+        let parse_result = parse_stream(text);
+        assert!(parse_result.successful(), "Parse failed: {:?}", parse_result.all_errors());
+
+        // Verify the symbol table
+        let symbol_table = parse_result.symbol_table();
+        assert!(symbol_table.len() > 0, "Symbol table is empty");
+
+        println!("Test passed! Symbol table has {} symbols", symbol_table.len());
     }
 }

@@ -113,7 +113,8 @@ use std::any::{Any,TypeId};
 		pub const NUMBER:isize=72; 
 		pub const STRING:isize=73; 
 		pub const SINGLE_LINE_COMMENT:isize=74; 
-		pub const URI:isize=75;
+		pub const URI:isize=75; 
+		pub const EXTENSIONS_SPACES:isize=76;
 	pub const RULE_plan:usize = 0; 
 	pub const RULE_plan_detail:usize = 1; 
 	pub const RULE_pipelines:usize = 2; 
@@ -174,7 +175,7 @@ use std::any::{Any,TypeId};
 		Some("'='"), Some("'['"), Some("']'"), Some("'_'"), Some("'-'"), Some("'<'"), 
 		Some("'>'"), Some("'?'"), Some("'@'")
 	];
-	pub const _SYMBOLIC_NAMES: [Option<&'static str>;76]  = [
+	pub const _SYMBOLIC_NAMES: [Option<&'static str>;77]  = [
 		None, Some("SPACES"), Some("EXTENSION_SPACE"), Some("FUNCTION"), Some("AS"), 
 		Some("NAMED"), Some("SCHEMA"), Some("RELATION"), Some("PIPELINES"), Some("COMMON"), 
 		Some("BASE_SCHEMA"), Some("FILTER"), Some("PROJECTION"), Some("EXPRESSION"), 
@@ -191,7 +192,8 @@ use std::any::{Any,TypeId};
 		Some("RIGHTPAREN"), Some("COMMA"), Some("PERIOD"), Some("EQUAL"), Some("LEFTBRACKET"), 
 		Some("RIGHTBRACKET"), Some("UNDERSCORE"), Some("MINUS"), Some("LEFTANGLEBRACKET"), 
 		Some("RIGHTANGLEBRACKET"), Some("QUESTIONMARK"), Some("ATSIGN"), Some("IDENTIFIER"), 
-		Some("NUMBER"), Some("STRING"), Some("SINGLE_LINE_COMMENT"), Some("URI")
+		Some("NUMBER"), Some("STRING"), Some("SINGLE_LINE_COMMENT"), Some("URI"), 
+		Some("EXTENSIONS_SPACES")
 	];
 	lazy_static!{
 	    static ref _shared_context_cache: Arc<PredictionContextCache> = Arc::new(PredictionContextCache::new());
@@ -8854,7 +8856,7 @@ lazy_static! {
 
 const _serializedATN:&'static str =
 	"\x03\u{608b}\u{a72a}\u{8133}\u{b9ed}\u{417c}\u{3be7}\u{7786}\u{5964}\x03\
-	\x4d\u{27b}\x04\x02\x09\x02\x04\x03\x09\x03\x04\x04\x09\x04\x04\x05\x09\
+	\x4e\u{27b}\x04\x02\x09\x02\x04\x03\x09\x03\x04\x04\x09\x04\x04\x05\x09\
 	\x05\x04\x06\x09\x06\x04\x07\x09\x07\x04\x08\x09\x08\x04\x09\x09\x09\x04\
 	\x0a\x09\x0a\x04\x0b\x09\x0b\x04\x0c\x09\x0c\x04\x0d\x09\x0d\x04\x0e\x09\
 	\x0e\x04\x0f\x09\x0f\x04\x10\x09\x10\x04\x11\x09\x11\x04\x12\x09\x12\x04\
