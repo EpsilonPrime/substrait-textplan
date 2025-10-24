@@ -131,6 +131,8 @@ pub struct SymbolInfo {
     pub blob: Option<Arc<Mutex<dyn Any + Send + Sync>>>,
     /// The schema associated with this symbol, if any.
     schema: std::sync::RwLock<Option<Arc<SymbolInfo>>>,
+    /// The source associated with this symbol, if any.
+    source: std::sync::RwLock<Option<Arc<SymbolInfo>>>,
 }
 
 impl SymbolInfo {
@@ -153,6 +155,7 @@ impl SymbolInfo {
             subtype: std::sync::RwLock::new(subtype),
             blob,
             schema: std::sync::RwLock::new(None),
+            source: std::sync::RwLock::new(None),
         }
     }
 
@@ -209,6 +212,18 @@ impl SymbolInfo {
     pub fn set_schema(&self, schema: Arc<SymbolInfo>) {
         if let Ok(mut s) = self.schema.write() {
             *s = Some(schema);
+        }
+    }
+
+    /// Gets the source associated with this symbol.
+    pub fn source(&self) -> Option<Arc<SymbolInfo>> {
+        self.source.read().unwrap().clone()
+    }
+
+    /// Sets the source associated with this symbol.
+    pub fn set_source(&self, source: Arc<SymbolInfo>) {
+        if let Ok(mut s) = self.source.write() {
+            *s = Some(source);
         }
     }
 

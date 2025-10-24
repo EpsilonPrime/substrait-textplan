@@ -562,6 +562,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for TypeVisitor<'input> {
 pub struct MainPlanVisitor<'input> {
     type_visitor: TypeVisitor<'input>,
     current_relation_scope: Option<Arc<SymbolInfo>>, // Use actual SymbolInfo
+    current_source_scope: Option<Arc<SymbolInfo>>, // Track current source being processed
     num_spaces_seen: i32,
     num_functions_seen: i32,
 }
@@ -572,6 +573,7 @@ impl<'input> MainPlanVisitor<'input> {
         Self {
             type_visitor: TypeVisitor::new(symbol_table, error_listener.clone()),
             current_relation_scope: None,
+            current_source_scope: None,
             num_spaces_seen: 0,
             num_functions_seen: 0,
         }
@@ -585,6 +587,16 @@ impl<'input> MainPlanVisitor<'input> {
     /// Sets the current relation scope.
     pub fn set_current_relation_scope(&mut self, scope: Option<Arc<SymbolInfo>>) {
         self.current_relation_scope = scope;
+    }
+
+    /// Gets the current source scope, if any.
+    pub fn current_source_scope(&self) -> Option<&Arc<SymbolInfo>> {
+        self.current_source_scope.as_ref()
+    }
+
+    /// Sets the current source scope.
+    pub fn set_current_source_scope(&mut self, scope: Option<Arc<SymbolInfo>>) {
+        self.current_source_scope = scope;
     }
 
     /// Gets the error listener for this visitor.
@@ -705,6 +717,7 @@ impl<'input> MainPlanVisitor<'input> {
     fn process_named_table_detail(
         &mut self,
         ctx: &Named_table_detailContext<'input>,
+        parent_source: &Arc<SymbolInfo>,
     ) -> Option<()> {
         // Get all STRING tokens from the context
         let strings = ctx.STRING_all();
@@ -720,13 +733,16 @@ impl<'input> MainPlanVisitor<'input> {
             let location = token_to_location(&string_token.symbol);
 
             // Define the source detail in the symbol table
-            self.type_visitor.base.symbol_table_mut().define_symbol(
+            let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
                 name,
                 location,
                 SymbolType::SourceDetail,
                 None,
                 None,
             );
+
+            // Set the source as the parent (similar to SchemaColumn→Schema)
+            symbol.set_source(parent_source.clone());
         }
 
         Some(())
@@ -1129,10 +1145,17 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
         println!("Visiting source definition: {}", ctx.get_text());
 
         // Process the source and add it to the symbol table
-        self.process_source_definition(ctx);
+        let source_symbol = self.process_source_definition(ctx);
+
+        // Set current source scope before visiting children
+        let old_scope = self.current_source_scope.clone();
+        self.set_current_source_scope(source_symbol);
 
         // Visit children to process source details
         self.visit_children(ctx);
+
+        // Restore previous scope
+        self.set_current_source_scope(old_scope);
     }
 
     fn visit_named_table_detail(&mut self, ctx: &Named_table_detailContext<'input>) {
@@ -1140,7 +1163,10 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
         println!("Visiting named table detail: {}", ctx.get_text());
 
         // Process the strings and add them to the symbol table
-        self.process_named_table_detail(ctx);
+        // Clone the source symbol to avoid borrow issues
+        if let Some(source_symbol) = self.current_source_scope().cloned() {
+            self.process_named_table_detail(ctx, &source_symbol);
+        }
 
         // Visit children to process any nested details
         self.visit_children(ctx);

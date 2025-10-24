@@ -177,28 +177,90 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
 
 /// Populates a ReadRel protobuf from symbol table references.
 fn populate_read_rel(
-    _symbol_table: &SymbolTable,
+    symbol_table: &SymbolTable,
     source_symbol: &Option<Arc<SymbolInfo>>,
     schema_symbol: &Option<Arc<SymbolInfo>>,
     read_rel: &mut ::substrait::proto::ReadRel,
 ) -> Result<(), TextPlanError> {
     // Populate base_schema from schema symbol
     if let Some(schema_sym) = schema_symbol {
-        // TODO: Build NamedStruct from schema symbol's field definitions
-        println!("  TODO: Populate base_schema from schema '{}'", schema_sym.name());
+        // Find all SchemaColumn symbols that belong to this schema
+        let mut field_names = Vec::new();
+        let mut field_types = Vec::new();
+
+        for symbol in symbol_table.symbols() {
+            if symbol.symbol_type() == SymbolType::SchemaColumn {
+                // Check if this column belongs to our schema
+                if let Some(column_schema) = symbol.schema() {
+                    if Arc::ptr_eq(&column_schema, schema_sym) {
+                        // Add field name
+                        field_names.push(symbol.name().to_string());
+
+                        // Add field type (TODO: parse actual type from symbol)
+                        // For now, hard-code i64 type with REQUIRED nullability
+                        field_types.push(::substrait::proto::Type {
+                            kind: Some(::substrait::proto::r#type::Kind::I64(
+                                ::substrait::proto::r#type::I64 {
+                                    type_variation_reference: 0,
+                                    nullability: ::substrait::proto::r#type::Nullability::Required as i32,
+                                }
+                            )),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Build NamedStruct
+        if !field_names.is_empty() {
+            read_rel.base_schema = Some(::substrait::proto::NamedStruct {
+                names: field_names.clone(),
+                r#struct: Some(::substrait::proto::r#type::Struct {
+                    types: field_types,
+                    type_variation_reference: 0,
+                    nullability: ::substrait::proto::r#type::Nullability::Required as i32,
+                }),
+            });
+            println!("  Populated base_schema from schema '{}' with {} fields: {:?}",
+                     schema_sym.name(), field_names.len(), field_names);
+        }
     }
 
     // Populate namedTable from source symbol
     if let Some(source_sym) = source_symbol {
-        // TODO: Extract table names from source symbol
-        // For now, use the source symbol name as a placeholder
+        // Find SourceDetail symbols that belong to this source
+        let mut table_names = Vec::new();
+        for symbol in symbol_table.symbols() {
+            if symbol.symbol_type() == SymbolType::SourceDetail {
+                // Check if this detail belongs to our source
+                if let Some(detail_source) = symbol.source() {
+                    if Arc::ptr_eq(&detail_source, source_sym) {
+                        let name = symbol.name();
+                        // Filter out punctuation, keywords, and syntax tokens
+                        // Only keep actual table names (uppercase identifiers)
+                        if !name.is_empty()
+                            && name != "names"  // Filter out the 'names' keyword
+                            && name.chars().next().map_or(false, |c| c.is_alphabetic())
+                        {
+                            table_names.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // If we found table names, use them; otherwise fall back to source symbol name
+        if table_names.is_empty() {
+            table_names.push(source_sym.name().to_string());
+        }
+
         read_rel.read_type = Some(::substrait::proto::read_rel::ReadType::NamedTable(
             ::substrait::proto::read_rel::NamedTable {
-                names: vec![source_sym.name().to_string()],
+                names: table_names.clone(),
                 advanced_extension: None,
             }
         ));
-        println!("  Populated namedTable with source '{}'", source_sym.name());
+        println!("  Populated namedTable with {} tables: {:?}", table_names.len(), table_names);
     }
 
     // Set common to direct emission (no projection)
