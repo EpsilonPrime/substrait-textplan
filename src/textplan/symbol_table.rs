@@ -77,6 +77,7 @@ pub enum RelationType {
     Sort,
     Filter,
     Set,
+    Root,
 
     // Physical relations
     HashJoin,
@@ -125,7 +126,7 @@ pub struct SymbolInfo {
     /// The type of the symbol.
     symbol_type: SymbolType,
     /// Additional type information for the symbol.
-    subtype: Option<Box<dyn Any + Send + Sync>>,
+    subtype: std::sync::RwLock<Option<Box<dyn Any + Send + Sync>>>,
     /// Additional data for the symbol.
     pub blob: Option<Arc<Mutex<dyn Any + Send + Sync>>>,
     /// The schema associated with this symbol, if any.
@@ -149,7 +150,7 @@ impl SymbolInfo {
             parent_query_location: Box::new(TextLocation::UNKNOWN_LOCATION),
             parent_query_index: -1,
             symbol_type,
-            subtype,
+            subtype: std::sync::RwLock::new(subtype),
             blob,
             schema: std::sync::RwLock::new(None),
         }
@@ -227,8 +228,10 @@ impl SymbolInfo {
     }
 
     /// Sets the subtype of the symbol.
-    pub fn set_subtype(&mut self, subtype: Box<dyn Any + Send + Sync>) {
-        self.subtype = Some(subtype);
+    pub fn set_subtype(&self, subtype: Box<dyn Any + Send + Sync>) {
+        if let Ok(mut s) = self.subtype.write() {
+            *s = Some(subtype);
+        }
     }
 
     /// Sets the blob of the symbol.
@@ -241,9 +244,13 @@ impl SymbolInfo {
         self.schema.read().ok().and_then(|s| s.clone())
     }
 
-    /// Returns the subtype of the symbol, if any.
-    pub fn subtype<T: 'static>(&self) -> Option<&T> {
-        self.subtype.as_ref().and_then(|s| s.downcast_ref::<T>())
+    /// Returns a copy of the subtype of the symbol, if any.
+    /// This method requires T to be Copy since we're accessing through RwLock.
+    pub fn subtype<T: 'static + Copy>(&self) -> Option<T> {
+        self.subtype.read().ok().and_then(|s| {
+            s.as_ref()
+                .and_then(|boxed| boxed.downcast_ref::<T>().copied())
+        })
     }
 
     /// Provides access to the blob of the symbol through the mutex, if any.

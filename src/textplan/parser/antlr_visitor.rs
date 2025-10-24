@@ -9,9 +9,12 @@
 use std::sync::Arc;
 
 use antlr_rust::parser_rule_context::ParserRuleContext;
+use antlr_rust::rule_context::RuleContext;
+use antlr_rust::TidExt;
 use antlr_rust::token::{GenericToken, Token};
 use antlr_rust::tree::{ParseTree, ParseTreeVisitor};
 
+use crate::textplan::common::structured_symbol_data::RelationData;
 use crate::textplan::common::text_location::TextLocation;
 use crate::textplan::parser::antlr::substraitplanparser::RelationContextAttrs;
 use crate::textplan::parser::antlr::substraitplanparser::*;
@@ -23,7 +26,9 @@ use ::substrait::proto::r#type::{
     Kind, List, Map, Nullability, String as StringType, Struct, Time, Timestamp, TimestampTz, Uuid,
     VarChar, I16, I32, I64, I8,
 };
-use ::substrait::proto::Type;
+use ::substrait::proto::{rel::RelType, Rel, Type};
+use std::any::Any;
+use std::sync::Mutex;
 
 /// Helper function to convert ANTLR token to TextLocation
 pub fn token_to_location<'a>(
@@ -738,14 +743,167 @@ impl<'input> MainPlanVisitor<'input> {
         let token = ctx.start();
         let location = token_to_location(&token);
 
-        // Define the relation in the symbol table
-        // Symbol table accessed directly via base
+        // Determine the relation type and create corresponding Rel protobuf
+        let (relation_type, rel_protobuf) = if let Some(relation_type_ctx) = ctx.relation_type() {
+            let type_text = relation_type_ctx.get_text().to_lowercase();
+            match type_text.as_str() {
+                "read" => (
+                    RelationType::Read,
+                    Rel {
+                        rel_type: Some(RelType::Read(Box::new(
+                            ::substrait::proto::ReadRel::default(),
+                        ))),
+                    },
+                ),
+                "project" => (
+                    RelationType::Project,
+                    Rel {
+                        rel_type: Some(RelType::Project(Box::new(
+                            ::substrait::proto::ProjectRel::default(),
+                        ))),
+                    },
+                ),
+                "join" => (
+                    RelationType::Join,
+                    Rel {
+                        rel_type: Some(RelType::Join(Box::new(
+                            ::substrait::proto::JoinRel::default(),
+                        ))),
+                    },
+                ),
+                "cross" => (
+                    RelationType::Cross,
+                    Rel {
+                        rel_type: Some(RelType::Cross(Box::new(
+                            ::substrait::proto::CrossRel::default(),
+                        ))),
+                    },
+                ),
+                "fetch" => (
+                    RelationType::Fetch,
+                    Rel {
+                        rel_type: Some(RelType::Fetch(Box::new(
+                            ::substrait::proto::FetchRel::default(),
+                        ))),
+                    },
+                ),
+                "aggregate" => (
+                    RelationType::Aggregate,
+                    Rel {
+                        rel_type: Some(RelType::Aggregate(Box::new(
+                            ::substrait::proto::AggregateRel::default(),
+                        ))),
+                    },
+                ),
+                "sort" => (
+                    RelationType::Sort,
+                    Rel {
+                        rel_type: Some(RelType::Sort(Box::new(
+                            ::substrait::proto::SortRel::default(),
+                        ))),
+                    },
+                ),
+                "filter" => (
+                    RelationType::Filter,
+                    Rel {
+                        rel_type: Some(RelType::Filter(Box::new(
+                            ::substrait::proto::FilterRel::default(),
+                        ))),
+                    },
+                ),
+                "set" => (
+                    RelationType::Set,
+                    Rel {
+                        rel_type: Some(RelType::Set(::substrait::proto::SetRel::default())),
+                    },
+                ),
+                "hash_join" => (
+                    RelationType::HashJoin,
+                    Rel {
+                        rel_type: Some(RelType::HashJoin(Box::new(
+                            ::substrait::proto::HashJoinRel::default(),
+                        ))),
+                    },
+                ),
+                "merge_join" => (
+                    RelationType::MergeJoin,
+                    Rel {
+                        rel_type: Some(RelType::MergeJoin(Box::new(
+                            ::substrait::proto::MergeJoinRel::default(),
+                        ))),
+                    },
+                ),
+                "exchange" => (
+                    RelationType::Exchange,
+                    Rel {
+                        rel_type: Some(RelType::Exchange(Box::new(
+                            ::substrait::proto::ExchangeRel::default(),
+                        ))),
+                    },
+                ),
+                "ddl" => (
+                    RelationType::Ddl,
+                    Rel {
+                        rel_type: Some(RelType::Ddl(Box::new(
+                            ::substrait::proto::DdlRel::default(),
+                        ))),
+                    },
+                ),
+                "write" => (
+                    RelationType::Write,
+                    Rel {
+                        rel_type: Some(RelType::Write(Box::new(
+                            ::substrait::proto::WriteRel::default(),
+                        ))),
+                    },
+                ),
+                "extension_leaf" => (
+                    RelationType::ExtensionLeaf,
+                    Rel {
+                        rel_type: Some(RelType::ExtensionLeaf(
+                            ::substrait::proto::ExtensionLeafRel::default(),
+                        )),
+                    },
+                ),
+                "extension_single" => (
+                    RelationType::ExtensionSingle,
+                    Rel {
+                        rel_type: Some(RelType::ExtensionSingle(Box::new(
+                            ::substrait::proto::ExtensionSingleRel::default(),
+                        ))),
+                    },
+                ),
+                "extension_multi" => (
+                    RelationType::ExtensionMulti,
+                    Rel {
+                        rel_type: Some(RelType::ExtensionMulti(
+                            ::substrait::proto::ExtensionMultiRel::default(),
+                        )),
+                    },
+                ),
+                _ => (RelationType::Unknown, Rel::default()),
+            }
+        } else {
+            (RelationType::Unknown, Rel::default())
+        };
+
+        // Create RelationData with the Rel protobuf
+        let relation_data = RelationData::new(rel_protobuf);
+        let blob = Some(Arc::new(Mutex::new(relation_data)) as Arc<Mutex<dyn Any + Send + Sync>>);
+
+        // Define the relation in the symbol table with the blob
         let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
             name,
             location,
             SymbolType::Relation,
-            None,
-            None,
+            Some(Box::new(relation_type)),
+            blob,
+        );
+
+        eprintln!(
+            "Created relation symbol '{}' with type {:?} and blob",
+            symbol.name(),
+            relation_type
         );
 
         // Set this as the current relation scope
@@ -760,19 +918,25 @@ impl<'input> MainPlanVisitor<'input> {
         ctx: &Root_relationContext<'input>,
     ) -> Option<Arc<SymbolInfo>> {
         // Create a location from the context's start token
-        // Get the start token directly - it's not an Option
         let token = ctx.start();
         let location = token_to_location(&token);
 
-        // Define the root relation in the symbol table
-        // Symbol table accessed directly via base
+        // Root is a Relation symbol with RelationType::Root subtype (matching C++: kRelation + kRoot)
+        // It indicates that the pipeline output should be wrapped in a RelRoot at the plan level
+        // We need RelationData with an empty Rel for pipeline connectivity
+        let relation_data = RelationData::new_empty();
+        let blob = Some(Arc::new(Mutex::new(relation_data)) as Arc<Mutex<dyn Any + Send + Sync>>);
+
+        // Define the root symbol as a Relation with Root subtype (matching C++)
         let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
             "root".to_string(),
             location,
-            SymbolType::Root,
-            None,
-            None,
+            SymbolType::Relation,
+            Some(Box::new(RelationType::Root)),
+            blob,
         );
+
+        eprintln!("Created root relation symbol 'root' with RelationType::Root and blob");
 
         // Set this as the current relation scope
         self.set_current_relation_scope(Some(symbol.clone()));
@@ -782,25 +946,9 @@ impl<'input> MainPlanVisitor<'input> {
 
     /// Process a pipeline and add it to the symbol table.
     fn process_pipeline(&mut self, ctx: &PipelineContext<'input>) -> Option<Arc<SymbolInfo>> {
-        // Access the context as a trait object to use pipeline-specific methods
-        let name = ctx.relation_ref()?.id(0)?.get_text();
-
-        // Create a location from the context's start token
-        // Get the start token directly - it's not an Option
-        let token = ctx.start();
-        let location = token_to_location(&token);
-
-        // Define the pipeline in the symbol table
-        // Symbol table accessed directly via base
-        let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
-            name,
-            location,
-            SymbolType::PlanRelation,
-            None,
-            None,
-        );
-
-        Some(symbol)
+        // Pipeline symbols are created by PipelineVisitor via update_relation_symbol
+        // This method is kept for potential future use but does not create symbols
+        None
     }
 
     /// Process a schema definition and add it to the symbol table.
@@ -1016,25 +1164,29 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
 /// This visitor is the third phase in the multiphase parsing approach,
 /// focusing on pipeline structures.
 pub struct PipelineVisitor<'input> {
-    plan_visitor: MainPlanVisitor<'input>,
+    symbol_table: SymbolTable,
+    error_listener: Arc<ErrorListener>,
+    _phantom: std::marker::PhantomData<&'input ()>,
 }
 
 impl<'input> PipelineVisitor<'input> {
     /// Creates a new PipelineVisitor.
     pub fn new(symbol_table: SymbolTable, error_listener: Arc<ErrorListener>) -> Self {
         Self {
-            plan_visitor: MainPlanVisitor::new(symbol_table, error_listener),
+            symbol_table,
+            error_listener,
+            _phantom: std::marker::PhantomData,
         }
     }
 
-    /// Gets the MainPlanVisitor that this visitor uses.
-    pub fn plan_visitor(&self) -> &MainPlanVisitor<'input> {
-        &self.plan_visitor
+    /// Gets the symbol table.
+    pub fn symbol_table(&self) -> SymbolTable {
+        self.symbol_table.clone()
     }
 
-    /// Gets a mutable reference to the MainPlanVisitor that this visitor uses.
-    pub fn plan_visitor_mut(&mut self) -> &mut MainPlanVisitor<'input> {
-        &mut self.plan_visitor
+    /// Gets the error listener.
+    pub fn error_listener(&self) -> Arc<ErrorListener> {
+        self.error_listener.clone()
     }
 
     /// Adds an error message to the error listener.
@@ -1043,17 +1195,56 @@ impl<'input> PipelineVisitor<'input> {
         token: &impl std::ops::Deref<Target = GenericToken<std::borrow::Cow<'a, str>>>,
         message: &str,
     ) {
-        self.plan_visitor.add_error(token, message);
+        let location = token_to_location(token);
+        self.error_listener.add_error(message.to_string(), location);
+    }
+
+    /// Updates or creates a relation symbol for the given pipeline node.
+    /// Matches C++ SubstraitPlanPipelineVisitor::updateRelationSymbol.
+    ///
+    /// If the symbol doesn't exist, creates a stub Relation symbol with
+    /// RelationType::Unknown and empty RelationData to handle incomplete plans.
+    fn update_relation_symbol(
+        &mut self,
+        ctx: &PipelineContext<'input>,
+        relation_name: &str,
+    ) -> Arc<SymbolInfo> {
+        // Check if symbol already exists
+        if let Some(symbol) = self.symbol_table.lookup_symbol_by_name(relation_name) {
+            // Symbol exists, return it
+            // Note: We don't call add_permanent_location here because it requires
+            // exclusive access to the Arc, which we can't get if the symbol is
+            // already referenced. The location was already set when the symbol
+            // was first created.
+            return symbol;
+        }
+
+        // Symbol doesn't exist - create a stub Relation with Unknown type
+        println!(
+            "  Creating stub Relation symbol '{}' (missing definition)",
+            relation_name
+        );
+        let location = token_to_location(&ctx.start());
+        let relation_data = RelationData::new_empty();
+        let blob = Some(Arc::new(Mutex::new(relation_data)) as Arc<Mutex<dyn Any + Send + Sync>>);
+
+        self.symbol_table.define_symbol(
+            relation_name.to_string(),
+            location,
+            SymbolType::Relation,
+            Some(Box::new(RelationType::Unknown)),
+            blob,
+        )
     }
 }
 
 impl<'input> PlanVisitor<'input> for PipelineVisitor<'input> {
     fn error_listener(&self) -> Arc<ErrorListener> {
-        self.plan_visitor.error_listener()
+        self.error_listener.clone()
     }
 
     fn symbol_table(&self) -> SymbolTable {
-        self.plan_visitor.symbol_table()
+        self.symbol_table.clone()
     }
 }
 
@@ -1064,56 +1255,245 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
     // Override specific visitor methods for pipeline processing
 
     fn visit_plan(&mut self, ctx: &PlanContext<'input>) {
-        // For the plan node, delegate to the plan visitor
-        self.plan_visitor.visit_plan(ctx);
+        // Handle the plan node ourselves, not delegating to plan_visitor
+        // This ensures our visit_pipeline override gets called
+        println!("PipelineVisitor visiting plan node");
+        self.visit_children(ctx);
+        println!("PipelineVisitor finished visiting plan");
     }
 
     fn visit_pipelines(&mut self, ctx: &PipelinesContext<'input>) {
         // Process the pipelines section
         println!("PipelineVisitor processing pipelines: {}", ctx.get_text());
 
-        // Visit children to process individual pipelines
-        self.visit_children(ctx);
+        // Only visit the direct pipeline children (top-level of each chain)
+        // pipeline_all() returns ALL pipeline contexts including nested ones,
+        // but we only want the direct children since visit_pipeline handles recursion
+        let all_pipelines = ctx.pipeline_all();
+        println!("  Found {} total pipeline contexts", all_pipelines.len());
+
+        // Filter to only those whose parent is this pipelines context
+        for pipeline in all_pipelines {
+            if let Some(parent) = pipeline.get_parent_ctx() {
+                // Check if the parent is a pipelines context (not another pipeline)
+                if parent.get_rule_index() == RULE_pipelines {
+                    println!("  Visiting top-level pipeline: {}", pipeline.get_text());
+                    self.visit_pipeline(&pipeline);
+                } else {
+                    println!("  Skipping nested pipeline: {}", pipeline.get_text());
+                }
+            }
+        }
     }
 
     fn visit_pipeline(&mut self, ctx: &PipelineContext<'input>) {
-        // Process an individual pipeline
+        // Following C++ SubstraitPlanPipelineVisitor::visitPipeline
         println!("PipelineVisitor processing pipeline: {}", ctx.get_text());
 
-        // In the real implementation, create a symbol for the pipeline
-        // and add relationships to its contained relations
+        // Get the relation name from this pipeline
+        let relation_name = if let Some(relation_ref) = ctx.relation_ref() {
+            println!("  Found relation_ref");
+            if let Some(id) = relation_ref.id(0) {
+                let name = id.get_text();
+                println!("  Relation name: {}", name);
+                name
+            } else {
+                println!("  No id(0) in relation_ref, returning early");
+                return;
+            }
+        } else {
+            println!("  No relation_ref, returning early");
+            return;
+        };
 
-        // Visit children to process pipeline details
+        // Ensure the symbol exists (create stub if missing)
+        let symbol = self.update_relation_symbol(ctx, &relation_name);
+        println!("  Using symbol '{}'", relation_name);
+
+        // Process nested pipeline first (left-to-right processing)
+        if let Some(nested_pipeline) = ctx.pipeline() {
+            println!("  Processing nested pipeline for '{}'", relation_name);
+            self.visit_pipeline(&nested_pipeline);
+            println!("  Finished nested pipeline for '{}'", relation_name);
+        }
+
+        // Get the RelationData for this symbol
+        let blob_lock = if let Some(blob) = &symbol.blob {
+            blob
+        } else {
+            eprintln!("Warning: Symbol '{}' has no blob", relation_name);
+            return;
+        };
+
+        let mut blob_data = match blob_lock.lock() {
+            Ok(data) => data,
+            Err(_) => {
+                eprintln!("Warning: Failed to lock blob for '{}'", relation_name);
+                return;
+            }
+        };
+
+        let relation_data = if let Some(data) = blob_data.downcast_mut::<RelationData>() {
+            data
+        } else {
+            eprintln!("Warning: Blob is not RelationData for '{}'", relation_name);
+            return;
+        };
+
+        // Check for accidental cross-pipeline use
+        if relation_data.continuing_pipeline.is_some() {
+            eprintln!(
+                "Error: Relation {} is already a non-terminating participant in a pipeline",
+                relation_name
+            );
+            return;
+        }
+
+        // Get left symbol (nested pipeline)
+        let left_symbol = if let Some(nested_pipeline) = ctx.pipeline() {
+            if let Some(nested_ref) = nested_pipeline.relation_ref() {
+                if let Some(nested_id) = nested_ref.id(0) {
+                    let nested_name = nested_id.get_text();
+                    self.symbol_table.lookup_symbol_by_name(&nested_name)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Get right symbol (parent pipeline)
+        // In ANTLR, the parent context might be another pipeline or a root relation
+        // Following C++ logic: if parent is a Pipeline context, look up symbol there
+        let right_symbol: Option<Arc<SymbolInfo>> = {
+            // Check if parent context exists and is a Pipeline
+            if let Some(parent_ctx) = ctx.get_parent_ctx() {
+                // Check if parent is a pipeline by checking rule index
+                if parent_ctx.get_rule_index() == RULE_pipeline {
+                    // Try to downcast parent to PipelineContext
+                    if let Some(parent_pipeline) = parent_ctx
+                        .downcast_ref::<PipelineContext>()
+                    {
+                        // Parent is a pipeline, get the relation name from it
+                        if let Some(parent_ref) = parent_pipeline.relation_ref() {
+                            if let Some(parent_id) = parent_ref.id(0) {
+                                let parent_name = parent_id.get_text();
+                                self.symbol_table.lookup_symbol_by_name(&parent_name)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        // Determine rightmost symbol (pipeline start)
+        // Since we process left-to-right, the left (child) has already been processed
+        // and has its pipeline_start set. We should use that.
+        // If there's no left symbol, we are the rightmost (start of pipeline).
+        let rightmost_symbol = if let Some(ref left) = left_symbol {
+            if let Some(left_blob) = &left.blob {
+                if let Ok(left_data) = left_blob.lock() {
+                    if let Some(left_rel_data) = left_data.downcast_ref::<RelationData>() {
+                        // Left is a Relation, use its pipeline_start (or left itself if it's the start)
+                        left_rel_data
+                            .pipeline_start
+                            .clone()
+                            .or(Some(left.clone()))
+                    } else {
+                        // Left has blob but not RelationData, we are the start
+                        Some(symbol.clone())
+                    }
+                } else {
+                    // Failed to lock, we are the start
+                    Some(symbol.clone())
+                }
+            } else {
+                // Left has no blob, we are the start
+                Some(symbol.clone())
+            }
+        } else {
+            // No left symbol, we are the rightmost (start of pipeline)
+            Some(symbol.clone())
+        };
+
+        // Set pipeline start
+        if let Some(rightmost) = rightmost_symbol {
+            relation_data.pipeline_start = Some(rightmost);
+        }
+
+        // Connect to the left symbol
+        if let Some(left) = left_symbol {
+            if right_symbol.is_none() {
+                // No right symbol means we're starting a new branch
+                println!(
+                    "  Pipeline: {} starts new branch with left: {}",
+                    relation_name,
+                    left.name()
+                );
+                relation_data.new_pipelines.push(left);
+            } else {
+                // Right symbol exists, so we're continuing a pipeline
+                println!(
+                    "  Pipeline: {} continues with left: {}, right: {}",
+                    relation_name,
+                    left.name(),
+                    right_symbol.as_ref().unwrap().name()
+                );
+                relation_data.continuing_pipeline = Some(left);
+            }
+        } else {
+            println!("  Pipeline: {} has no left symbol", relation_name);
+        }
+
+        // Drop the lock before calling visit_children to avoid deadlock
+        drop(blob_data);
+
+        println!("  Finished setting up connections for '{}'", relation_name);
+
+        // DON'T visit children - we already processed nested pipeline above
+        // Calling visit_children here would cause infinite recursion
+        // self.visit_children(ctx);
+
+        println!("  Completed visit_pipeline for '{}'", relation_name);
+    }
+
+    // For plan_detail, continue traversing to find pipelines
+    fn visit_plan_detail(&mut self, ctx: &Plan_detailContext<'input>) {
+        // Continue traversing to find pipelines
         self.visit_children(ctx);
     }
 
-    // For other node types, delegate to the plan visitor
-    fn visit_plan_detail(&mut self, ctx: &Plan_detailContext<'input>) {
-        self.plan_visitor.visit_plan_detail(ctx);
+    fn visit_relation(&mut self, ctx: &RelationContext<'input>) {
+        // Skip - already processed
     }
 
     fn visit_extensionspace(&mut self, ctx: &ExtensionspaceContext<'input>) {
-        self.plan_visitor.visit_extensionspace(ctx);
+        // Skip - already processed
     }
 
     fn visit_function(&mut self, ctx: &FunctionContext<'input>) {
-        self.plan_visitor.visit_function(ctx);
+        // Skip - already processed
     }
 
     fn visit_source_definition(&mut self, ctx: &Source_definitionContext<'input>) {
-        self.plan_visitor.visit_source_definition(ctx);
+        // Skip - already processed
     }
 
     fn visit_named_table_detail(&mut self, ctx: &Named_table_detailContext<'input>) {
-        self.plan_visitor.visit_named_table_detail(ctx);
-    }
-
-    fn visit_literal_basic_type(&mut self, ctx: &Literal_basic_typeContext<'input>) {
-        self.plan_visitor.visit_literal_basic_type(ctx);
-    }
-
-    fn visit_literal_complex_type(&mut self, ctx: &Literal_complex_typeContext<'input>) {
-        self.plan_visitor.visit_literal_complex_type(ctx);
+        // Skip - already processed
     }
 
     // We use the default implementation for other visitor methods,
@@ -1125,25 +1505,36 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
 /// This visitor is the fourth phase in the multiphase parsing approach,
 /// handling relation structures and their expressions.
 pub struct RelationVisitor<'input> {
-    plan_visitor: MainPlanVisitor<'input>,
+    symbol_table: SymbolTable,
+    error_listener: Arc<ErrorListener>,
+    current_relation_scope: Option<Arc<SymbolInfo>>,
+    _phantom: std::marker::PhantomData<&'input ()>,
 }
 
 impl<'input> RelationVisitor<'input> {
     /// Creates a new RelationVisitor.
     pub fn new(symbol_table: SymbolTable, error_listener: Arc<ErrorListener>) -> Self {
         Self {
-            plan_visitor: MainPlanVisitor::new(symbol_table, error_listener),
+            symbol_table,
+            error_listener,
+            current_relation_scope: None,
+            _phantom: std::marker::PhantomData,
         }
     }
 
-    /// Gets the MainPlanVisitor that this visitor uses.
-    pub fn plan_visitor(&self) -> &MainPlanVisitor<'input> {
-        &self.plan_visitor
+    /// Gets the symbol table.
+    pub fn symbol_table(&self) -> SymbolTable {
+        self.symbol_table.clone()
     }
 
-    /// Gets a mutable reference to the MainPlanVisitor that this visitor uses.
-    pub fn plan_visitor_mut(&mut self) -> &mut MainPlanVisitor<'input> {
-        &mut self.plan_visitor
+    /// Gets a mutable reference to the symbol table.
+    fn symbol_table_mut(&mut self) -> &mut SymbolTable {
+        &mut self.symbol_table
+    }
+
+    /// Gets the error listener.
+    pub fn error_listener(&self) -> Arc<ErrorListener> {
+        self.error_listener.clone()
     }
 
     /// Adds an error message to the error listener.
@@ -1152,59 +1543,30 @@ impl<'input> RelationVisitor<'input> {
         token: &impl std::ops::Deref<Target = GenericToken<std::borrow::Cow<'a, str>>>,
         message: &str,
     ) {
-        self.plan_visitor.add_error(token, message);
+        let location = token_to_location(token);
+        self.error_listener.add_error(message.to_string(), location);
     }
 
     /// Gets the current relation scope, if any.
     pub fn current_relation_scope(&self) -> Option<&Arc<SymbolInfo>> {
-        self.plan_visitor.current_relation_scope()
+        self.current_relation_scope.as_ref()
     }
 
     /// Sets the current relation scope.
     pub fn set_current_relation_scope(&mut self, scope: Option<Arc<SymbolInfo>>) {
-        self.plan_visitor.set_current_relation_scope(scope);
+        self.current_relation_scope = scope;
     }
 
     /// Process a relation type and update the relation symbol.
+    /// Note: This function is now deprecated - the relation type and blob
+    /// are set in process_relation() when the symbol is created.
     fn process_relation_type(
         &mut self,
-        ctx: &Relation_typeContext<'input>,
-        relation_symbol: &Arc<SymbolInfo>,
+        _ctx: &Relation_typeContext<'input>,
+        _relation_symbol: &Arc<SymbolInfo>,
     ) {
-        // Get the type text
-        let type_text = ctx.get_text().to_lowercase();
-
-        // Map the text to a RelationType
-        let relation_type = match type_text.as_str() {
-            "read" => RelationType::Read,
-            "project" => RelationType::Project,
-            "join" => RelationType::Join,
-            "cross" => RelationType::Cross,
-            "fetch" => RelationType::Fetch,
-            "aggregate" => RelationType::Aggregate,
-            "sort" => RelationType::Sort,
-            "filter" => RelationType::Filter,
-            "set" => RelationType::Set,
-            "hash_join" => RelationType::HashJoin,
-            "merge_join" => RelationType::MergeJoin,
-            "exchange" => RelationType::Exchange,
-            "ddl" => RelationType::Ddl,
-            "write" => RelationType::Write,
-            "extension_leaf" => RelationType::ExtensionLeaf,
-            "extension_single" => RelationType::ExtensionSingle,
-            "extension_multi" => RelationType::ExtensionMulti,
-            _ => {
-                // If we don't recognize the type, log an error and use Unknown
-                // Get the start token directly - it's not an Option
-                let token = ctx.start();
-                self.add_error(&token, &format!("Unknown relation type: {}", type_text));
-                RelationType::Unknown
-            }
-        };
-
-        // Store the relation type in the symbol using interior mutability
-        // TODO: set_subtype needs to be updated to use interior mutability like set_schema
-        // relation_symbol.set_subtype(Box::new(relation_type));
+        // This function is no longer needed since we create the blob
+        // when defining the symbol in process_relation()
     }
 
     /// Process a filter relation and add it to the symbol table.
@@ -1213,24 +1575,17 @@ impl<'input> RelationVisitor<'input> {
         ctx: &RelationFilterContext<'input>,
     ) -> Option<Arc<SymbolInfo>> {
         // Create a location from the context's start token
-        // Get the start token directly - it's not an Option
         let token = ctx.start();
         let location = token_to_location(&token);
 
         // Define the filter relation in the symbol table
-        let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = self
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(
-                "filter".to_string(),
-                location,
-                SymbolType::Relation,
-                Some(Box::new(RelationType::Filter)),
-                None,
-            );
+        let symbol = self.symbol_table_mut().define_symbol(
+            "filter".to_string(),
+            location,
+            SymbolType::Relation,
+            Some(Box::new(RelationType::Filter)),
+            None,
+        );
 
         Some(symbol)
     }
@@ -1246,19 +1601,13 @@ impl<'input> RelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the expression relation in the symbol table
-        let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = self
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(
-                "expression".to_string(),
-                location,
-                SymbolType::Relation,
-                Some(Box::new(RelationType::Project)),
-                None,
-            );
+        let symbol = self.symbol_table_mut().define_symbol(
+            "expression".to_string(),
+            location,
+            SymbolType::Relation,
+            Some(Box::new(RelationType::Project)),
+            None,
+        );
 
         Some(symbol)
     }
@@ -1279,24 +1628,17 @@ impl<'input> RelationVisitor<'input> {
         };
 
         // Create a location from the context's start token
-        // Get the start token directly - it's not an Option
         let token = ctx.start();
         let location = token_to_location(&token);
 
         // Define the join relation in the symbol table
-        let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = self
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(
-                "join".to_string(),
-                location,
-                SymbolType::Relation,
-                Some(Box::new(join_type)),
-                None,
-            );
+        let symbol = self.symbol_table_mut().define_symbol(
+            "join".to_string(),
+            location,
+            SymbolType::Relation,
+            Some(Box::new(join_type)),
+            None,
+        );
 
         Some(symbol)
     }
@@ -1317,13 +1659,7 @@ impl<'input> RelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the constant in the symbol table
-        let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = self
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(value.to_string(), location, SymbolType::Field, None, None);
+        let symbol = self.symbol_table_mut().define_symbol(value.to_string(), location, SymbolType::Field, None, None);
 
         Some(symbol)
     }
@@ -1344,13 +1680,7 @@ impl<'input> RelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the column in the symbol table
-        let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = self
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(name.to_string(), location, SymbolType::Field, None, None);
+        let symbol = self.symbol_table_mut().define_symbol(name.to_string(), location, SymbolType::Field, None, None);
 
         Some(symbol)
     }
@@ -1369,13 +1699,7 @@ impl<'input> RelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the function call in the symbol table
-        let mut symbol_table = self.plan_visitor.get_symbol_table();
-        let symbol = self
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(
+        let symbol = self.symbol_table_mut().define_symbol(
                 function_name.to_string(),
                 location,
                 SymbolType::Function,
@@ -1389,11 +1713,11 @@ impl<'input> RelationVisitor<'input> {
 
 impl<'input> PlanVisitor<'input> for RelationVisitor<'input> {
     fn error_listener(&self) -> Arc<ErrorListener> {
-        self.plan_visitor.error_listener()
+        self.error_listener.clone()
     }
 
     fn symbol_table(&self) -> SymbolTable {
-        self.plan_visitor.symbol_table()
+        self.symbol_table.clone()
     }
 }
 
@@ -1404,27 +1728,35 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     // Override specific visitor methods for relation processing
 
     fn visit_relation(&mut self, ctx: &RelationContext<'input>) {
-        // Delegate to the plan visitor for basic relation processing
-        self.plan_visitor.visit_relation(ctx);
-
-        // Extract the relation symbol from the current scope
-        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
-            // Process relation type if present
-            if let Some(relation_type) = ctx.relation_type() {
-                // We need to borrow it
-                self.process_relation_type(&relation_type, &relation_symbol);
+        // Look up the relation symbol that was already created in MainPlanVisitor phase
+        // (C++ does: lookupSymbolByLocationAndType(Location(ctx), SymbolType::kRelation))
+        let relation_ref = ctx.relation_ref();
+        let symbol = if let Some(rel_ref) = relation_ref {
+            if let Some(id) = rel_ref.id(0) {
+                let name = id.get_text();
+                self.symbol_table.lookup_symbol_by_name(&name)
+            } else {
+                None
             }
+        } else {
+            None
+        };
+
+        // Set as current scope if found
+        if let Some(relation_symbol) = symbol {
+            self.set_current_relation_scope(Some(relation_symbol.clone()));
         }
 
-        // Continue visiting children
+        // Continue visiting children to process relation details
         self.visit_children(ctx);
+
+        // Clear scope when done
+        self.set_current_relation_scope(None);
     }
 
     fn visit_root_relation(&mut self, ctx: &Root_relationContext<'input>) {
-        // Delegate to the plan visitor for basic root relation processing
-        self.plan_visitor.visit_root_relation(ctx);
-
-        // Continue visiting children
+        // Look up the root symbol that was already created
+        // Root relations are handled in MainPlanVisitor, just visit children here
         self.visit_children(ctx);
     }
 
@@ -1523,39 +1855,54 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
         self.visit_children(ctx);
     }
 
-    // For plan and pipeline nodes, delegate to the plan visitor
-    fn visit_plan(&mut self, ctx: &PlanContext<'input>) {
-        self.plan_visitor.visit_plan(ctx);
+    fn visit_relationUsesSchema(&mut self, ctx: &RelationUsesSchemaContext<'input>) {
+        // Link the current relation to its schema
+        // Grammar: BASE_SCHEMA id SEMICOLON
+        if let Some(relation_symbol) = self.current_relation_scope() {
+            if let Some(schema_id) = ctx.id() {
+                let schema_name = schema_id.get_text();
+                if let Some(schema_symbol) = self.symbol_table.lookup_symbol_by_name(&schema_name) {
+                    // Set the schema reference in the relation's RelationData
+                    if let Some(blob_lock) = &relation_symbol.blob {
+                        if let Ok(mut blob_data) = blob_lock.lock() {
+                            if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                                relation_data.schema = Some(schema_symbol);
+                                println!("  Linked relation '{}' to schema '{}'", relation_symbol.name(), schema_name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.visit_children(ctx);
     }
 
-    fn visit_plan_detail(&mut self, ctx: &Plan_detailContext<'input>) {
-        self.plan_visitor.visit_plan_detail(ctx);
+    fn visit_relationSourceReference(&mut self, ctx: &RelationSourceReferenceContext<'input>) {
+        // Link the current relation to its source
+        // Grammar: source_reference SEMICOLON
+        if let Some(relation_symbol) = self.current_relation_scope() {
+            if let Some(source_ref_ctx) = ctx.source_reference() {
+                if let Some(source_id) = source_ref_ctx.id() {
+                    let source_name = source_id.get_text();
+                    if let Some(source_symbol) = self.symbol_table.lookup_symbol_by_name(&source_name) {
+                        // Set the source reference in the relation's RelationData
+                        if let Some(blob_lock) = &relation_symbol.blob {
+                            if let Ok(mut blob_data) = blob_lock.lock() {
+                                if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                                    relation_data.source = Some(source_symbol);
+                                    println!("  Linked relation '{}' to source '{}'", relation_symbol.name(), source_name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.visit_children(ctx);
     }
 
-    fn visit_pipelines(&mut self, ctx: &PipelinesContext<'input>) {
-        self.plan_visitor.visit_pipelines(ctx);
-    }
-
-    fn visit_pipeline(&mut self, ctx: &PipelineContext<'input>) {
-        self.plan_visitor.visit_pipeline(ctx);
-    }
-
-    fn visit_source_definition(&mut self, ctx: &Source_definitionContext<'input>) {
-        self.plan_visitor.visit_source_definition(ctx);
-    }
-
-    fn visit_named_table_detail(&mut self, ctx: &Named_table_detailContext<'input>) {
-        self.plan_visitor.visit_named_table_detail(ctx);
-    }
-
-    // For type-related nodes, delegate to the plan visitor's type visitor
-    fn visit_literal_basic_type(&mut self, ctx: &Literal_basic_typeContext<'input>) {
-        self.plan_visitor.visit_literal_basic_type(ctx);
-    }
-
-    fn visit_literal_complex_type(&mut self, ctx: &Literal_complex_typeContext<'input>) {
-        self.plan_visitor.visit_literal_complex_type(ctx);
-    }
+    // We use the default implementation for other visitor methods,
+    // which will call visit_children to traverse the tree
 }
 
 /// The SubqueryRelationVisitor processes subquery relations.
@@ -1563,25 +1910,36 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
 /// This visitor is the fifth and final phase in the multiphase parsing approach,
 /// specifically handling subquery relationships.
 pub struct SubqueryRelationVisitor<'input> {
-    relation_visitor: RelationVisitor<'input>,
+    symbol_table: SymbolTable,
+    error_listener: Arc<ErrorListener>,
+    current_relation_scope: Option<Arc<SymbolInfo>>,
+    _phantom: std::marker::PhantomData<&'input ()>,
 }
 
 impl<'input> SubqueryRelationVisitor<'input> {
     /// Creates a new SubqueryRelationVisitor.
     pub fn new(symbol_table: SymbolTable, error_listener: Arc<ErrorListener>) -> Self {
         Self {
-            relation_visitor: RelationVisitor::new(symbol_table, error_listener),
+            symbol_table,
+            error_listener,
+            current_relation_scope: None,
+            _phantom: std::marker::PhantomData,
         }
     }
 
-    /// Gets the RelationVisitor that this visitor uses.
-    pub fn relation_visitor(&self) -> &RelationVisitor<'input> {
-        &self.relation_visitor
+    /// Gets the symbol table.
+    pub fn symbol_table(&self) -> SymbolTable {
+        self.symbol_table.clone()
     }
 
-    /// Gets a mutable reference to the RelationVisitor that this visitor uses.
-    pub fn relation_visitor_mut(&mut self) -> &mut RelationVisitor<'input> {
-        &mut self.relation_visitor
+    /// Gets a mutable reference to the symbol table.
+    fn symbol_table_mut(&mut self) -> &mut SymbolTable {
+        &mut self.symbol_table
+    }
+
+    /// Gets the error listener.
+    pub fn error_listener(&self) -> Arc<ErrorListener> {
+        self.error_listener.clone()
     }
 
     /// Adds an error message to the error listener.
@@ -1590,22 +1948,18 @@ impl<'input> SubqueryRelationVisitor<'input> {
         token: &impl std::ops::Deref<Target = GenericToken<std::borrow::Cow<'a, str>>>,
         message: &str,
     ) {
-        self.relation_visitor.add_error(token, message);
+        let location = token_to_location(token);
+        self.error_listener.add_error(message.to_string(), location);
     }
 
     /// Gets the current relation scope, if any.
     pub fn current_relation_scope(&self) -> Option<&Arc<SymbolInfo>> {
-        self.relation_visitor.current_relation_scope()
+        self.current_relation_scope.as_ref()
     }
 
     /// Sets the current relation scope.
     pub fn set_current_relation_scope(&mut self, scope: Option<Arc<SymbolInfo>>) {
-        self.relation_visitor.set_current_relation_scope(scope);
-    }
-
-    /// Gets the MainPlanVisitor that this visitor uses indirectly via the RelationVisitor.
-    pub fn plan_visitor(&self) -> &MainPlanVisitor<'input> {
-        self.relation_visitor.plan_visitor()
+        self.current_relation_scope = scope;
     }
 
     /// Process a scalar subquery and add it to the symbol table.
@@ -1619,14 +1973,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the subquery in the symbol table
-        let mut symbol_table = self.relation_visitor.symbol_table();
-        let symbol = self
-            .relation_visitor
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(
+        let symbol = self.symbol_table_mut().define_symbol(
                 "scalar_subquery".to_string(),
                 location,
                 SymbolType::Relation,
@@ -1648,14 +1995,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the subquery in the symbol table
-        let mut symbol_table = self.relation_visitor.symbol_table();
-        let symbol = self
-            .relation_visitor
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(
+        let symbol = self.symbol_table_mut().define_symbol(
                 "set_comparison_subquery".to_string(),
                 location,
                 SymbolType::Relation,
@@ -1677,14 +2017,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the subquery in the symbol table
-        let mut symbol_table = self.relation_visitor.symbol_table();
-        let symbol = self
-            .relation_visitor
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(
+        let symbol = self.symbol_table_mut().define_symbol(
                 "in_predicate_subquery".to_string(),
                 location,
                 SymbolType::Relation,
@@ -1706,14 +2039,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the subquery in the symbol table
-        let mut symbol_table = self.relation_visitor.symbol_table();
-        let symbol = self
-            .relation_visitor
-            .plan_visitor
-            .type_visitor
-            .base
-            .symbol_table_mut()
-            .define_symbol(
+        let symbol = self.symbol_table_mut().define_symbol(
                 "set_predicate_subquery".to_string(),
                 location,
                 SymbolType::Relation,
@@ -1727,11 +2053,11 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
 impl<'input> PlanVisitor<'input> for SubqueryRelationVisitor<'input> {
     fn error_listener(&self) -> Arc<ErrorListener> {
-        self.relation_visitor.error_listener()
+        self.error_listener.clone()
     }
 
     fn symbol_table(&self) -> SymbolTable {
-        self.relation_visitor.symbol_table()
+        self.symbol_table.clone()
     }
 }
 
@@ -1855,82 +2181,6 @@ impl<'input> SubstraitPlanParserVisitor<'input> for SubqueryRelationVisitor<'inp
             // Just visit children
             self.visit_children(ctx);
         }
-    }
-
-    // For standard relation processing, delegate to the relation visitor
-    fn visit_relation(&mut self, ctx: &RelationContext<'input>) {
-        self.relation_visitor.visit_relation(ctx);
-    }
-
-    fn visit_root_relation(&mut self, ctx: &Root_relationContext<'input>) {
-        self.relation_visitor.visit_root_relation(ctx);
-    }
-
-    fn visit_relation_type(&mut self, ctx: &Relation_typeContext<'input>) {
-        self.relation_visitor.visit_relation_type(ctx);
-    }
-
-    fn visit_relationFilter(&mut self, ctx: &RelationFilterContext<'input>) {
-        self.relation_visitor.visit_relationFilter(ctx);
-    }
-
-    fn visit_relationExpression(&mut self, ctx: &RelationExpressionContext<'input>) {
-        self.relation_visitor.visit_relationExpression(ctx);
-    }
-
-    fn visit_relationJoinType(&mut self, ctx: &RelationJoinTypeContext<'input>) {
-        self.relation_visitor.visit_relationJoinType(ctx);
-    }
-
-    // For standard expression processing, delegate to the relation visitor
-    fn visit_expressionConstant(&mut self, ctx: &ExpressionConstantContext<'input>) {
-        self.relation_visitor.visit_expressionConstant(ctx);
-    }
-
-    fn visit_expressionFunctionUse(&mut self, ctx: &ExpressionFunctionUseContext<'input>) {
-        self.relation_visitor.visit_expressionFunctionUse(ctx);
-    }
-
-    fn visit_expressionColumn(&mut self, ctx: &ExpressionColumnContext<'input>) {
-        self.relation_visitor.visit_expressionColumn(ctx);
-    }
-
-    fn visit_expressionCast(&mut self, ctx: &ExpressionCastContext<'input>) {
-        self.relation_visitor.visit_expressionCast(ctx);
-    }
-
-    // For type handling, delegate through the relation visitor
-    fn visit_literal_basic_type(&mut self, ctx: &Literal_basic_typeContext<'input>) {
-        self.relation_visitor.visit_literal_basic_type(ctx);
-    }
-
-    fn visit_literal_complex_type(&mut self, ctx: &Literal_complex_typeContext<'input>) {
-        self.relation_visitor.visit_literal_complex_type(ctx);
-    }
-
-    // For plan and pipeline nodes, delegate through the relation visitor
-    fn visit_plan(&mut self, ctx: &PlanContext<'input>) {
-        self.relation_visitor.visit_plan(ctx);
-    }
-
-    fn visit_plan_detail(&mut self, ctx: &Plan_detailContext<'input>) {
-        self.relation_visitor.visit_plan_detail(ctx);
-    }
-
-    fn visit_pipelines(&mut self, ctx: &PipelinesContext<'input>) {
-        self.relation_visitor.visit_pipelines(ctx);
-    }
-
-    fn visit_pipeline(&mut self, ctx: &PipelineContext<'input>) {
-        self.relation_visitor.visit_pipeline(ctx);
-    }
-
-    fn visit_source_definition(&mut self, ctx: &Source_definitionContext<'input>) {
-        self.relation_visitor.visit_source_definition(ctx);
-    }
-
-    fn visit_named_table_detail(&mut self, ctx: &Named_table_detailContext<'input>) {
-        self.relation_visitor.visit_named_table_detail(ctx);
     }
 
     // We use the default implementation for other visitor methods,

@@ -649,6 +649,7 @@ impl PlanPrinter {
             RelationType::Sort => "sort",
             RelationType::Filter => "filter",
             RelationType::Set => "set",
+            RelationType::Root => "root",
             RelationType::HashJoin => "hash_join",
             RelationType::MergeJoin => "merge_join",
             RelationType::Exchange => "exchange",

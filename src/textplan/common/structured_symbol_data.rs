@@ -64,6 +64,25 @@ impl RelationData {
             seen_field_reference_names: HashMap::new(),
         }
     }
+
+    // Constructor for root markers (no actual Rel protobuf, just connectivity)
+    pub fn new_empty() -> Self {
+        RelationData {
+            pipeline_start: None,
+            continuing_pipeline: None,
+            new_pipelines: Vec::new(),
+            sub_query_pipelines: Vec::new(),
+            relation: substrait::proto::Rel::default(),
+            source: None,
+            schema: None,
+            field_references: Vec::new(),
+            generated_field_references: Vec::new(),
+            generated_field_reference_alternative_expression: HashMap::new(),
+            generated_field_reference_aliases: HashMap::new(),
+            output_field_references: Vec::new(),
+            seen_field_reference_names: HashMap::new(),
+        }
+    }
 }
 
 // Used by Schema symbols to keep track of assigned values.

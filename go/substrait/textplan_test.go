@@ -19,14 +19,14 @@ func TestTextPlanRoundtrip(t *testing.T) {
 		id i32;
 		name string;
 	}
-	
-	read RELATION data {
-		SOURCE source;
-		BASE_SCHEMA simple_schema;
+
+	source named_table simple_source {
+		names = ["test_table"]
 	}
-	
-	ROOT {
-		NAMES = [data]
+
+	read relation data {
+		base_schema simple_schema;
+		source simple_source;
 	}
 	`
 	
@@ -51,10 +51,13 @@ func TestTextPlanRoundtrip(t *testing.T) {
 	if len(roundtripText) == 0 {
 		t.Fatal("Round-tripped text is empty")
 	}
-	
+
+	// Print the round-tripped text for debugging
+	t.Logf("Round-tripped text:\n%s\n", roundtripText)
+
 	// Verify that key elements are present in the round-tripped text
 	// We don't do an exact match because the format might change a bit
-	for _, element := range []string{"RELATION", "schema", "ROOT", "data"} {
+	for _, element := range []string{"relation", "schema", "simple_schema", "data"} {
 		if !contains(roundtripText, element) {
 			t.Errorf("Round-tripped text does not contain '%s'", element)
 		}

@@ -70,3 +70,6 @@ src/textplan/converter/generated/proto_descriptor.bin
 
 # Reference code
 src/substrait/textplan
+
+# Python artifacts
+python/__pycache__/
