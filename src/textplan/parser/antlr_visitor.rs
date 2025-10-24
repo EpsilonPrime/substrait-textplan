@@ -2103,7 +2103,8 @@ impl<'input> RelationVisitor<'input> {
         let mut target_type = if let Some(type_ctx) = ctx.literal_complex_type() {
             let type_text = type_ctx.get_text();
             // Create a temporary TypeVisitor to parse the type
-            let type_visitor = TypeVisitor::new(self.symbol_table.clone(), self.error_listener.clone());
+            let type_visitor =
+                TypeVisitor::new(self.symbol_table.clone(), self.error_listener.clone());
             type_visitor.text_to_type_proto(ctx, &type_text)
         } else {
             // No target type - return placeholder
@@ -2122,8 +2123,13 @@ impl<'input> RelationVisitor<'input> {
 
         // Special handling: if casting a string literal to fixedchar/varchar without explicit length,
         // infer the length from the string
-        if let Some(::substrait::proto::expression::RexType::Literal(literal)) = &input_expr.rex_type {
-            if let Some(::substrait::proto::expression::literal::LiteralType::String(string_value)) = &literal.literal_type {
+        if let Some(::substrait::proto::expression::RexType::Literal(literal)) =
+            &input_expr.rex_type
+        {
+            if let Some(::substrait::proto::expression::literal::LiteralType::String(
+                string_value,
+            )) = &literal.literal_type
+            {
                 use ::substrait::proto::r#type::Kind;
                 match &mut target_type.kind {
                     Some(Kind::FixedChar(ref mut fc_type)) if fc_type.length == 0 => {
@@ -2146,7 +2152,8 @@ impl<'input> RelationVisitor<'input> {
                 ::substrait::proto::expression::Cast {
                     r#type: Some(target_type),
                     input: Some(input_expr),
-                    failure_behavior: ::substrait::proto::expression::cast::FailureBehavior::Unspecified as i32,
+                    failure_behavior:
+                        ::substrait::proto::expression::cast::FailureBehavior::Unspecified as i32,
                 },
             ))),
         }
@@ -2423,7 +2430,10 @@ impl<'input> RelationVisitor<'input> {
         };
 
         // Extract comparison operator
-        let comp_op_text = ctx.COMPARISON().map(|t| t.get_text().to_uppercase()).unwrap_or_default();
+        let comp_op_text = ctx
+            .COMPARISON()
+            .map(|t| t.get_text().to_uppercase())
+            .unwrap_or_default();
         let comparison_op = match comp_op_text.as_str() {
             "LT" | "<" => ComparisonOp::Lt as i32,
             "GT" | ">" => ComparisonOp::Gt as i32,
@@ -2444,24 +2454,37 @@ impl<'input> RelationVisitor<'input> {
         };
 
         // Extract subquery relation reference
-        let relation_name = ctx.relation_ref()
+        let relation_name = ctx
+            .relation_ref()
             .map(|r| r.get_text())
             .unwrap_or_else(|| "unknown".to_string());
 
-        println!("    Set comparison subquery: left={:?}, comp_op={}, reduction_op={}, relation={}",
-            left_expr.is_some(), comparison_op, reduction_op, relation_name);
+        println!(
+            "    Set comparison subquery: left={:?}, comp_op={}, reduction_op={}, relation={}",
+            left_expr.is_some(),
+            comparison_op,
+            reduction_op,
+            relation_name
+        );
 
         // Look up the subquery relation in the symbol table and mark it as a subquery
         if let Some(rel_symbol) = self.symbol_table().lookup_symbol_by_name(&relation_name) {
             // Mark this relation as a subquery by setting its parent query info
             // This will prevent it from being output as a top-level PlanRel in save_binary
             if let Some(parent_rel) = self.current_relation_scope() {
-                println!("      Marking '{}' as subquery of '{}'", relation_name, parent_rel.name());
+                println!(
+                    "      Marking '{}' as subquery of '{}'",
+                    relation_name,
+                    parent_rel.name()
+                );
                 rel_symbol.set_parent_query_location(parent_rel.source_location().box_clone());
                 rel_symbol.set_parent_query_index(0);
             }
         } else {
-            println!("      WARNING: Subquery relation '{}' not found", relation_name);
+            println!(
+                "      WARNING: Subquery relation '{}' not found",
+                relation_name
+            );
         }
 
         // NOTE: Following Rust implementation philosophy, we do NOT copy the Rel protobuf here.
@@ -2472,14 +2495,16 @@ impl<'input> RelationVisitor<'input> {
         ::substrait::proto::Expression {
             rex_type: Some(::substrait::proto::expression::RexType::Subquery(Box::new(
                 ::substrait::proto::expression::Subquery {
-                    subquery_type: Some(::substrait::proto::expression::subquery::SubqueryType::SetComparison(Box::new(
-                        ::substrait::proto::expression::subquery::SetComparison {
-                            left: left_expr,
-                            comparison_op,
-                            reduction_op,
-                            right: right_rel,
-                        },
-                    ))),
+                    subquery_type: Some(
+                        ::substrait::proto::expression::subquery::SubqueryType::SetComparison(
+                            Box::new(::substrait::proto::expression::subquery::SetComparison {
+                                left: left_expr,
+                                comparison_op,
+                                reduction_op,
+                                right: right_rel,
+                            }),
+                        ),
+                    ),
                 },
             ))),
         }
@@ -2495,9 +2520,9 @@ impl<'input> RelationVisitor<'input> {
         ::substrait::proto::Expression {
             rex_type: Some(::substrait::proto::expression::RexType::Literal(
                 ::substrait::proto::expression::Literal {
-                    literal_type: Some(
-                        ::substrait::proto::expression::literal::LiteralType::I64(0),
-                    ),
+                    literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
+                        0,
+                    )),
                     nullable: false,
                     type_variation_reference: 0,
                 },
@@ -2515,9 +2540,9 @@ impl<'input> RelationVisitor<'input> {
         ::substrait::proto::Expression {
             rex_type: Some(::substrait::proto::expression::RexType::Literal(
                 ::substrait::proto::expression::Literal {
-                    literal_type: Some(
-                        ::substrait::proto::expression::literal::LiteralType::I64(0),
-                    ),
+                    literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
+                        0,
+                    )),
                     nullable: false,
                     type_variation_reference: 0,
                 },
@@ -2535,9 +2560,9 @@ impl<'input> RelationVisitor<'input> {
         ::substrait::proto::Expression {
             rex_type: Some(::substrait::proto::expression::RexType::Literal(
                 ::substrait::proto::expression::Literal {
-                    literal_type: Some(
-                        ::substrait::proto::expression::literal::LiteralType::I64(0),
-                    ),
+                    literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
+                        0,
+                    )),
                     nullable: false,
                     type_variation_reference: 0,
                 },
@@ -2694,7 +2719,10 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                     let (function_reference, arguments) = match expr_ctx.as_ref() {
                         ExpressionContextAll::ExpressionFunctionUseContext(func_ctx) => {
                             // Get function name and look up reference
-                            let function_name = func_ctx.id().map(|id| id.get_text()).unwrap_or_else(|| "unknown".to_string());
+                            let function_name = func_ctx
+                                .id()
+                                .map(|id| id.get_text())
+                                .unwrap_or_else(|| "unknown".to_string());
                             let func_ref = self.lookup_function_reference(&function_name);
 
                             // Build arguments directly
@@ -2702,7 +2730,9 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                             for arg_expr in func_ctx.expression_all() {
                                 let expr = self.build_expression(&arg_expr);
                                 args.push(::substrait::proto::FunctionArgument {
-                                    arg_type: Some(::substrait::proto::function_argument::ArgType::Value(expr)),
+                                    arg_type: Some(
+                                        ::substrait::proto::function_argument::ArgType::Value(expr),
+                                    ),
                                 });
                             }
                             (func_ref, args)
@@ -2711,7 +2741,11 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                             // For non-function expressions, wrap in arguments
                             let measure_expr = self.build_expression(&expr_ctx);
                             let arg = ::substrait::proto::FunctionArgument {
-                                arg_type: Some(::substrait::proto::function_argument::ArgType::Value(measure_expr)),
+                                arg_type: Some(
+                                    ::substrait::proto::function_argument::ArgType::Value(
+                                        measure_expr,
+                                    ),
+                                ),
                             };
                             (0, vec![arg])
                         }
@@ -2723,7 +2757,9 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                         arguments,
                         output_type: None,
                         phase: ::substrait::proto::AggregationPhase::InitialToResult.into(),
-                        invocation: ::substrait::proto::aggregate_function::AggregationInvocation::All.into(),
+                        invocation:
+                            ::substrait::proto::aggregate_function::AggregationInvocation::All
+                                .into(),
                         ..Default::default()
                     };
 

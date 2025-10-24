@@ -717,9 +717,7 @@ impl<'a> ExpressionPrinter<'a> {
             Some(SubqueryType::SetComparison(set_comp)) => {
                 self.print_set_comparison_subquery(set_comp)
             }
-            Some(SubqueryType::Scalar(_)) => {
-                Ok("SCALAR_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
-            }
+            Some(SubqueryType::Scalar(_)) => Ok("SCALAR_SUBQUERY_NOT_YET_IMPLEMENTED".to_string()),
             Some(SubqueryType::InPredicate(_)) => {
                 Ok("IN_PREDICATE_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
             }
@@ -751,10 +749,12 @@ impl<'a> ExpressionPrinter<'a> {
         }
 
         // Print comparison operator
-        let comp_op = ComparisonOp::try_from(set_comp.comparison_op)
-            .map_err(|_| TextPlanError::InvalidExpression(
-                format!("Invalid comparison_op: {}", set_comp.comparison_op)
-            ))?;
+        let comp_op = ComparisonOp::try_from(set_comp.comparison_op).map_err(|_| {
+            TextPlanError::InvalidExpression(format!(
+                "Invalid comparison_op: {}",
+                set_comp.comparison_op
+            ))
+        })?;
         match comp_op {
             ComparisonOp::Unspecified => result.push_str("UNSPECIFIED "),
             ComparisonOp::Eq => result.push_str("EQ "),
@@ -766,10 +766,12 @@ impl<'a> ExpressionPrinter<'a> {
         }
 
         // Print reduction operator
-        let reduction_op = ReductionOp::try_from(set_comp.reduction_op)
-            .map_err(|_| TextPlanError::InvalidExpression(
-                format!("Invalid reduction_op: {}", set_comp.reduction_op)
-            ))?;
+        let reduction_op = ReductionOp::try_from(set_comp.reduction_op).map_err(|_| {
+            TextPlanError::InvalidExpression(format!(
+                "Invalid reduction_op: {}",
+                set_comp.reduction_op
+            ))
+        })?;
         match reduction_op {
             ReductionOp::Unspecified => result.push_str("UNSPECIFIED "),
             ReductionOp::Any => result.push_str("ANY "),
@@ -783,25 +785,31 @@ impl<'a> ExpressionPrinter<'a> {
         if let Some(_right) = &set_comp.right {
             // Look up the relation symbol for this subquery
             if let Some(scope) = self.current_scope {
-                println!("DEBUG PRINTER: Looking for subquery with parent location hash: {}, index: {}",
-                    scope.source_location().location_hash(), self.current_scope_index);
+                println!(
+                    "DEBUG PRINTER: Looking for subquery with parent location hash: {}, index: {}",
+                    scope.source_location().location_hash(),
+                    self.current_scope_index
+                );
 
                 // Debug: list all relations with parent query info
                 println!("DEBUG PRINTER: All relations:");
                 for symbol in self.symbol_table.symbols() {
                     if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
                         let parent_loc = symbol.parent_query_location();
-                        println!("  - '{}' parent_hash={}, parent_index={}",
-                            symbol.name(), parent_loc.location_hash(), symbol.parent_query_index());
+                        println!(
+                            "  - '{}' parent_hash={}, parent_index={}",
+                            symbol.name(),
+                            parent_loc.location_hash(),
+                            symbol.parent_query_index()
+                        );
                     }
                 }
 
-                let symbol = self.symbol_table
-                    .lookup_symbol_by_parent_query_and_type(
-                        scope.source_location(),
-                        self.current_scope_index,
-                        crate::textplan::SymbolType::Relation,
-                    );
+                let symbol = self.symbol_table.lookup_symbol_by_parent_query_and_type(
+                    scope.source_location(),
+                    self.current_scope_index,
+                    crate::textplan::SymbolType::Relation,
+                );
                 self.current_scope_index += 1;
 
                 if let Some(sym) = symbol {

@@ -120,10 +120,18 @@ pub fn process_plan_with_visitor(plan: &substrait::proto::Plan) -> Result<String
     visitor1.visit_plan(plan);
     // MEGAHACK -- Check for errors.
 
-    println!("DEBUG: After InitialPlanVisitor, symbol table has {} symbols", visitor1.symbol_table().len());
+    println!(
+        "DEBUG: After InitialPlanVisitor, symbol table has {} symbols",
+        visitor1.symbol_table().len()
+    );
     for symbol in visitor1.symbol_table().symbols() {
         if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
-            println!("  - {} (type: {:?}, location: {:?})", symbol.name(), symbol.symbol_type(), symbol.source_location());
+            println!(
+                "  - {} (type: {:?}, location: {:?})",
+                symbol.name(),
+                symbol.symbol_type(),
+                symbol.source_location()
+            );
         } else {
             println!("  - {} (type: {:?})", symbol.name(), symbol.symbol_type());
         }
@@ -136,7 +144,10 @@ pub fn process_plan_with_visitor(plan: &substrait::proto::Plan) -> Result<String
     visitor.visit_plan(plan);
     // MEGAHACK -- Check for errors.
 
-    println!("DEBUG: After PipelineVisitor, symbol table has {} symbols", visitor.symbol_table().len());
+    println!(
+        "DEBUG: After PipelineVisitor, symbol table has {} symbols",
+        visitor.symbol_table().len()
+    );
     for symbol in visitor.symbol_table().symbols() {
         println!("  - {} (type: {:?})", symbol.name(), symbol.symbol_type());
     }
@@ -201,9 +212,10 @@ fn has_subquery_expression(rel: &substrait::proto::Rel) -> bool {
                 false
             }
         }
-        Some(RelType::Project(project_rel)) => {
-            project_rel.expressions.iter().any(has_subquery_in_expression)
-        }
+        Some(RelType::Project(project_rel)) => project_rel
+            .expressions
+            .iter()
+            .any(has_subquery_in_expression),
         Some(RelType::Join(join_rel)) => {
             if let Some(expr) = &join_rel.expression {
                 has_subquery_in_expression(expr)
@@ -222,15 +234,15 @@ fn has_subquery_in_expression(expr: &substrait::proto::Expression) -> bool {
 
     match &expr.rex_type {
         Some(RexType::Subquery(_)) => true,
-        Some(RexType::ScalarFunction(func)) => {
-            func.arguments.iter().any(|arg| {
-                if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) = &arg.arg_type {
-                    has_subquery_in_expression(inner_expr)
-                } else {
-                    false
-                }
-            })
-        }
+        Some(RexType::ScalarFunction(func)) => func.arguments.iter().any(|arg| {
+            if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) =
+                &arg.arg_type
+            {
+                has_subquery_in_expression(inner_expr)
+            } else {
+                false
+            }
+        }),
         // Add other expression types as needed
         _ => false,
     }
@@ -256,17 +268,23 @@ fn extract_and_add_subquery_pipelines(
         ))
     })?;
 
-    let relation_data = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>().ok_or_else(|| {
-        TextPlanError::ProtobufError(format!(
-            "Parent relation '{}' blob is not RelationData",
-            parent_symbol.name()
-        ))
-    })?;
+    let relation_data = blob_data
+        .downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>()
+        .ok_or_else(|| {
+            TextPlanError::ProtobufError(format!(
+                "Parent relation '{}' blob is not RelationData",
+                parent_symbol.name()
+            ))
+        })?;
 
     // Extract subquery pipeline starts
     let subquery_starts = extract_subquery_starts(symbol_table, &relation_data.relation)?;
 
-    println!("    Found {} subquery pipeline starts for '{}'", subquery_starts.len(), parent_symbol.name());
+    println!(
+        "    Found {} subquery pipeline starts for '{}'",
+        subquery_starts.len(),
+        parent_symbol.name()
+    );
 
     // Add to sub_query_pipelines
     relation_data.sub_query_pipelines.extend(subquery_starts);
@@ -286,7 +304,10 @@ fn extract_subquery_starts(
     match &rel.rel_type {
         Some(RelType::Filter(filter_rel)) => {
             if let Some(condition) = &filter_rel.condition {
-                starts.extend(extract_subquery_starts_from_expression(symbol_table, condition)?);
+                starts.extend(extract_subquery_starts_from_expression(
+                    symbol_table,
+                    condition,
+                )?);
             }
         }
         Some(RelType::Project(project_rel)) => {
@@ -310,7 +331,7 @@ fn extract_subquery_starts_from_expression(
     symbol_table: &SymbolTable,
     expr: &substrait::proto::Expression,
 ) -> Result<Vec<Arc<SymbolInfo>>, TextPlanError> {
-    use substrait::proto::expression::{RexType, subquery::SubqueryType};
+    use substrait::proto::expression::{subquery::SubqueryType, RexType};
 
     let mut starts = Vec::new();
 
@@ -340,8 +361,13 @@ fn extract_subquery_starts_from_expression(
         Some(RexType::ScalarFunction(func)) => {
             // Recursively check arguments
             for arg in &func.arguments {
-                if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) = &arg.arg_type {
-                    starts.extend(extract_subquery_starts_from_expression(symbol_table, inner_expr)?);
+                if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) =
+                    &arg.arg_type
+                {
+                    starts.extend(extract_subquery_starts_from_expression(
+                        symbol_table,
+                        inner_expr,
+                    )?);
                 }
             }
         }
@@ -357,10 +383,7 @@ fn find_pipeline_start(
     rel_symbol: &Arc<SymbolInfo>,
 ) -> Result<Option<Arc<SymbolInfo>>, TextPlanError> {
     let blob_lock = rel_symbol.blob.as_ref().ok_or_else(|| {
-        TextPlanError::ProtobufError(format!(
-            "Relation '{}' has no blob data",
-            rel_symbol.name()
-        ))
+        TextPlanError::ProtobufError(format!("Relation '{}' has no blob data", rel_symbol.name()))
     })?;
 
     let blob_data = blob_lock.lock().map_err(|_| {
@@ -370,12 +393,14 @@ fn find_pipeline_start(
         ))
     })?;
 
-    let relation_data = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>().ok_or_else(|| {
-        TextPlanError::ProtobufError(format!(
-            "Relation '{}' blob is not RelationData",
-            rel_symbol.name()
-        ))
-    })?;
+    let relation_data = blob_data
+        .downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>()
+        .ok_or_else(|| {
+            TextPlanError::ProtobufError(format!(
+                "Relation '{}' blob is not RelationData",
+                rel_symbol.name()
+            ))
+        })?;
 
     // If this relation has a pipeline_start, return it
     if let Some(start) = &relation_data.pipeline_start {

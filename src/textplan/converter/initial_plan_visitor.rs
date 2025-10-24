@@ -738,16 +738,22 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                     }
 
                     // Look up the subquery relation symbol by its location
-                    if let Some(symbol) = self.symbol_table.lookup_symbol_by_location_and_type(
-                        &rel_location,
-                        SymbolType::Relation,
-                    ) {
+                    if let Some(symbol) = self
+                        .symbol_table
+                        .lookup_symbol_by_location_and_type(&rel_location, SymbolType::Relation)
+                    {
                         // Set the parent query location to the current relation's location
                         // We stored the actual ProtoLocation in current_relation_locations
                         if let Some(parent_rel_location) = self.current_relation_locations.last() {
-                            println!("DEBUG INIT: Setting parent_query_location for '{}' to hash {}",
-                                symbol.name(), parent_rel_location.location_hash());
-                            self.symbol_table.set_parent_query_location(&symbol, parent_rel_location.box_clone());
+                            println!(
+                                "DEBUG INIT: Setting parent_query_location for '{}' to hash {}",
+                                symbol.name(),
+                                parent_rel_location.location_hash()
+                            );
+                            self.symbol_table.set_parent_query_location(
+                                &symbol,
+                                parent_rel_location.box_clone(),
+                            );
                         }
 
                         // Set the index for this subquery within its parent (0 for now)
@@ -762,9 +768,11 @@ impl PlanProtoVisitor for InitialPlanVisitor {
 
     fn pre_process_rel(&mut self, obj: &substrait::Rel) {
         let location_path = self.current_location().path_string();
-        println!("DEBUG INIT: pre_process_rel pushing path: '{}'", location_path);
-        self.current_relation_scope
-            .push(Arc::new(location_path));
+        println!(
+            "DEBUG INIT: pre_process_rel pushing path: '{}'",
+            location_path
+        );
+        self.current_relation_scope.push(Arc::new(location_path));
         self.current_relation_locations
             .push(self.current_location().clone());
     }

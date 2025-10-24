@@ -293,7 +293,9 @@ impl PartialEq for SymbolInfo {
                 .permanent_location
                 .equals(other.permanent_location.as_ref())
             && self
-                .parent_query_location.read().unwrap()
+                .parent_query_location
+                .read()
+                .unwrap()
                 .equals(other.parent_query_location.read().unwrap().as_ref())
             && *self.parent_query_index.read().unwrap() == *other.parent_query_index.read().unwrap()
             && self.symbol_type == other.symbol_type
