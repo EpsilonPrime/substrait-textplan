@@ -292,7 +292,16 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                         }
                     }
                 } else {
-                    // Not a root symbol - add as regular Rel
+                    // Not a root symbol - check if it's a subquery relation
+                    // Subquery relations should NOT be output as top-level PlanRels
+                    // They only exist embedded within their parent relation's expressions
+                    if symbol.parent_query_index() >= 0 {
+                        println!("  Skipping subquery relation '{}' (parent_query_index={})",
+                            symbol.name(), symbol.parent_query_index());
+                        continue;
+                    }
+
+                    // Add as regular Rel
                     if let Some(blob_lock) = &symbol.blob {
                         if let Ok(blob_data) = blob_lock.lock() {
                             if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
@@ -848,10 +857,154 @@ fn add_inputs_to_relation(
 /// The binary representation of the plan.
 pub fn save_to_binary(symbol_table: &SymbolTable) -> Result<Vec<u8>, TextPlanError> {
     // Create the plan from the symbol table
-    let plan = create_plan_from_symbol_table(symbol_table)?;
+    let mut plan = create_plan_from_symbol_table(symbol_table)?;
+
+    // Populate subquery relations from the symbol tree
+    populate_subquery_relations(&mut plan, symbol_table)?;
 
     // Serialize the plan to bytes
     serialize_plan_to_binary(&plan)
+}
+
+/// Populates subquery relations in expressions by building them from the symbol tree.
+///
+/// This function walks through all expressions in the plan and fills in subquery relations
+/// that were left as None during parsing. It builds them from the symbol tree using
+/// add_inputs_to_relation, ensuring inputs come from pipeline connections rather than
+/// copied protobufs.
+fn populate_subquery_relations(plan: &mut Plan, symbol_table: &SymbolTable) -> Result<(), TextPlanError> {
+    println!("DEBUG: Populating subquery relations from symbol tree");
+
+    // Walk through all plan relations
+    for plan_rel in &mut plan.relations {
+        if let Some(plan_rel::RelType::Root(root)) = &mut plan_rel.rel_type {
+            if let Some(input) = &mut root.input {
+                populate_subquery_in_rel(input, symbol_table)?;
+            }
+        } else if let Some(plan_rel::RelType::Rel(rel)) = &mut plan_rel.rel_type {
+            populate_subquery_in_rel(rel, symbol_table)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Recursively populates subquery relations in a Rel and its nested expressions.
+fn populate_subquery_in_rel(rel: &mut Rel, symbol_table: &SymbolTable) -> Result<(), TextPlanError> {
+    use substrait::proto::rel::RelType;
+
+    match &mut rel.rel_type {
+        Some(RelType::Filter(filter)) => {
+            if let Some(condition) = &mut filter.condition {
+                populate_subquery_in_expression(condition, symbol_table)?;
+            }
+            if let Some(input) = &mut filter.input {
+                populate_subquery_in_rel(input, symbol_table)?;
+            }
+        }
+        Some(RelType::Project(project)) => {
+            for expr in &mut project.expressions {
+                populate_subquery_in_expression(expr, symbol_table)?;
+            }
+            if let Some(input) = &mut project.input {
+                populate_subquery_in_rel(input, symbol_table)?;
+            }
+        }
+        Some(RelType::Join(join)) => {
+            if let Some(expr) = &mut join.expression {
+                populate_subquery_in_expression(expr, symbol_table)?;
+            }
+            if let Some(left) = &mut join.left {
+                populate_subquery_in_rel(left, symbol_table)?;
+            }
+            if let Some(right) = &mut join.right {
+                populate_subquery_in_rel(right, symbol_table)?;
+            }
+        }
+        Some(RelType::Read(_)) => {
+            // Read has no inputs or expressions with subqueries
+        }
+        // Add other relation types as needed
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// Populates subquery relations in an expression.
+fn populate_subquery_in_expression(expr: &mut substrait::proto::Expression, symbol_table: &SymbolTable) -> Result<(), TextPlanError> {
+    use substrait::proto::expression::{RexType, subquery::SubqueryType};
+
+    match &mut expr.rex_type {
+        Some(RexType::Subquery(subquery)) => {
+            // Check if the subquery relation needs to be populated
+            match &mut subquery.subquery_type {
+                Some(SubqueryType::SetComparison(set_comp)) => {
+                    if set_comp.right.is_none() {
+                        // Find all subquery relations in the symbol table and build the appropriate one
+                        println!("      Found SetComparison subquery with None right field, populating...");
+
+                        // Find the subquery relation (it should have parent_query_index >= 0)
+                        for symbol in symbol_table.symbols() {
+                            if symbol.symbol_type() == SymbolType::Relation && symbol.parent_query_index() >= 0 {
+                                println!("        Building subquery relation '{}'", symbol.name());
+
+                                // Build the Rel from the symbol tree
+                                if let Some(blob_lock) = &symbol.blob {
+                                    if let Ok(blob_data) = blob_lock.lock() {
+                                        if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                                            let mut subquery_rel = relation_data.relation.clone();
+                                            drop(blob_data); // Drop lock before recursing
+
+                                            // Populate inputs from symbol tree
+                                            let mut visited = HashSet::new();
+                                            add_inputs_to_relation(symbol_table, &symbol, &mut subquery_rel, &mut visited)?;
+
+                                            set_comp.right = Some(Box::new(subquery_rel));
+                                            println!("        Successfully populated subquery relation");
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Recursively handle left expression
+                    if let Some(left) = &mut set_comp.left {
+                        populate_subquery_in_expression(left, symbol_table)?;
+                    }
+                }
+                Some(SubqueryType::Scalar(scalar)) => {
+                    if scalar.input.is_none() {
+                        // TODO: Implement scalar subquery population
+                    }
+                }
+                Some(SubqueryType::InPredicate(in_pred)) => {
+                    if in_pred.haystack.is_none() {
+                        // TODO: Implement IN predicate subquery population
+                    }
+                }
+                Some(SubqueryType::SetPredicate(set_pred)) => {
+                    if set_pred.tuples.is_none() {
+                        // TODO: Implement set predicate subquery population
+                    }
+                }
+                None => {}
+            }
+        }
+        Some(RexType::ScalarFunction(func)) => {
+            // Recursively handle function arguments
+            for arg in &mut func.arguments {
+                if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) = &mut arg.arg_type {
+                    populate_subquery_in_expression(inner_expr, symbol_table)?;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 /// Serializes a Plan to binary protobuf using prost.

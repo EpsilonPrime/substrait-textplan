@@ -2371,26 +2371,23 @@ impl<'input> RelationVisitor<'input> {
         println!("    Set comparison subquery: left={:?}, comp_op={}, reduction_op={}, relation={}",
             left_expr.is_some(), comparison_op, reduction_op, relation_name);
 
-        // Look up the subquery relation in the symbol table
-        let right_rel = if let Some(rel_symbol) = self.symbol_table().lookup_symbol_by_name(&relation_name) {
-            // Get the Rel from the relation symbol's blob
-            if let Some(blob_lock) = &rel_symbol.blob {
-                if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
-                        Some(Box::new(relation_data.relation.clone()))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
+        // Look up the subquery relation in the symbol table and mark it as a subquery
+        if let Some(rel_symbol) = self.symbol_table().lookup_symbol_by_name(&relation_name) {
+            // Mark this relation as a subquery by setting its parent query info
+            // This will prevent it from being output as a top-level PlanRel in save_binary
+            if let Some(parent_rel) = self.current_relation_scope() {
+                println!("      Marking '{}' as subquery of '{}'", relation_name, parent_rel.name());
+                rel_symbol.set_parent_query_location(parent_rel.source_location().box_clone());
+                rel_symbol.set_parent_query_index(0);
             }
         } else {
             println!("      WARNING: Subquery relation '{}' not found", relation_name);
-            None
-        };
+        }
+
+        // NOTE: Following Rust implementation philosophy, we do NOT copy the Rel protobuf here.
+        // Instead, we leave `right` as None. Later, save_binary will build the Rel from the
+        // symbol tree using add_inputs_to_relation, ensuring inputs come from pipeline connections.
+        let right_rel = None;
 
         ::substrait::proto::Expression {
             rex_type: Some(::substrait::proto::expression::RexType::Subquery(Box::new(
