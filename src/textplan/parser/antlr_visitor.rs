@@ -652,26 +652,43 @@ impl<'input> MainPlanVisitor<'input> {
 
     /// Process a function definition and add it to the symbol table.
     fn process_function(&mut self, ctx: &FunctionContext<'input>) -> Option<Arc<SymbolInfo>> {
-        // Get the name of the function using the function context trait
-        let name = ctx.id()?.get_text();
+        // Get the function signature (e.g., "multiply:dec_dec")
+        let full_name = ctx.name()?.get_text();
+
+        // Get the alias (the name after "AS", e.g., "multiply")
+        // If no alias, use the function name before the colon
+        let alias = if let Some(id_ctx) = ctx.id() {
+            id_ctx.get_text()
+        } else {
+            // No alias - use function name before colon
+            full_name.split(':').next().unwrap_or(&full_name).to_string()
+        };
 
         // Create a location from the context's start token
-        // Get the start token directly - it's not an Option
         let token = ctx.start();
         let location = token_to_location(&token);
 
-        // Define the function in the symbol table
-        // Symbol table accessed directly via base
+        // Assign an anchor for this function (incrementing counter)
+        let anchor = self.num_functions_seen as u32;
+
+        // Create FunctionData blob
+        let function_data = crate::textplan::common::structured_symbol_data::FunctionData::new(
+            full_name.clone(),
+            None,  // extension_uri_reference will be set later if needed
+            anchor,
+        );
+        let blob = Some(Arc::new(std::sync::Mutex::new(function_data)) as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
+
+        // Define the function in the symbol table with the alias as the name
         let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
-            name,
+            alias,
             location,
             SymbolType::Function,
-            None,
-            None,
+            None,  // subtype
+            blob,  // blob
         );
 
-        // Note: Signature handling is omitted for now as it needs appropriate context access
-        // This would be implemented in a future enhancement
+        println!("  Defined function '{}' (alias '{}') with anchor {}", full_name, symbol.name(), anchor);
 
         Some(symbol)
     }
@@ -1931,6 +1948,10 @@ impl<'input> RelationVisitor<'input> {
 
         println!("    Function call: {}", function_name);
 
+        // Look up function reference from symbol table
+        let function_reference = self.lookup_function_reference(&function_name);
+        println!("      -> function reference: {}", function_reference);
+
         // Recursively build arguments
         let mut arguments = Vec::new();
         for expr in ctx.expression_all() {
@@ -1942,12 +1963,10 @@ impl<'input> RelationVisitor<'input> {
 
         println!("      with {} arguments", arguments.len());
 
-        // For now, use function_reference 0
-        // TODO: Look up actual function reference from symbol table
         ::substrait::proto::Expression {
             rex_type: Some(::substrait::proto::expression::RexType::ScalarFunction(
                 ::substrait::proto::expression::ScalarFunction {
-                    function_reference: 0,
+                    function_reference,
                     arguments,
                     output_type: None,
                     options: Vec::new(),
@@ -1955,6 +1974,30 @@ impl<'input> RelationVisitor<'input> {
                 },
             )),
         }
+    }
+
+    /// Look up the function reference (anchor) from the symbol table
+    fn lookup_function_reference(&self, function_name: &str) -> u32 {
+        // Iterate through all symbols to find functions with matching name
+        for symbol in self.symbol_table().symbols() {
+            if symbol.symbol_type() == SymbolType::Function {
+                // Get the function data from the blob
+                if let Some(blob_lock) = &symbol.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(function_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::FunctionData>() {
+                            // Check if the name matches (function_data.name is the full signature)
+                            // Match on function name part before colon (e.g., "multiply" matches "multiply:dec_dec")
+                            if function_data.name.starts_with(function_name) || function_data.name == function_name {
+                                return function_data.anchor;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Function not found - use default reference 0
+        0
     }
 }
 
@@ -2036,9 +2079,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     fn visit_relationExpression(&mut self, ctx: &RelationExpressionContext<'input>) {
         // Add expression to the current relation (should be a Project)
         // Grammar: EXPRESSION expression SEMICOLON
-        println!("visit_relationExpression called!");
         if let Some(relation_symbol) = self.current_relation_scope().cloned() {
-            println!("  Current relation: {}", relation_symbol.name());
             // Try to build actual expression from AST
             let expression = if let Some(expr_ctx) = ctx.expression() {
                 self.build_expression(&expr_ctx)
