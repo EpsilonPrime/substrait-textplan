@@ -10,9 +10,9 @@ use std::sync::Arc;
 
 use antlr_rust::parser_rule_context::ParserRuleContext;
 use antlr_rust::rule_context::RuleContext;
-use antlr_rust::TidExt;
 use antlr_rust::token::{GenericToken, Token};
 use antlr_rust::tree::{ParseTree, ParseTreeVisitor};
+use antlr_rust::TidExt;
 
 use crate::textplan::common::structured_symbol_data::RelationData;
 use crate::textplan::common::text_location::TextLocation;
@@ -562,7 +562,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for TypeVisitor<'input> {
 pub struct MainPlanVisitor<'input> {
     type_visitor: TypeVisitor<'input>,
     current_relation_scope: Option<Arc<SymbolInfo>>, // Use actual SymbolInfo
-    current_source_scope: Option<Arc<SymbolInfo>>, // Track current source being processed
+    current_source_scope: Option<Arc<SymbolInfo>>,   // Track current source being processed
     num_spaces_seen: i32,
     num_functions_seen: i32,
 }
@@ -1400,9 +1400,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
                 // Check if parent is a pipeline by checking rule index
                 if parent_ctx.get_rule_index() == RULE_pipeline {
                     // Try to downcast parent to PipelineContext
-                    if let Some(parent_pipeline) = parent_ctx
-                        .downcast_ref::<PipelineContext>()
-                    {
+                    if let Some(parent_pipeline) = parent_ctx.downcast_ref::<PipelineContext>() {
                         // Parent is a pipeline, get the relation name from it
                         if let Some(parent_ref) = parent_pipeline.relation_ref() {
                             if let Some(parent_id) = parent_ref.id(0) {
@@ -1434,10 +1432,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
                 if let Ok(left_data) = left_blob.lock() {
                     if let Some(left_rel_data) = left_data.downcast_ref::<RelationData>() {
                         // Left is a Relation, use its pipeline_start (or left itself if it's the start)
-                        left_rel_data
-                            .pipeline_start
-                            .clone()
-                            .or(Some(left.clone()))
+                        left_rel_data.pipeline_start.clone().or(Some(left.clone()))
                     } else {
                         // Left has blob but not RelationData, we are the start
                         Some(symbol.clone())
@@ -1685,7 +1680,13 @@ impl<'input> RelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the constant in the symbol table
-        let symbol = self.symbol_table_mut().define_symbol(value.to_string(), location, SymbolType::Field, None, None);
+        let symbol = self.symbol_table_mut().define_symbol(
+            value.to_string(),
+            location,
+            SymbolType::Field,
+            None,
+            None,
+        );
 
         Some(symbol)
     }
@@ -1706,7 +1707,13 @@ impl<'input> RelationVisitor<'input> {
         let location = token_to_location(&token);
 
         // Define the column in the symbol table
-        let symbol = self.symbol_table_mut().define_symbol(name.to_string(), location, SymbolType::Field, None, None);
+        let symbol = self.symbol_table_mut().define_symbol(
+            name.to_string(),
+            location,
+            SymbolType::Field,
+            None,
+            None,
+        );
 
         Some(symbol)
     }
@@ -1726,12 +1733,12 @@ impl<'input> RelationVisitor<'input> {
 
         // Define the function call in the symbol table
         let symbol = self.symbol_table_mut().define_symbol(
-                function_name.to_string(),
-                location,
-                SymbolType::Function,
-                None,
-                None,
-            );
+            function_name.to_string(),
+            location,
+            SymbolType::Function,
+            None,
+            None,
+        );
 
         Some(symbol)
     }
@@ -1821,10 +1828,12 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
             let placeholder_expr = ::substrait::proto::Expression {
                 rex_type: Some(::substrait::proto::expression::RexType::Literal(
                     ::substrait::proto::expression::Literal {
-                        literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(0)),
+                        literal_type: Some(
+                            ::substrait::proto::expression::literal::LiteralType::I64(0),
+                        ),
                         nullable: false,
                         type_variation_reference: 0,
-                    }
+                    },
                 )),
             };
 
@@ -1924,7 +1933,9 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
             if let Some(source_ref_ctx) = ctx.source_reference() {
                 if let Some(source_id) = source_ref_ctx.id() {
                     let source_name = source_id.get_text();
-                    if let Some(source_symbol) = self.symbol_table.lookup_symbol_by_name(&source_name) {
+                    if let Some(source_symbol) =
+                        self.symbol_table.lookup_symbol_by_name(&source_name)
+                    {
                         // Set the source reference in the relation's RelationData
                         if let Some(blob_lock) = &relation_symbol.blob {
                             if let Ok(mut blob_data) = blob_lock.lock() {
@@ -2046,12 +2057,12 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
         // Define the subquery in the symbol table
         let symbol = self.symbol_table_mut().define_symbol(
-                "scalar_subquery".to_string(),
-                location,
-                SymbolType::Relation,
-                None,
-                None,
-            );
+            "scalar_subquery".to_string(),
+            location,
+            SymbolType::Relation,
+            None,
+            None,
+        );
 
         Some(symbol)
     }
@@ -2068,12 +2079,12 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
         // Define the subquery in the symbol table
         let symbol = self.symbol_table_mut().define_symbol(
-                "set_comparison_subquery".to_string(),
-                location,
-                SymbolType::Relation,
-                None,
-                None,
-            );
+            "set_comparison_subquery".to_string(),
+            location,
+            SymbolType::Relation,
+            None,
+            None,
+        );
 
         Some(symbol)
     }
@@ -2090,12 +2101,12 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
         // Define the subquery in the symbol table
         let symbol = self.symbol_table_mut().define_symbol(
-                "in_predicate_subquery".to_string(),
-                location,
-                SymbolType::Relation,
-                None,
-                None,
-            );
+            "in_predicate_subquery".to_string(),
+            location,
+            SymbolType::Relation,
+            None,
+            None,
+        );
 
         Some(symbol)
     }
@@ -2112,12 +2123,12 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
         // Define the subquery in the symbol table
         let symbol = self.symbol_table_mut().define_symbol(
-                "set_predicate_subquery".to_string(),
-                location,
-                SymbolType::Relation,
-                None,
-                None,
-            );
+            "set_predicate_subquery".to_string(),
+            location,
+            SymbolType::Relation,
+            None,
+            None,
+        );
 
         Some(symbol)
     }
