@@ -2057,23 +2057,43 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     }
 
     fn visit_relationFilter(&mut self, ctx: &RelationFilterContext<'input>) {
-        // Process the filter relation
-        if let Some(filter_symbol) = self.process_filter_relation(ctx) {
-            // Save the current relation scope
-            let old_scope = self.current_relation_scope().cloned();
+        // Add filter condition to the current relation (should be a Filter)
+        // Grammar: relation_filter_behavior? FILTER expression SEMICOLON
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            // Build the filter condition expression from AST
+            let condition = if let Some(expr_ctx) = ctx.expression() {
+                self.build_expression(&expr_ctx)
+            } else {
+                // No expression - use placeholder
+                ::substrait::proto::Expression {
+                    rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                        ::substrait::proto::expression::Literal {
+                            literal_type: Some(
+                                ::substrait::proto::expression::literal::LiteralType::Boolean(true),
+                            ),
+                            nullable: false,
+                            type_variation_reference: 0,
+                        },
+                    )),
+                }
+            };
 
-            // Set the filter relation as the current scope
-            self.set_current_relation_scope(Some(filter_symbol));
-
-            // Visit children
-            self.visit_children(ctx);
-
-            // Restore the old scope
-            self.set_current_relation_scope(old_scope);
-        } else {
-            // Just visit children
-            self.visit_children(ctx);
+            // Add the condition to the FilterRel
+            if let Some(blob_lock) = &relation_symbol.blob {
+                if let Ok(mut blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                        // Get mutable access to the Rel
+                        if let Some(::substrait::proto::rel::RelType::Filter(ref mut filter_rel)) = relation_data.relation.rel_type {
+                            filter_rel.condition = Some(Box::new(condition));
+                            println!("  Added filter condition to filter relation '{}'", relation_symbol.name());
+                        }
+                    }
+                }
+            }
         }
+
+        // Visit children to process any nested expressions
+        self.visit_children(ctx);
     }
 
     fn visit_relationExpression(&mut self, ctx: &RelationExpressionContext<'input>) {
