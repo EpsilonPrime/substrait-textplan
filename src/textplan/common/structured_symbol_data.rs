@@ -107,6 +107,10 @@ impl ExtensionSpaceData {
     pub(crate) fn new(anchor_reference: u32) -> Self {
         ExtensionSpaceData { anchor_reference }
     }
+
+    pub fn anchor_reference(&self) -> u32 {
+        self.anchor_reference
+    }
 }
 
 // Used by Function symbols to keep track of the name and assigned anchors.

@@ -20,6 +20,9 @@ use std::sync::Arc;
 ///
 /// The Plan protobuf representation.
 pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan, TextPlanError> {
+    use crate::textplan::common::structured_symbol_data::{ExtensionSpaceData, FunctionData};
+    use std::collections::HashMap;
+
     // Create a plan with the appropriate version
     let mut plan = Plan {
         version: Some(::substrait::proto::Version {
@@ -38,6 +41,67 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
         parameter_bindings: Vec::new(),
         type_aliases: Vec::new(),
     };
+
+    // Build extension_uris and extensions from symbol table
+    // Collect extension spaces (URIs) and functions
+    let mut extension_spaces: HashMap<u32, String> = HashMap::new();
+    let mut functions: Vec<(String, Option<u32>, u32)> = Vec::new();
+
+    for symbol in symbol_table.symbols() {
+        match symbol.symbol_type() {
+            SymbolType::ExtensionSpace => {
+                // Extract extension URI and anchor
+                if let Some(blob_lock) = &symbol.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(ext_data) = blob_data.downcast_ref::<ExtensionSpaceData>() {
+                            extension_spaces.insert(ext_data.anchor_reference(), symbol.name().to_string());
+                        }
+                    }
+                }
+            }
+            SymbolType::Function => {
+                // Extract function name, extension_uri_reference, and anchor
+                if let Some(blob_lock) = &symbol.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(func_data) = blob_data.downcast_ref::<FunctionData>() {
+                            functions.push((
+                                func_data.name.clone(),
+                                func_data.extension_uri_reference,
+                                func_data.anchor,
+                            ));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Build extension_uris vector from collected extension spaces
+    for (anchor, uri) in extension_spaces.iter() {
+        plan.extension_uris.push(::substrait::proto::extensions::SimpleExtensionUri {
+            extension_uri_anchor: *anchor,
+            uri: uri.clone(),
+        });
+    }
+
+    // Build extensions vector from collected functions
+    for (name, extension_uri_ref, function_anchor) in functions {
+        plan.extensions.push(::substrait::proto::extensions::SimpleExtensionDeclaration {
+            mapping_type: Some(
+                ::substrait::proto::extensions::simple_extension_declaration::MappingType::ExtensionFunction(
+                    ::substrait::proto::extensions::simple_extension_declaration::ExtensionFunction {
+                        extension_uri_reference: extension_uri_ref.unwrap_or(0),
+                        extension_urn_reference: 0,  // Not used in textplan
+                        function_anchor,
+                        name,
+                    },
+                ),
+            ),
+        });
+    }
+
+    println!("Built {} extension URIs and {} extensions", plan.extension_uris.len(), plan.extensions.len());
 
     // Find the root symbol if present
     let mut root_names = Vec::new();

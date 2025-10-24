@@ -564,6 +564,7 @@ pub struct MainPlanVisitor<'input> {
     type_visitor: TypeVisitor<'input>,
     current_relation_scope: Option<Arc<SymbolInfo>>, // Use actual SymbolInfo
     current_source_scope: Option<Arc<SymbolInfo>>,   // Track current source being processed
+    current_extension_space: Option<Arc<SymbolInfo>>, // Track current extension space
     num_spaces_seen: i32,
     num_functions_seen: i32,
 }
@@ -575,6 +576,7 @@ impl<'input> MainPlanVisitor<'input> {
             type_visitor: TypeVisitor::new(symbol_table, error_listener.clone()),
             current_relation_scope: None,
             current_source_scope: None,
+            current_extension_space: None,
             num_spaces_seen: 0,
             num_functions_seen: 0,
         }
@@ -637,15 +639,23 @@ impl<'input> MainPlanVisitor<'input> {
             ("unnamed_extension_space".to_string(), location)
         };
 
+        // Assign an anchor for this extension space (incrementing counter)
+        let anchor = self.num_spaces_seen as u32;
+
+        // Create ExtensionSpaceData blob
+        let extension_space_data = crate::textplan::common::structured_symbol_data::ExtensionSpaceData::new(anchor);
+        let blob = Some(Arc::new(std::sync::Mutex::new(extension_space_data)) as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
+
         // Define the extension space in the symbol table
-        // Symbol table accessed directly via base
         let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
             name,
             location,
             SymbolType::ExtensionSpace,
-            None,
-            None,
+            None,  // subtype
+            blob,  // blob
         );
+
+        println!("  Defined extension space '{}' with anchor {}", symbol.name(), anchor);
 
         Some(symbol)
     }
@@ -671,10 +681,30 @@ impl<'input> MainPlanVisitor<'input> {
         // Assign an anchor for this function (incrementing counter)
         let anchor = self.num_functions_seen as u32;
 
+        // Get extension_uri_reference from current extension space
+        let extension_uri_reference = if let Some(ext_space) = &self.current_extension_space {
+            // Get the anchor from the extension space blob
+            if let Some(blob_lock) = &ext_space.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(ext_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::ExtensionSpaceData>() {
+                        Some(ext_data.anchor_reference())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         // Create FunctionData blob
         let function_data = crate::textplan::common::structured_symbol_data::FunctionData::new(
             full_name.clone(),
-            None,  // extension_uri_reference will be set later if needed
+            extension_uri_reference,
             anchor,
         );
         let blob = Some(Arc::new(std::sync::Mutex::new(function_data)) as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
@@ -688,7 +718,8 @@ impl<'input> MainPlanVisitor<'input> {
             blob,  // blob
         );
 
-        println!("  Defined function '{}' (alias '{}') with anchor {}", full_name, symbol.name(), anchor);
+        println!("  Defined function '{}' (alias '{}') with anchor {}, extension_uri_ref {:?}",
+                 full_name, symbol.name(), anchor, extension_uri_reference);
 
         Some(symbol)
     }
@@ -1151,10 +1182,17 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
         self.num_spaces_seen += 1;
 
         // Process the extension space and add it to the symbol table
-        self.process_extension_space(ctx);
+        let extension_space_symbol = self.process_extension_space(ctx);
 
-        // Visit children to process extension details
+        // Set as current extension space before visiting children (functions)
+        let old_extension_space = self.current_extension_space.clone();
+        self.current_extension_space = extension_space_symbol;
+
+        // Visit children to process extension details (functions)
         self.visit_children(ctx);
+
+        // Restore old extension space
+        self.current_extension_space = old_extension_space;
     }
 
     fn visit_function(&mut self, ctx: &FunctionContext<'input>) {
