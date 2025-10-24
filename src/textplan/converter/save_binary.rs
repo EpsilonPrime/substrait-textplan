@@ -429,10 +429,13 @@ fn count_relation_output_fields(rel: &::substrait::proto::Rel) -> usize {
                 // Need to recursively count, but for now use placeholder
                 25 // LINEITEM (16) + PART (9) = 25
             }
-            ::substrait::proto::rel::RelType::Filter(_) => {
-                // Filter passes through all input fields
-                // Need to recursively count
-                25 // Placeholder
+            ::substrait::proto::rel::RelType::Filter(filter_rel) => {
+                // Filter passes through all input fields from its input
+                if let Some(input) = &filter_rel.input {
+                    count_relation_output_fields(input)
+                } else {
+                    0
+                }
             }
             ::substrait::proto::rel::RelType::Project(proj) => {
                 // Project outputs based on emit mapping or expressions
@@ -440,18 +443,36 @@ fn count_relation_output_fields(rel: &::substrait::proto::Rel) -> usize {
                     if let Some(emit_kind) = &common.emit_kind {
                         match emit_kind {
                             ::substrait::proto::rel_common::EmitKind::Emit(emit) => {
+                                // Emit specifies exactly which fields to output
                                 emit.output_mapping.len()
                             }
                             ::substrait::proto::rel_common::EmitKind::Direct(_) => {
-                                // Direct emission outputs all expressions
-                                proj.expressions.len()
+                                // Direct emission outputs all input fields plus all expressions
+                                let input_count = if let Some(input) = &proj.input {
+                                    count_relation_output_fields(input)
+                                } else {
+                                    0
+                                };
+                                input_count + proj.expressions.len()
                             }
                         }
                     } else {
-                        proj.expressions.len()
+                        // No emit specified - output all input fields plus expressions
+                        let input_count = if let Some(input) = &proj.input {
+                            count_relation_output_fields(input)
+                        } else {
+                            0
+                        };
+                        input_count + proj.expressions.len()
                     }
                 } else {
-                    proj.expressions.len()
+                    // No common - output all input fields plus expressions
+                    let input_count = if let Some(input) = &proj.input {
+                        count_relation_output_fields(input)
+                    } else {
+                        0
+                    };
+                    input_count + proj.expressions.len()
                 }
             }
             ::substrait::proto::rel::RelType::Aggregate(agg) => {
