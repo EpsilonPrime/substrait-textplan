@@ -2294,13 +2294,12 @@ impl<'input> RelationVisitor<'input> {
         // Iterate through all symbols to find functions with matching name
         for symbol in self.symbol_table().symbols() {
             if symbol.symbol_type() == SymbolType::Function {
-                // Get the function data from the blob
-                if let Some(blob_lock) = &symbol.blob {
-                    if let Ok(blob_data) = blob_lock.lock() {
-                        if let Some(function_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::FunctionData>() {
-                            // Check if the name matches (function_data.name is the full signature)
-                            // Match on function name part before colon (e.g., "multiply" matches "multiply:dec_dec")
-                            if function_data.name.starts_with(function_name) || function_data.name == function_name {
+                // Check if the symbol name (alias) matches what we're looking for
+                if symbol.name() == function_name {
+                    // Get the function data from the blob to get the anchor
+                    if let Some(blob_lock) = &symbol.blob {
+                        if let Ok(blob_data) = blob_lock.lock() {
+                            if let Some(function_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::FunctionData>() {
                                 return function_data.anchor;
                             }
                         }
