@@ -1886,6 +1886,22 @@ impl<'input> RelationVisitor<'input> {
                     )),
                 }
             }
+            ExpressionContextAll::ExpressionSetComparisonSubqueryContext(ctx) => {
+                println!("  Building set comparison subquery expression");
+                self.build_set_comparison_subquery(ctx)
+            }
+            ExpressionContextAll::ExpressionScalarSubqueryContext(ctx) => {
+                println!("  Building scalar subquery expression");
+                self.build_scalar_subquery(ctx)
+            }
+            ExpressionContextAll::ExpressionInPredicateSubqueryContext(ctx) => {
+                println!("  Building IN predicate subquery expression");
+                self.build_in_predicate_subquery(ctx)
+            }
+            ExpressionContextAll::ExpressionSetPredicateSubqueryContext(ctx) => {
+                println!("  Building set predicate subquery expression");
+                self.build_set_predicate_subquery(ctx)
+            }
             _ => {
                 println!("  Building unknown expression type (placeholder)");
                 ::substrait::proto::Expression {
@@ -2310,6 +2326,146 @@ impl<'input> RelationVisitor<'input> {
 
         // Function not found - use default reference 0
         0
+    }
+
+    /// Build a set comparison subquery expression (e.g., expression LT ANY SUBQUERY relation)
+    fn build_set_comparison_subquery(
+        &mut self,
+        ctx: &ExpressionSetComparisonSubqueryContext<'input>,
+    ) -> ::substrait::proto::Expression {
+        use ::substrait::proto::expression::subquery::set_comparison::{ComparisonOp, ReductionOp};
+
+        // Extract left expression
+        let left_expr = if let Some(expr) = ctx.expression() {
+            Some(Box::new(self.build_expression(&expr)))
+        } else {
+            None
+        };
+
+        // Extract comparison operator
+        let comp_op_text = ctx.COMPARISON().map(|t| t.get_text().to_uppercase()).unwrap_or_default();
+        let comparison_op = match comp_op_text.as_str() {
+            "LT" | "<" => ComparisonOp::Lt as i32,
+            "GT" | ">" => ComparisonOp::Gt as i32,
+            "EQ" | "=" | "==" => ComparisonOp::Eq as i32,
+            "NE" | "!=" | "<>" => ComparisonOp::Ne as i32,
+            "LE" | "<=" => ComparisonOp::Le as i32,
+            "GE" | ">=" => ComparisonOp::Ge as i32,
+            _ => ComparisonOp::Unspecified as i32,
+        };
+
+        // Extract reduction operator (ANY or ALL)
+        let reduction_op = if ctx.ANY().is_some() {
+            ReductionOp::Any as i32
+        } else if ctx.ALL().is_some() {
+            ReductionOp::All as i32
+        } else {
+            ReductionOp::Unspecified as i32
+        };
+
+        // Extract subquery relation reference
+        let relation_name = ctx.relation_ref()
+            .map(|r| r.get_text())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        println!("    Set comparison subquery: left={:?}, comp_op={}, reduction_op={}, relation={}",
+            left_expr.is_some(), comparison_op, reduction_op, relation_name);
+
+        // Look up the subquery relation in the symbol table
+        let right_rel = if let Some(rel_symbol) = self.symbol_table().lookup_symbol_by_name(&relation_name) {
+            // Get the Rel from the relation symbol's blob
+            if let Some(blob_lock) = &rel_symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                        Some(Box::new(relation_data.relation.clone()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            println!("      WARNING: Subquery relation '{}' not found", relation_name);
+            None
+        };
+
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::Subquery(Box::new(
+                ::substrait::proto::expression::Subquery {
+                    subquery_type: Some(::substrait::proto::expression::subquery::SubqueryType::SetComparison(Box::new(
+                        ::substrait::proto::expression::subquery::SetComparison {
+                            left: left_expr,
+                            comparison_op,
+                            reduction_op,
+                            right: right_rel,
+                        },
+                    ))),
+                },
+            ))),
+        }
+    }
+
+    /// Build a scalar subquery expression (e.g., SUBQUERY relation)
+    fn build_scalar_subquery(
+        &mut self,
+        _ctx: &ExpressionScalarSubqueryContext<'input>,
+    ) -> ::substrait::proto::Expression {
+        println!("    Scalar subquery: TODO - not implemented");
+        // TODO: Implement scalar subquery
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                ::substrait::proto::expression::Literal {
+                    literal_type: Some(
+                        ::substrait::proto::expression::literal::LiteralType::I64(0),
+                    ),
+                    nullable: false,
+                    type_variation_reference: 0,
+                },
+            )),
+        }
+    }
+
+    /// Build an IN predicate subquery expression (e.g., expression_list IN SUBQUERY relation)
+    fn build_in_predicate_subquery(
+        &mut self,
+        _ctx: &ExpressionInPredicateSubqueryContext<'input>,
+    ) -> ::substrait::proto::Expression {
+        println!("    IN predicate subquery: TODO - not implemented");
+        // TODO: Implement IN predicate subquery
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                ::substrait::proto::expression::Literal {
+                    literal_type: Some(
+                        ::substrait::proto::expression::literal::LiteralType::I64(0),
+                    ),
+                    nullable: false,
+                    type_variation_reference: 0,
+                },
+            )),
+        }
+    }
+
+    /// Build a set predicate subquery expression (e.g., EXISTS IN SUBQUERY relation)
+    fn build_set_predicate_subquery(
+        &mut self,
+        _ctx: &ExpressionSetPredicateSubqueryContext<'input>,
+    ) -> ::substrait::proto::Expression {
+        println!("    Set predicate subquery: TODO - not implemented");
+        // TODO: Implement set predicate subquery
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                ::substrait::proto::expression::Literal {
+                    literal_type: Some(
+                        ::substrait::proto::expression::literal::LiteralType::I64(0),
+                    ),
+                    nullable: false,
+                    type_variation_reference: 0,
+                },
+            )),
+        }
     }
 }
 

@@ -7,6 +7,7 @@
 //! visitors for different stages of plan processing.
 
 use crate::textplan::common::error::TextPlanError;
+use crate::textplan::common::location::Location;
 use crate::textplan::common::structured_symbol_data::ExtensionSpaceData;
 use crate::textplan::common::structured_symbol_data::FunctionData;
 use crate::textplan::common::structured_symbol_data::RelationData;
@@ -32,6 +33,9 @@ pub struct InitialPlanVisitor {
 
     /// Current relation context for scope resolution
     current_relation_scope: Vec<Arc<String>>,
+
+    /// Stack of ProtoLocations for current relations, used for parent_query tracking
+    current_relation_locations: Vec<ProtoLocation>,
 
     internal_location: ProtoLocation,
 
@@ -94,6 +98,7 @@ impl InitialPlanVisitor {
         Self {
             symbol_table,
             current_relation_scope: Vec::new(),
+            current_relation_locations: Vec::new(),
             internal_location: ProtoLocation::default(),
             read_relation_sources: HashMap::new(),
             read_relation_schemas: HashMap::new(),
@@ -737,9 +742,13 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                         &rel_location,
                         SymbolType::Relation,
                     ) {
-                        // Set the parent query location to the current expression's location
-                        let parent_location = self.current_location().clone();
-                        self.symbol_table.set_parent_query_location(&symbol, parent_location);
+                        // Set the parent query location to the current relation's location
+                        // We stored the actual ProtoLocation in current_relation_locations
+                        if let Some(parent_rel_location) = self.current_relation_locations.last() {
+                            println!("DEBUG INIT: Setting parent_query_location for '{}' to hash {}",
+                                symbol.name(), parent_rel_location.location_hash());
+                            self.symbol_table.set_parent_query_location(&symbol, parent_rel_location.box_clone());
+                        }
 
                         // Set the index for this subquery within its parent (0 for now)
                         // TODO: track multiple subqueries properly with incrementing indices
@@ -752,8 +761,12 @@ impl PlanProtoVisitor for InitialPlanVisitor {
     }
 
     fn pre_process_rel(&mut self, obj: &substrait::Rel) {
+        let location_path = self.current_location().path_string();
+        println!("DEBUG INIT: pre_process_rel pushing path: '{}'", location_path);
         self.current_relation_scope
-            .push(Arc::new(self.current_location().path_string()));
+            .push(Arc::new(location_path));
+        self.current_relation_locations
+            .push(self.current_location().clone());
     }
 
     fn post_process_rel(&mut self, obj: &substrait::Rel) {
@@ -789,6 +802,7 @@ impl PlanProtoVisitor for InitialPlanVisitor {
         );
 
         self.current_relation_scope.pop();
+        self.current_relation_locations.pop();
     }
 
     fn post_process_rel_root(&mut self, obj: &substrait::RelRoot) {

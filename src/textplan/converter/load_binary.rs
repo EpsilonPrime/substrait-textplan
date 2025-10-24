@@ -118,12 +118,26 @@ pub fn process_plan_with_visitor(plan: &substrait::proto::Plan) -> Result<String
     visitor1.visit_plan(plan);
     // MEGAHACK -- Check for errors.
 
+    println!("DEBUG: After InitialPlanVisitor, symbol table has {} symbols", visitor1.symbol_table().len());
+    for symbol in visitor1.symbol_table().symbols() {
+        if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
+            println!("  - {} (type: {:?}, location: {:?})", symbol.name(), symbol.symbol_type(), symbol.source_location());
+        } else {
+            println!("  - {} (type: {:?})", symbol.name(), symbol.symbol_type());
+        }
+    }
+
     // Create a pipeline visitor with the symbol table
     let mut visitor = PipelineVisitor::new(visitor1.symbol_table_mut().clone());
 
     // Visit the plan to build the symbol table
     visitor.visit_plan(plan);
     // MEGAHACK -- Check for errors.
+
+    println!("DEBUG: After PipelineVisitor, symbol table has {} symbols", visitor.symbol_table().len());
+    for symbol in visitor.symbol_table().symbols() {
+        println!("  - {} (type: {:?})", symbol.name(), symbol.symbol_type());
+    }
 
     // Get the populated symbol table from the visitor
     let symbol_table = visitor.symbol_table().clone();
