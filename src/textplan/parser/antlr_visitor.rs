@@ -643,19 +643,25 @@ impl<'input> MainPlanVisitor<'input> {
         let anchor = self.num_spaces_seen as u32;
 
         // Create ExtensionSpaceData blob
-        let extension_space_data = crate::textplan::common::structured_symbol_data::ExtensionSpaceData::new(anchor);
-        let blob = Some(Arc::new(std::sync::Mutex::new(extension_space_data)) as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
+        let extension_space_data =
+            crate::textplan::common::structured_symbol_data::ExtensionSpaceData::new(anchor);
+        let blob = Some(Arc::new(std::sync::Mutex::new(extension_space_data))
+            as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
 
         // Define the extension space in the symbol table
         let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
             name,
             location,
             SymbolType::ExtensionSpace,
-            None,  // subtype
-            blob,  // blob
+            None, // subtype
+            blob, // blob
         );
 
-        println!("  Defined extension space '{}' with anchor {}", symbol.name(), anchor);
+        println!(
+            "  Defined extension space '{}' with anchor {}",
+            symbol.name(),
+            anchor
+        );
 
         Some(symbol)
     }
@@ -671,7 +677,11 @@ impl<'input> MainPlanVisitor<'input> {
             id_ctx.get_text()
         } else {
             // No alias - use function name before colon
-            full_name.split(':').next().unwrap_or(&full_name).to_string()
+            full_name
+                .split(':')
+                .next()
+                .unwrap_or(&full_name)
+                .to_string()
         };
 
         // Create a location from the context's start token
@@ -707,19 +717,25 @@ impl<'input> MainPlanVisitor<'input> {
             extension_uri_reference,
             anchor,
         );
-        let blob = Some(Arc::new(std::sync::Mutex::new(function_data)) as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
+        let blob = Some(Arc::new(std::sync::Mutex::new(function_data))
+            as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
 
         // Define the function in the symbol table with the alias as the name
         let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
             alias,
             location,
             SymbolType::Function,
-            None,  // subtype
-            blob,  // blob
+            None, // subtype
+            blob, // blob
         );
 
-        println!("  Defined function '{}' (alias '{}') with anchor {}, extension_uri_ref {:?}",
-                 full_name, symbol.name(), anchor, extension_uri_reference);
+        println!(
+            "  Defined function '{}' (alias '{}') with anchor {}, extension_uri_ref {:?}",
+            full_name,
+            symbol.name(),
+            anchor,
+            extension_uri_reference
+        );
 
         Some(symbol)
     }
@@ -1076,7 +1092,8 @@ impl<'input> MainPlanVisitor<'input> {
         let proto_type = self.type_visitor.text_to_type_proto(ctx, &type_text);
 
         // Store the Type protobuf in the blob
-        let blob = Some(Arc::new(std::sync::Mutex::new(proto_type)) as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
+        let blob = Some(Arc::new(std::sync::Mutex::new(proto_type))
+            as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
 
         // Create a location from the context's start token
         let token = ctx.start();
@@ -1087,8 +1104,8 @@ impl<'input> MainPlanVisitor<'input> {
             name,
             location,
             SymbolType::SchemaColumn,
-            None,  // subtype
-            blob,  // blob contains the Type protobuf
+            None, // subtype
+            blob, // blob contains the Type protobuf
         );
 
         // Set the schema as the parent
@@ -1836,9 +1853,9 @@ impl<'input> RelationVisitor<'input> {
                     ::substrait::proto::Expression {
                         rex_type: Some(::substrait::proto::expression::RexType::Literal(
                             ::substrait::proto::expression::Literal {
-                                literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
-                                    0,
-                                )),
+                                literal_type: Some(
+                                    ::substrait::proto::expression::literal::LiteralType::I64(0),
+                                ),
                                 nullable: false,
                                 type_variation_reference: 0,
                             },
@@ -1860,9 +1877,9 @@ impl<'input> RelationVisitor<'input> {
                 ::substrait::proto::Expression {
                     rex_type: Some(::substrait::proto::expression::RexType::Literal(
                         ::substrait::proto::expression::Literal {
-                            literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
-                                0,
-                            )),
+                            literal_type: Some(
+                                ::substrait::proto::expression::literal::LiteralType::I64(0),
+                            ),
                             nullable: false,
                             type_variation_reference: 0,
                         },
@@ -1874,9 +1891,9 @@ impl<'input> RelationVisitor<'input> {
                 ::substrait::proto::Expression {
                     rex_type: Some(::substrait::proto::expression::RexType::Literal(
                         ::substrait::proto::expression::Literal {
-                            literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
-                                0,
-                            )),
+                            literal_type: Some(
+                                ::substrait::proto::expression::literal::LiteralType::I64(0),
+                            ),
                             nullable: false,
                             type_variation_reference: 0,
                         },
@@ -1939,7 +1956,9 @@ impl<'input> RelationVisitor<'input> {
         if !schema_name.is_empty() {
             if let Some(schema_symbol) = self.symbol_table().lookup_symbol_by_name(schema_name) {
                 // Get the field index from the schema by iterating all symbols
-                if let Some(field_index) = self.get_field_index_from_schema(&schema_symbol, field_name) {
+                if let Some(field_index) =
+                    self.get_field_index_from_schema(&schema_symbol, field_name)
+                {
                     return field_index;
                 }
             }
@@ -1960,13 +1979,20 @@ impl<'input> RelationVisitor<'input> {
             }
         }
 
-        println!("      WARNING: Field '{}' not found, defaulting to index 0", column_name);
+        println!(
+            "      WARNING: Field '{}' not found, defaulting to index 0",
+            column_name
+        );
         // Default to 0 if not found
         0
     }
 
     /// Get field index from a schema symbol by looking up the field name
-    fn get_field_index_from_schema(&self, schema_symbol: &Arc<SymbolInfo>, field_name: &str) -> Option<usize> {
+    fn get_field_index_from_schema(
+        &self,
+        schema_symbol: &Arc<SymbolInfo>,
+        field_name: &str,
+    ) -> Option<usize> {
         // Iterate through all symbols in the symbol table to find schema columns
         // that belong to this schema
         let mut index = 0;
@@ -2009,7 +2035,9 @@ impl<'input> RelationVisitor<'input> {
         for expr in ctx.expression_all() {
             let arg_expr = self.build_expression(&expr);
             arguments.push(::substrait::proto::FunctionArgument {
-                arg_type: Some(::substrait::proto::function_argument::ArgType::Value(arg_expr)),
+                arg_type: Some(::substrait::proto::function_argument::ArgType::Value(
+                    arg_expr,
+                )),
             });
         }
 
@@ -2053,7 +2081,7 @@ impl<'input> RelationVisitor<'input> {
             // Parse string literal (remove quotes)
             let string_text = string_token.get_text();
             let string_value = if string_text.starts_with('"') && string_text.ends_with('"') {
-                string_text[1..string_text.len()-1].to_string()
+                string_text[1..string_text.len() - 1].to_string()
             } else {
                 string_text.to_string()
             };
@@ -2254,7 +2282,9 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
 
                     // Wrap in FunctionArgument
                     let arg = ::substrait::proto::FunctionArgument {
-                        arg_type: Some(::substrait::proto::function_argument::ArgType::Value(measure_expr)),
+                        arg_type: Some(::substrait::proto::function_argument::ArgType::Value(
+                            measure_expr,
+                        )),
                     };
 
                     // Create the AggregateFunction with the expression

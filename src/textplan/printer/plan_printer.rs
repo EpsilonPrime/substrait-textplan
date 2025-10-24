@@ -945,8 +945,8 @@ impl PlanPrinter {
         symbol_table: &SymbolTable,
         result: &mut String,
     ) -> Result<(), TextPlanError> {
-        use std::collections::HashMap;
         use crate::textplan::common::structured_symbol_data::{ExtensionSpaceData, FunctionData};
+        use std::collections::HashMap;
 
         // Collect extension spaces by anchor
         let mut extension_spaces: HashMap<u32, String> = HashMap::new();
@@ -955,7 +955,8 @@ impl PlanPrinter {
                 if let Some(blob_lock) = &symbol.blob {
                     if let Ok(blob_data) = blob_lock.lock() {
                         if let Some(ext_data) = blob_data.downcast_ref::<ExtensionSpaceData>() {
-                            extension_spaces.insert(ext_data.anchor_reference(), symbol.name().to_string());
+                            extension_spaces
+                                .insert(ext_data.anchor_reference(), symbol.name().to_string());
                         }
                     }
                 }
@@ -997,7 +998,10 @@ impl PlanPrinter {
 
             // Get the URI string for this reference
             let uri_str = if let Some(ref_val) = uri_ref {
-                extension_spaces.get(&ref_val).map(|s| s.as_str()).unwrap_or("")
+                extension_spaces
+                    .get(&ref_val)
+                    .map(|s| s.as_str())
+                    .unwrap_or("")
             } else {
                 ""
             };

@@ -85,20 +85,48 @@ impl<'a> ExpressionPrinter<'a> {
             Some(LiteralType::String(s)) => format!("\"{}\"", escape_string(s)),
             Some(LiteralType::Binary(_)) => "BINARY_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
             Some(LiteralType::Timestamp(_)) => "TIMESTAMP_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
-            Some(LiteralType::Date(_)) => "DATE_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
-            Some(LiteralType::Time(_)) => "TIME_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
-            Some(LiteralType::IntervalYearToMonth(_)) => {
-                "INTERVAL_YEAR_TO_MONTH_NOT_YET_IMPLEMENTED".to_string()
+            Some(LiteralType::Date(days)) => format!("{}_date", days),
+            Some(LiteralType::Time(micros)) => format!("{}_time", micros),
+            Some(LiteralType::IntervalYearToMonth(interval)) => {
+                // IntervalYearToMonth has years and months fields
+                if interval.months != 0 {
+                    format!("{}_interval_year_month", interval.years * 12 + interval.months)
+                } else {
+                    format!("{}_interval_year", interval.years)
+                }
             }
-            Some(LiteralType::IntervalDayToSecond(_)) => {
-                "INTERVAL_DAY_TO_SECOND_NOT_YET_IMPLEMENTED".to_string()
+            Some(LiteralType::IntervalDayToSecond(interval)) => {
+                // IntervalDayToSecond has days, seconds, and subseconds fields
+                format!("{}_{}_{}_interval_day_second", interval.days, interval.seconds, interval.subseconds)
             }
-            Some(LiteralType::FixedChar(_)) => "FIXED_CHAR_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
-            Some(LiteralType::VarChar(_)) => "VARCHAR_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
-            Some(LiteralType::FixedBinary(_)) => {
-                "FIXED_BINARY_LITERAL_NOT_YET_IMPLEMENTED".to_string()
+            Some(LiteralType::FixedChar(s)) => format!("\"{}\"_fixedchar", escape_string(s)),
+            Some(LiteralType::VarChar(val)) => {
+                // VarChar literal has value and length fields
+                if !val.value.is_empty() {
+                    format!("\"{}\"_varchar", escape_string(&val.value))
+                } else if val.length > 0 {
+                    format!("\"\"_varchar<{}>", val.length)
+                } else {
+                    "\"\"_varchar".to_string()
+                }
             }
-            Some(LiteralType::Decimal(_)) => "DECIMAL_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
+            Some(LiteralType::FixedBinary(bytes)) => {
+                // Convert bytes to hex string manually
+                let hex_str: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+                format!("0x{}_fixedbinary", hex_str)
+            }
+            Some(LiteralType::Decimal(dec)) => {
+                // Decimal is stored as 16 bytes (little-endian two's complement)
+                // Convert to i128 and then to string
+                let mut bytes = [0u8; 16];
+                if dec.value.len() >= 16 {
+                    bytes.copy_from_slice(&dec.value[0..16]);
+                } else {
+                    bytes[..dec.value.len()].copy_from_slice(&dec.value);
+                }
+                let value = i128::from_le_bytes(bytes);
+                format!("{}_decimal<{},{}>", value, dec.precision, dec.scale)
+            }
             Some(LiteralType::Struct(_)) => "STRUCT_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
             Some(LiteralType::Map(_)) => "MAP_LITERAL_NOT_YET_IMPLEMENTED".to_string(),
             Some(LiteralType::TimestampTz(_)) => {

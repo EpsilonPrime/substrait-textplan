@@ -54,7 +54,8 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                 if let Some(blob_lock) = &symbol.blob {
                     if let Ok(blob_data) = blob_lock.lock() {
                         if let Some(ext_data) = blob_data.downcast_ref::<ExtensionSpaceData>() {
-                            extension_spaces.insert(ext_data.anchor_reference(), symbol.name().to_string());
+                            extension_spaces
+                                .insert(ext_data.anchor_reference(), symbol.name().to_string());
                         }
                     }
                 }
@@ -79,10 +80,11 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
 
     // Build extension_uris vector from collected extension spaces
     for (anchor, uri) in extension_spaces.iter() {
-        plan.extension_uris.push(::substrait::proto::extensions::SimpleExtensionUri {
-            extension_uri_anchor: *anchor,
-            uri: uri.clone(),
-        });
+        plan.extension_uris
+            .push(::substrait::proto::extensions::SimpleExtensionUri {
+                extension_uri_anchor: *anchor,
+                uri: uri.clone(),
+            });
     }
 
     // Build extensions vector from collected functions
@@ -101,7 +103,11 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
         });
     }
 
-    println!("Built {} extension URIs and {} extensions", plan.extension_uris.len(), plan.extensions.len());
+    println!(
+        "Built {} extension URIs and {} extensions",
+        plan.extension_uris.len(),
+        plan.extensions.len()
+    );
 
     // Find the root symbol if present
     let mut root_names = Vec::new();
@@ -341,7 +347,9 @@ fn populate_read_rel(
                         // Add field type from the symbol's blob
                         let field_type = if let Some(blob_lock) = &symbol.blob {
                             if let Ok(blob_data) = blob_lock.lock() {
-                                if let Some(proto_type) = blob_data.downcast_ref::<::substrait::proto::Type>() {
+                                if let Some(proto_type) =
+                                    blob_data.downcast_ref::<::substrait::proto::Type>()
+                                {
                                     proto_type.clone()
                                 } else {
                                     // Fallback to i64 if blob doesn't contain Type
@@ -360,7 +368,9 @@ fn populate_read_rel(
                                     kind: Some(::substrait::proto::r#type::Kind::I64(
                                         ::substrait::proto::r#type::I64 {
                                             type_variation_reference: 0,
-                                            nullability: ::substrait::proto::r#type::Nullability::Required as i32,
+                                            nullability:
+                                                ::substrait::proto::r#type::Nullability::Required
+                                                    as i32,
                                         },
                                     )),
                                 }
@@ -371,7 +381,8 @@ fn populate_read_rel(
                                 kind: Some(::substrait::proto::r#type::Kind::I64(
                                     ::substrait::proto::r#type::I64 {
                                         type_variation_reference: 0,
-                                        nullability: ::substrait::proto::r#type::Nullability::Required as i32,
+                                        nullability:
+                                            ::substrait::proto::r#type::Nullability::Required as i32,
                                     },
                                 )),
                             }
