@@ -1813,23 +1813,37 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     }
 
     fn visit_relationExpression(&mut self, ctx: &RelationExpressionContext<'input>) {
-        // Process the expression relation
-        if let Some(expr_symbol) = self.process_expression_relation(ctx) {
-            // Save the current relation scope
-            let old_scope = self.current_relation_scope().cloned();
+        // Add expression to the current relation (should be a Project)
+        // Grammar: EXPRESSION expression SEMICOLON
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            // For now, create a placeholder literal expression
+            // TODO: Parse the expression tree and build proper Expression protobuf
+            let placeholder_expr = ::substrait::proto::Expression {
+                rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                    ::substrait::proto::expression::Literal {
+                        literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(0)),
+                        nullable: false,
+                        type_variation_reference: 0,
+                    }
+                )),
+            };
 
-            // Set the expression relation as the current scope
-            self.set_current_relation_scope(Some(expr_symbol));
-
-            // Visit children
-            self.visit_children(ctx);
-
-            // Restore the old scope
-            self.set_current_relation_scope(old_scope);
-        } else {
-            // Just visit children
-            self.visit_children(ctx);
+            // Add the expression to the ProjectRel.expressions vector
+            if let Some(blob_lock) = &relation_symbol.blob {
+                if let Ok(mut blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                        // Get mutable access to the Rel
+                        if let Some(::substrait::proto::rel::RelType::Project(ref mut project_rel)) = relation_data.relation.rel_type {
+                            project_rel.expressions.push(placeholder_expr);
+                            println!("  Added placeholder expression to project relation '{}'", relation_symbol.name());
+                        }
+                    }
+                }
+            }
         }
+
+        // Visit children to process any nested expressions
+        self.visit_children(ctx);
     }
 
     fn visit_relationJoinType(&mut self, ctx: &RelationJoinTypeContext<'input>) {
