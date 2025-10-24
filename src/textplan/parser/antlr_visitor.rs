@@ -803,14 +803,23 @@ impl<'input> MainPlanVisitor<'input> {
                         ))),
                     },
                 ),
-                "aggregate" => (
-                    RelationType::Aggregate,
-                    Rel {
-                        rel_type: Some(RelType::Aggregate(Box::new(
-                            ::substrait::proto::AggregateRel::default(),
-                        ))),
-                    },
-                ),
+                "aggregate" => {
+                    let mut agg_rel = ::substrait::proto::AggregateRel::default();
+                    // Add empty grouping (required if no measures)
+                    #[allow(deprecated)]
+                    {
+                        agg_rel.groupings.push(::substrait::proto::aggregate_rel::Grouping {
+                            grouping_expressions: Vec::new(),
+                            expression_references: Vec::new(),
+                        });
+                    }
+                    (
+                        RelationType::Aggregate,
+                        Rel {
+                            rel_type: Some(RelType::Aggregate(Box::new(agg_rel))),
+                        },
+                    )
+                },
                 "sort" => (
                     RelationType::Sort,
                     Rel {
@@ -1852,6 +1861,38 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
         }
 
         // Visit children to process any nested expressions
+        self.visit_children(ctx);
+    }
+
+    fn visit_relationMeasure(&mut self, ctx: &RelationMeasureContext<'input>) {
+        // Add placeholder measure to the current relation (should be an Aggregate)
+        // Grammar: MEASURE LEFTBRACE measure_detail* RIGHTBRACE
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            // Count the number of measure_detail children
+            let measure_count = ctx.measure_detail_all().len();
+
+            // Add placeholder measures to the AggregateRel
+            if let Some(blob_lock) = &relation_symbol.blob {
+                if let Ok(mut blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                        // Get mutable access to the Rel
+                        if let Some(::substrait::proto::rel::RelType::Aggregate(ref mut agg_rel)) = relation_data.relation.rel_type {
+                            // Add placeholder measures
+                            for _ in 0..measure_count {
+                                let placeholder_measure = ::substrait::proto::aggregate_rel::Measure {
+                                    measure: Some(::substrait::proto::AggregateFunction::default()),
+                                    filter: None,
+                                };
+                                agg_rel.measures.push(placeholder_measure);
+                            }
+                            println!("  Added {} placeholder measures to aggregate relation '{}'", measure_count, relation_symbol.name());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Visit children to process measure details
         self.visit_children(ctx);
     }
 

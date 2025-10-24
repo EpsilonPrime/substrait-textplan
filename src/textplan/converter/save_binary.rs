@@ -458,17 +458,10 @@ fn count_relation_output_fields(rel: &::substrait::proto::Rel) -> usize {
             }
             ::substrait::proto::rel::RelType::Aggregate(agg) => {
                 // Aggregate outputs grouping keys + measures
+                #[allow(deprecated)]
                 let grouping_count = agg.groupings.first().map(|g| g.grouping_expressions.len()).unwrap_or(0);
                 let measure_count = agg.measures.len();
-                let total = grouping_count + measure_count;
-
-                // TODO: Remove this workaround once aggregates are properly populated
-                // For now, if aggregate has no measures, assume 2 (common case in tests)
-                if total == 0 {
-                    2
-                } else {
-                    total
-                }
+                grouping_count + measure_count
             }
             _ => 0, // Other relation types
         }
