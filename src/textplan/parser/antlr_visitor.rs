@@ -2096,7 +2096,25 @@ impl<'input> RelationVisitor<'input> {
                             Some(LiteralType::Time(0))
                         }
                     }
-                    "interval_year" | "interval_year_month" => {
+                    "interval_year" => {
+                        // Parse as years directly
+                        if let Ok(years) = number_text.parse::<i32>() {
+                            Some(LiteralType::IntervalYearToMonth(
+                                ::substrait::proto::expression::literal::IntervalYearToMonth {
+                                    years,
+                                    months: 0,
+                                },
+                            ))
+                        } else {
+                            Some(LiteralType::IntervalYearToMonth(
+                                ::substrait::proto::expression::literal::IntervalYearToMonth {
+                                    years: 0,
+                                    months: 0,
+                                },
+                            ))
+                        }
+                    }
+                    "interval_year_month" => {
                         // Parse as total months, convert to years/months
                         if let Ok(total_months) = number_text.parse::<i32>() {
                             let years = total_months / 12;
@@ -2105,14 +2123,14 @@ impl<'input> RelationVisitor<'input> {
                                 ::substrait::proto::expression::literal::IntervalYearToMonth {
                                     years,
                                     months,
-                                }
+                                },
                             ))
                         } else {
                             Some(LiteralType::IntervalYearToMonth(
                                 ::substrait::proto::expression::literal::IntervalYearToMonth {
                                     years: 0,
                                     months: 0,
-                                }
+                                },
                             ))
                         }
                     }
@@ -2122,29 +2140,31 @@ impl<'input> RelationVisitor<'input> {
                             let bytes = value.to_le_bytes().to_vec();
 
                             // Get precision and scale from literal_specifier if present
-                            let (precision, scale) = if let Some(spec_ctx) = type_ctx.literal_specifier() {
-                                // Parse numbers from the specifier (<precision,scale>)
-                                let numbers: Vec<i32> = spec_ctx.NUMBER_all()
-                                    .iter()
-                                    .filter_map(|n| n.get_text().parse::<i32>().ok())
-                                    .collect();
-                                if numbers.len() >= 2 {
-                                    (numbers[0], numbers[1])
-                                } else if numbers.len() == 1 {
-                                    (numbers[0], 0)
+                            let (precision, scale) =
+                                if let Some(spec_ctx) = type_ctx.literal_specifier() {
+                                    // Parse numbers from the specifier (<precision,scale>)
+                                    let numbers: Vec<i32> = spec_ctx
+                                        .NUMBER_all()
+                                        .iter()
+                                        .filter_map(|n| n.get_text().parse::<i32>().ok())
+                                        .collect();
+                                    if numbers.len() >= 2 {
+                                        (numbers[0], numbers[1])
+                                    } else if numbers.len() == 1 {
+                                        (numbers[0], 0)
+                                    } else {
+                                        (38, 0)
+                                    }
                                 } else {
-                                    (38, 0)
-                                }
-                            } else {
-                                (38, 0) // Default precision and scale
-                            };
+                                    (38, 0) // Default precision and scale
+                                };
 
                             Some(LiteralType::Decimal(
                                 ::substrait::proto::expression::literal::Decimal {
                                     value: bytes,
                                     precision,
                                     scale,
-                                }
+                                },
                             ))
                         } else {
                             Some(LiteralType::Decimal(
@@ -2152,7 +2172,7 @@ impl<'input> RelationVisitor<'input> {
                                     value: vec![0; 16],
                                     precision: 38,
                                     scale: 0,
-                                }
+                                },
                             ))
                         }
                     }
@@ -2236,7 +2256,7 @@ impl<'input> RelationVisitor<'input> {
                             ::substrait::proto::expression::literal::VarChar {
                                 value: string_value,
                                 length: 0,
-                            }
+                            },
                         )),
                         _ => Some(LiteralType::String(string_value)),
                     }

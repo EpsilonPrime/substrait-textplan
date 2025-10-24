@@ -90,14 +90,20 @@ impl<'a> ExpressionPrinter<'a> {
             Some(LiteralType::IntervalYearToMonth(interval)) => {
                 // IntervalYearToMonth has years and months fields
                 if interval.months != 0 {
-                    format!("{}_interval_year_month", interval.years * 12 + interval.months)
+                    format!(
+                        "{}_interval_year_month",
+                        interval.years * 12 + interval.months
+                    )
                 } else {
                     format!("{}_interval_year", interval.years)
                 }
             }
             Some(LiteralType::IntervalDayToSecond(interval)) => {
                 // IntervalDayToSecond has days, seconds, and subseconds fields
-                format!("{}_{}_{}_interval_day_second", interval.days, interval.seconds, interval.subseconds)
+                format!(
+                    "{}_{}_{}_interval_day_second",
+                    interval.days, interval.seconds, interval.subseconds
+                )
             }
             Some(LiteralType::FixedChar(s)) => format!("\"{}\"_fixedchar", escape_string(s)),
             Some(LiteralType::VarChar(val)) => {
