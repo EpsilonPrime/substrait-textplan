@@ -2456,19 +2456,41 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
             for measure_detail_ctx in ctx.measure_detail_all() {
                 // Check if this is a MEASURE expression detail (not FILTER, INVOCATION, or sort)
                 if let Some(expr_ctx) = measure_detail_ctx.expression() {
-                    // Build the measure expression
-                    let measure_expr = self.build_expression(&expr_ctx);
+                    // For aggregate measures, we need to extract the function reference and arguments
+                    // directly instead of building a ScalarFunction expression
+                    let (function_reference, arguments) = match expr_ctx.as_ref() {
+                        ExpressionContextAll::ExpressionFunctionUseContext(func_ctx) => {
+                            // Get function name and look up reference
+                            let function_name = func_ctx.id().map(|id| id.get_text()).unwrap_or_else(|| "unknown".to_string());
+                            let func_ref = self.lookup_function_reference(&function_name);
 
-                    // Wrap in FunctionArgument
-                    let arg = ::substrait::proto::FunctionArgument {
-                        arg_type: Some(::substrait::proto::function_argument::ArgType::Value(
-                            measure_expr,
-                        )),
+                            // Build arguments directly
+                            let mut args = Vec::new();
+                            for arg_expr in func_ctx.expression_all() {
+                                let expr = self.build_expression(&arg_expr);
+                                args.push(::substrait::proto::FunctionArgument {
+                                    arg_type: Some(::substrait::proto::function_argument::ArgType::Value(expr)),
+                                });
+                            }
+                            (func_ref, args)
+                        }
+                        _ => {
+                            // For non-function expressions, wrap in arguments
+                            let measure_expr = self.build_expression(&expr_ctx);
+                            let arg = ::substrait::proto::FunctionArgument {
+                                arg_type: Some(::substrait::proto::function_argument::ArgType::Value(measure_expr)),
+                            };
+                            (0, vec![arg])
+                        }
                     };
 
-                    // Create the AggregateFunction with the expression
+                    // Create the AggregateFunction
                     let agg_func = ::substrait::proto::AggregateFunction {
-                        arguments: vec![arg],
+                        function_reference,
+                        arguments,
+                        output_type: None,
+                        phase: ::substrait::proto::AggregationPhase::InitialToResult.into(),
+                        invocation: ::substrait::proto::aggregate_function::AggregationInvocation::All.into(),
                         ..Default::default()
                     };
 
