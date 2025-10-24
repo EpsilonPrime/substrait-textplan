@@ -438,6 +438,21 @@ impl<'input> TypeVisitor<'input> {
                 uuid_type.nullability = nullability.into();
                 proto_type.kind = Some(Kind::Uuid(uuid_type));
             }
+            "fixedchar" => {
+                // Bare fixedchar without length parameter (used in literal suffixes like "text"_fixedchar)
+                // We don't know the length from the literal alone, so use length 0 as a placeholder
+                let mut fixed_char_type = FixedChar::default();
+                fixed_char_type.nullability = nullability.into();
+                fixed_char_type.length = 0;
+                proto_type.kind = Some(Kind::FixedChar(fixed_char_type));
+            }
+            "varchar" => {
+                // Bare varchar without length parameter (used in literal suffixes like "text"_varchar)
+                let mut varchar_type = VarChar::default();
+                varchar_type.nullability = nullability.into();
+                varchar_type.length = 0;
+                proto_type.kind = Some(Kind::Varchar(varchar_type));
+            }
             // For unknown types, log an error and use i32 as a fallback
             _ => {
                 // Get the start token directly - it's not an Option
@@ -1871,20 +1886,9 @@ impl<'input> RelationVisitor<'input> {
                 println!("  Building function call expression");
                 self.build_function_call(ctx)
             }
-            ExpressionContextAll::ExpressionCastContext(_ctx) => {
-                println!("  Building cast expression (placeholder)");
-                // TODO: Implement cast expression
-                ::substrait::proto::Expression {
-                    rex_type: Some(::substrait::proto::expression::RexType::Literal(
-                        ::substrait::proto::expression::Literal {
-                            literal_type: Some(
-                                ::substrait::proto::expression::literal::LiteralType::I64(0),
-                            ),
-                            nullable: false,
-                            type_variation_reference: 0,
-                        },
-                    )),
-                }
+            ExpressionContextAll::ExpressionCastContext(ctx) => {
+                println!("  Building cast expression");
+                self.build_cast_expression(ctx)
             }
             ExpressionContextAll::ExpressionSetComparisonSubqueryContext(ctx) => {
                 println!("  Building set comparison subquery expression");
@@ -2069,6 +2073,82 @@ impl<'input> RelationVisitor<'input> {
                     ..Default::default()
                 },
             )),
+        }
+    }
+
+    /// Build a cast expression from a cast context.
+    fn build_cast_expression(
+        &mut self,
+        ctx: &ExpressionCastContext<'input>,
+    ) -> ::substrait::proto::Expression {
+        // Get the expression being cast
+        let input_expr = if let Some(expr) = ctx.expression() {
+            Box::new(self.build_expression(&expr))
+        } else {
+            // No input expression - return placeholder
+            return ::substrait::proto::Expression {
+                rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                    ::substrait::proto::expression::Literal {
+                        literal_type: Some(
+                            ::substrait::proto::expression::literal::LiteralType::I64(0),
+                        ),
+                        nullable: false,
+                        type_variation_reference: 0,
+                    },
+                )),
+            };
+        };
+
+        // Get the target type
+        let mut target_type = if let Some(type_ctx) = ctx.literal_complex_type() {
+            let type_text = type_ctx.get_text();
+            // Create a temporary TypeVisitor to parse the type
+            let type_visitor = TypeVisitor::new(self.symbol_table.clone(), self.error_listener.clone());
+            type_visitor.text_to_type_proto(ctx, &type_text)
+        } else {
+            // No target type - return placeholder
+            return ::substrait::proto::Expression {
+                rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                    ::substrait::proto::expression::Literal {
+                        literal_type: Some(
+                            ::substrait::proto::expression::literal::LiteralType::I64(0),
+                        ),
+                        nullable: false,
+                        type_variation_reference: 0,
+                    },
+                )),
+            };
+        };
+
+        // Special handling: if casting a string literal to fixedchar/varchar without explicit length,
+        // infer the length from the string
+        if let Some(::substrait::proto::expression::RexType::Literal(literal)) = &input_expr.rex_type {
+            if let Some(::substrait::proto::expression::literal::LiteralType::String(string_value)) = &literal.literal_type {
+                use ::substrait::proto::r#type::Kind;
+                match &mut target_type.kind {
+                    Some(Kind::FixedChar(ref mut fc_type)) if fc_type.length == 0 => {
+                        // Infer length from string
+                        fc_type.length = string_value.len() as i32;
+                        println!("    Inferred fixedchar length: {}", fc_type.length);
+                    }
+                    Some(Kind::Varchar(ref mut vc_type)) if vc_type.length == 0 => {
+                        // Infer length from string
+                        vc_type.length = string_value.len() as i32;
+                        println!("    Inferred varchar length: {}", vc_type.length);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::Cast(Box::new(
+                ::substrait::proto::expression::Cast {
+                    r#type: Some(target_type),
+                    input: Some(input_expr),
+                    failure_behavior: ::substrait::proto::expression::cast::FailureBehavior::Unspecified as i32,
+                },
+            ))),
         }
     }
 
