@@ -714,43 +714,34 @@ impl PlanProtoVisitor for InitialPlanVisitor {
     fn post_process_expression(&mut self, expression: &substrait::Expression) {
         if let Some(rex_type) = &expression.rex_type {
             match rex_type {
-                substrait::expression::RexType::Subquery(_) => {
-                    /*
-                       outerRelations_.push_back(currentRelationScope_);
-                    auto resetRelationScope = finally([&]() { outerRelations_.pop_back(); });
+                substrait::expression::RexType::Subquery(subquery) => {
+                    use substrait::expression::subquery::SubqueryType;
 
-                    auto result = visitSubquery(expression.subquery());
+                    // Extract the subquery relation based on the subquery type
+                    let subquery_relation: Option<&substrait::Rel> = match &subquery.subquery_type {
+                        Some(SubqueryType::Scalar(scalar)) => scalar.input.as_ref().map(|b| b.as_ref()),
+                        Some(SubqueryType::InPredicate(in_pred)) => in_pred.haystack.as_ref().map(|b| b.as_ref()),
+                        Some(SubqueryType::SetPredicate(set_pred)) => set_pred.tuples.as_ref().map(|b| b.as_ref()),
+                        Some(SubqueryType::SetComparison(set_comp)) => set_comp.right.as_ref().map(|b| b.as_ref()),
+                        None => {
+                            println!("Warning: Subquery type not set");
+                            None
+                        }
+                    };
 
-                    const ::substrait::proto::Rel* subqueryRelation;
-                    switch (expression.subquery().subquery_type_case()) {
-                      case ::substrait::proto::Expression_Subquery::kScalar:
-                        subqueryRelation = &expression.subquery().scalar().input();
-                        break;
-                      case ::substrait::proto::Expression_Subquery::kInPredicate:
-                        subqueryRelation = &expression.subquery().in_predicate().haystack();
-                        break;
-                      case ::substrait::proto::Expression_Subquery::kSetPredicate:
-                        subqueryRelation = &expression.subquery().set_predicate().tuples();
-                        break;
-                      case ::substrait::proto::Expression_Subquery::kSetComparison:
-                        subqueryRelation = &expression.subquery().set_comparison().right();
-                        break;
-                      case ::substrait::proto::Expression_Subquery::SUBQUERY_TYPE_NOT_SET:
-                        errorListener_->addError("Subquery type not set.");
-                        return result;
+                    if let Some(rel) = subquery_relation {
+                        // Look up the relation symbol by location
+                        let rel_location = ProtoLocation::new(rel);
+                        if let Some(symbol) = self.symbol_table.lookup_symbol_by_location_and_type(
+                            &rel_location,
+                            SymbolType::Relation,
+                        ) {
+                            // Set the parent query location to the current relation scope
+                            // Clone the current_location to get an owned ProtoLocation
+                            let parent_location = self.current_location().clone();
+                            self.symbol_table.set_parent_query_location(&symbol, parent_location);
+                        }
                     }
-                    if (subqueryRelation == nullptr) {
-                      errorListener_->addError("Unrecognized subquery type.");
-                      return result;
-                    }
-
-                    const SymbolInfo* symbol = symbolTable_->lookupSymbolByLocationAndType(
-                        PROTO_LOCATION(*subqueryRelation), SymbolType::kRelation);
-                    symbolTable_->setParentQueryLocation(
-                        *symbol, PROTO_LOCATION(*currentRelationScope_));
-
-                    return result;
-                                     */
                 }
                 _ => {}
             }

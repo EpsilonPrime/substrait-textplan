@@ -20,6 +20,8 @@ pub struct ExpressionPrinter<'a> {
     current_scope: Option<&'a Arc<SymbolInfo>>,
     /// Depth of nested function calls (for potential future formatting)
     function_depth: usize,
+    /// Index for tracking subquery lookups within the current scope
+    current_scope_index: i32,
 }
 
 impl<'a> ExpressionPrinter<'a> {
@@ -29,6 +31,7 @@ impl<'a> ExpressionPrinter<'a> {
             symbol_table,
             current_scope,
             function_depth: 0,
+            current_scope_index: 0,
         }
     }
 
@@ -55,7 +58,7 @@ impl<'a> ExpressionPrinter<'a> {
             }
             Some(RexType::MultiOrList(_)) => Ok("MULTI_OR_LIST_NOT_YET_IMPLEMENTED".to_string()),
             Some(RexType::Cast(cast)) => self.print_cast(cast),
-            Some(RexType::Subquery(_)) => Ok("SUBQUERY_NOT_YET_IMPLEMENTED".to_string()),
+            Some(RexType::Subquery(subquery)) => self.print_subquery(subquery),
             Some(RexType::Nested(_)) => Ok("NESTED_NOT_YET_IMPLEMENTED".to_string()),
             Some(RexType::Enum(_)) => Ok("ENUM_NOT_YET_IMPLEMENTED".to_string()),
             Some(RexType::DynamicParameter(_)) => {
@@ -699,6 +702,111 @@ impl<'a> ExpressionPrinter<'a> {
             result.push_str(&self.print_type(type_val)?);
         } else {
             result.push_str("MISSING_CAST_TYPE");
+        }
+
+        Ok(result)
+    }
+
+    fn print_subquery(
+        &mut self,
+        subquery: &::substrait::proto::expression::Subquery,
+    ) -> Result<String, TextPlanError> {
+        use ::substrait::proto::expression::subquery::SubqueryType;
+
+        match &subquery.subquery_type {
+            Some(SubqueryType::SetComparison(set_comp)) => {
+                self.print_set_comparison_subquery(set_comp)
+            }
+            Some(SubqueryType::Scalar(_)) => {
+                Ok("SCALAR_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
+            }
+            Some(SubqueryType::InPredicate(_)) => {
+                Ok("IN_PREDICATE_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
+            }
+            Some(SubqueryType::SetPredicate(_)) => {
+                Ok("SET_PREDICATE_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
+            }
+            None => Err(TextPlanError::InvalidExpression(
+                "Subquery has no subquery_type".to_string(),
+            )),
+        }
+    }
+
+    fn print_set_comparison_subquery(
+        &mut self,
+        set_comp: &::substrait::proto::expression::subquery::SetComparison,
+    ) -> Result<String, TextPlanError> {
+        use ::substrait::proto::expression::subquery::set_comparison::{ComparisonOp, ReductionOp};
+
+        let mut result = String::new();
+
+        // Print left expression
+        if let Some(left) = &set_comp.left {
+            result.push_str(&self.print_expression(left)?);
+            result.push(' ');
+        } else {
+            return Err(TextPlanError::InvalidExpression(
+                "SetComparison has no left expression".to_string(),
+            ));
+        }
+
+        // Print comparison operator
+        let comp_op = ComparisonOp::try_from(set_comp.comparison_op)
+            .map_err(|_| TextPlanError::InvalidExpression(
+                format!("Invalid comparison_op: {}", set_comp.comparison_op)
+            ))?;
+        match comp_op {
+            ComparisonOp::Unspecified => result.push_str("UNSPECIFIED "),
+            ComparisonOp::Eq => result.push_str("EQ "),
+            ComparisonOp::Ne => result.push_str("NE "),
+            ComparisonOp::Lt => result.push_str("LT "),
+            ComparisonOp::Gt => result.push_str("GT "),
+            ComparisonOp::Le => result.push_str("LE "),
+            ComparisonOp::Ge => result.push_str("GE "),
+        }
+
+        // Print reduction operator
+        let reduction_op = ReductionOp::try_from(set_comp.reduction_op)
+            .map_err(|_| TextPlanError::InvalidExpression(
+                format!("Invalid reduction_op: {}", set_comp.reduction_op)
+            ))?;
+        match reduction_op {
+            ReductionOp::Unspecified => result.push_str("UNSPECIFIED "),
+            ReductionOp::Any => result.push_str("ANY "),
+            ReductionOp::All => result.push_str("ALL "),
+        }
+
+        // Print SUBQUERY keyword
+        result.push_str("SUBQUERY ");
+
+        // Find the subquery relation symbol
+        if let Some(_right) = &set_comp.right {
+            // Look up the relation symbol for this subquery
+            if let Some(scope) = self.current_scope {
+                let symbol = self.symbol_table
+                    .lookup_symbol_by_parent_query_and_type(
+                        scope.source_location(),
+                        self.current_scope_index,
+                        crate::textplan::SymbolType::Relation,
+                    );
+                self.current_scope_index += 1;
+
+                if let Some(sym) = symbol {
+                    result.push_str(&sym.name());
+                } else {
+                    return Err(TextPlanError::InvalidExpression(
+                        "Could not find subquery relation symbol".to_string(),
+                    ));
+                }
+            } else {
+                return Err(TextPlanError::InvalidExpression(
+                    "No current scope for subquery lookup".to_string(),
+                ));
+            }
+        } else {
+            return Err(TextPlanError::InvalidExpression(
+                "SetComparison has no right relation".to_string(),
+            ));
         }
 
         Ok(result)
