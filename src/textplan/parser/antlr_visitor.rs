@@ -1566,21 +1566,46 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
 
         // Connect to the left symbol
         if let Some(left) = left_symbol {
-            if right_symbol.is_none() {
-                // No right symbol means we're starting a new branch
+            // Determine the relation category for pipeline connections:
+            // - Binary relations (Join, Cross, etc.) use new_pipelines for multiple inputs
+            // - Root/terminal relations (Fetch, etc.) use new_pipelines to be identified as terminals
+            // - Unary relations (Filter, Project, etc.) use continuing_pipeline for single input
+
+            // Check if this is a terminal/root relation by name (since rel_type may not be set yet)
+            // Root relations like "root", "root1", etc. should use new_pipelines
+            let is_root_by_name = relation_name == "root" || relation_name.starts_with("root");
+
+            let relation_category = if is_root_by_name {
+                "terminal"
+            } else {
+                match &relation_data.relation.rel_type {
+                    Some(::substrait::proto::rel::RelType::Join(_)) => "binary",
+                    Some(::substrait::proto::rel::RelType::Cross(_)) => "binary",
+                    Some(::substrait::proto::rel::RelType::Set(_)) => "binary",
+                    Some(::substrait::proto::rel::RelType::HashJoin(_)) => "binary",
+                    Some(::substrait::proto::rel::RelType::MergeJoin(_)) => "binary",
+                    Some(::substrait::proto::rel::RelType::Fetch(_)) => "terminal",
+                    Some(::substrait::proto::rel::RelType::ExtensionSingle(_)) => "unary",
+                    Some(::substrait::proto::rel::RelType::ExtensionLeaf(_)) => "terminal",
+                    _ => "unary",
+                }
+            };
+
+            if relation_category == "binary" || relation_category == "terminal" {
+                // Binary or terminal relation: use new_pipelines for inputs
                 println!(
-                    "  Pipeline: {} starts new branch with left: {}",
+                    "  Pipeline: {} ({} relation) adds new branch with left: {}",
                     relation_name,
+                    relation_category,
                     left.name()
                 );
                 relation_data.new_pipelines.push(left);
             } else {
-                // Right symbol exists, so we're continuing a pipeline
+                // Unary relation: use continuing_pipeline for single input
                 println!(
-                    "  Pipeline: {} continues with left: {}, right: {}",
+                    "  Pipeline: {} (unary relation) continues with left: {}",
                     relation_name,
-                    left.name(),
-                    right_symbol.as_ref().unwrap().name()
+                    left.name()
                 );
                 relation_data.continuing_pipeline = Some(left);
             }
