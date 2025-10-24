@@ -129,11 +129,39 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                                                     &mut visited,
                                                 )?;
 
+                                                // Extract output field names from the input relation
+                                                let output_names = if let Some(input_blob) = &input_symbol.blob {
+                                                    if let Ok(input_data) = input_blob.lock() {
+                                                        if let Some(input_rel_data) = input_data.downcast_ref::<RelationData>() {
+                                                            // Use output_field_references if populated, otherwise use field_references + generated_field_references
+                                                            let field_refs = if !input_rel_data.output_field_references.is_empty() {
+                                                                &input_rel_data.output_field_references
+                                                            } else {
+                                                                // Combine field_references and generated_field_references
+                                                                // For now, just use generated_field_references since project generates new fields
+                                                                &input_rel_data.generated_field_references
+                                                            };
+
+                                                            field_refs.iter()
+                                                                .map(|sym| sym.name().to_string())
+                                                                .collect::<Vec<String>>()
+                                                        } else {
+                                                            Vec::new()
+                                                        }
+                                                    } else {
+                                                        Vec::new()
+                                                    }
+                                                } else {
+                                                    Vec::new()
+                                                };
+
+                                                println!("  Root names extracted from '{}': {:?}", input_symbol.name(), output_names);
+
                                                 // Wrap in Root plan relation
                                                 plan.relations.push(PlanRel {
                                                     rel_type: Some(plan_rel::RelType::Root(RelRoot {
                                                         input: Some(input_rel),
-                                                        names: Vec::new(), // TODO: Get names from root relation definition
+                                                        names: output_names,
                                                     })),
                                                 });
                                             }

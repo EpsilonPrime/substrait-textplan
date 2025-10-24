@@ -1927,6 +1927,38 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
         self.visit_children(ctx);
     }
 
+    fn visit_relationEmit(&mut self, ctx: &RelationEmitContext<'input>) {
+        // Create a field reference symbol for the emitted field
+        // Grammar: EMIT column_name SEMICOLON
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            if let Some(column_name_ctx) = ctx.column_name() {
+                // Extract the column name (can be "id" or "id.id")
+                let field_name = column_name_ctx.get_text();
+                let location = token_to_location(&column_name_ctx.start());
+
+                // Create a FieldReference symbol
+                let field_symbol = self.symbol_table.define_symbol(
+                    field_name.clone(),
+                    location,
+                    SymbolType::Field,
+                    None,
+                    None,
+                );
+
+                // Add to the relation's generated_field_references
+                if let Some(blob_lock) = &relation_symbol.blob {
+                    if let Ok(mut blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                            relation_data.generated_field_references.push(field_symbol.clone());
+                            println!("  Added field reference '{}' to relation '{}'", field_name, relation_symbol.name());
+                        }
+                    }
+                }
+            }
+        }
+        self.visit_children(ctx);
+    }
+
     // We use the default implementation for other visitor methods,
     // which will call visit_children to traverse the tree
 }
