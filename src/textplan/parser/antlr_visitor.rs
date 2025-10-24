@@ -1779,19 +1779,23 @@ impl<'input> RelationVisitor<'input> {
     ) -> ::substrait::proto::Expression {
         // Match on the expression type
         match expr_ctx.as_ref() {
-            ExpressionContextAll::ExpressionConstantContext(_ctx) => {
-                println!("  Building constant expression");
-                // TODO: Parse actual constant value
-                ::substrait::proto::Expression {
-                    rex_type: Some(::substrait::proto::expression::RexType::Literal(
-                        ::substrait::proto::expression::Literal {
-                            literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
-                                0,
-                            )),
-                            nullable: false,
-                            type_variation_reference: 0,
-                        },
-                    )),
+            ExpressionContextAll::ExpressionConstantContext(ctx) => {
+                // Parse the constant value
+                if let Some(constant_ctx) = ctx.constant() {
+                    self.build_constant(&constant_ctx)
+                } else {
+                    // Fallback to placeholder
+                    ::substrait::proto::Expression {
+                        rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                            ::substrait::proto::expression::Literal {
+                                literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
+                                    0,
+                                )),
+                                nullable: false,
+                                type_variation_reference: 0,
+                            },
+                        )),
+                    }
                 }
             }
             ExpressionContextAll::ExpressionColumnContext(ctx) => {
@@ -1971,6 +1975,59 @@ impl<'input> RelationVisitor<'input> {
                     output_type: None,
                     options: Vec::new(),
                     ..Default::default()
+                },
+            )),
+        }
+    }
+
+    /// Build a constant literal expression from a constant AST node
+    fn build_constant(
+        &self,
+        constant_ctx: &Rc<ConstantContextAll<'input>>,
+    ) -> ::substrait::proto::Expression {
+        use ::substrait::proto::expression::literal::LiteralType;
+
+        // Check what type of constant this is
+        let literal_type = if let Some(number_token) = constant_ctx.NUMBER() {
+            // Parse number literal
+            let number_text = number_token.get_text();
+
+            // Try to parse as i32 first, then i64
+            if let Ok(val) = number_text.parse::<i32>() {
+                Some(LiteralType::I32(val))
+            } else if let Ok(val) = number_text.parse::<i64>() {
+                Some(LiteralType::I64(val))
+            } else {
+                // Fallback to 0
+                Some(LiteralType::I64(0))
+            }
+        } else if let Some(string_token) = constant_ctx.STRING() {
+            // Parse string literal (remove quotes)
+            let string_text = string_token.get_text();
+            let string_value = if string_text.starts_with('"') && string_text.ends_with('"') {
+                string_text[1..string_text.len()-1].to_string()
+            } else {
+                string_text.to_string()
+            };
+            Some(LiteralType::String(string_value))
+        } else if constant_ctx.TRUEVAL().is_some() {
+            Some(LiteralType::Boolean(true))
+        } else if constant_ctx.FALSEVAL().is_some() {
+            Some(LiteralType::Boolean(false))
+        } else if constant_ctx.NULLVAL().is_some() {
+            Some(LiteralType::Null(::substrait::proto::Type::default()))
+        } else {
+            // TODO: Handle map_literal, struct_literal
+            // For now, default to i64(0)
+            Some(LiteralType::I64(0))
+        };
+
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                ::substrait::proto::expression::Literal {
+                    literal_type,
+                    nullable: false,
+                    type_variation_reference: 0,
                 },
             )),
         }
