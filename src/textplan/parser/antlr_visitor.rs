@@ -423,12 +423,12 @@ impl<'input> TypeVisitor<'input> {
                 time_type.nullability = nullability.into();
                 proto_type.kind = Some(Kind::Time(time_type));
             }
-            "interval_year" | "interval_year_to_month" => {
+            "interval_year" | "interval_year_to_month" | "interval_year_month" => {
                 let mut interval_year_type = IntervalYear::default();
                 interval_year_type.nullability = nullability.into();
                 proto_type.kind = Some(Kind::IntervalYear(interval_year_type));
             }
-            "interval_day" | "interval_day_to_second" => {
+            "interval_day" | "interval_day_to_second" | "interval_day_second" => {
                 let mut interval_day_type = IntervalDay::default();
                 interval_day_type.nullability = nullability.into();
                 proto_type.kind = Some(Kind::IntervalDay(interval_day_type));
