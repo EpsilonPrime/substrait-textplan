@@ -389,9 +389,7 @@ fn populate_project_emit(
                     // Set the RelCommon with emit mapping
                     project_rel.common = Some(::substrait::proto::RelCommon {
                         emit_kind: Some(::substrait::proto::rel_common::EmitKind::Emit(
-                            ::substrait::proto::rel_common::Emit {
-                                output_mapping,
-                            }
+                            ::substrait::proto::rel_common::Emit { output_mapping },
                         )),
                         ..Default::default()
                     });
@@ -399,7 +397,7 @@ fn populate_project_emit(
                     // No emits, use direct emission
                     project_rel.common = Some(::substrait::proto::RelCommon {
                         emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
-                            ::substrait::proto::rel_common::Direct {}
+                            ::substrait::proto::rel_common::Direct {},
                         )),
                         ..Default::default()
                     });
@@ -459,7 +457,11 @@ fn count_relation_output_fields(rel: &::substrait::proto::Rel) -> usize {
             ::substrait::proto::rel::RelType::Aggregate(agg) => {
                 // Aggregate outputs grouping keys + measures
                 #[allow(deprecated)]
-                let grouping_count = agg.groupings.first().map(|g| g.grouping_expressions.len()).unwrap_or(0);
+                let grouping_count = agg
+                    .groupings
+                    .first()
+                    .map(|g| g.grouping_expressions.len())
+                    .unwrap_or(0);
                 let measure_count = agg.measures.len();
                 grouping_count + measure_count
             }

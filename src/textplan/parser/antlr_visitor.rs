@@ -6,6 +6,7 @@
 //! the ANTLR parse tree and build a symbol table following the
 //! multiphase approach used in the C++ implementation.
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 use antlr_rust::parser_rule_context::ParserRuleContext;
@@ -808,10 +809,12 @@ impl<'input> MainPlanVisitor<'input> {
                     // Add empty grouping (required if no measures)
                     #[allow(deprecated)]
                     {
-                        agg_rel.groupings.push(::substrait::proto::aggregate_rel::Grouping {
-                            grouping_expressions: Vec::new(),
-                            expression_references: Vec::new(),
-                        });
+                        agg_rel
+                            .groupings
+                            .push(::substrait::proto::aggregate_rel::Grouping {
+                                grouping_expressions: Vec::new(),
+                                expression_references: Vec::new(),
+                            });
                     }
                     (
                         RelationType::Aggregate,
@@ -819,7 +822,7 @@ impl<'input> MainPlanVisitor<'input> {
                             rel_type: Some(RelType::Aggregate(Box::new(agg_rel))),
                         },
                     )
-                },
+                }
                 "sort" => (
                     RelationType::Sort,
                     Rel {
@@ -1751,6 +1754,29 @@ impl<'input> RelationVisitor<'input> {
 
         Some(symbol)
     }
+
+    /// Build an Expression protobuf from an expression AST node
+    fn build_expression(
+        &mut self,
+        _expr_ctx: &Rc<ExpressionContextAll<'input>>,
+    ) -> ::substrait::proto::Expression {
+        // For now, return a simple placeholder i64 literal
+        // TODO: Properly parse expression tree and build correct Expression protobuf
+        // This requires downcasting the ExpressionContext to specific variant types
+        // and recursively building nested expressions
+        println!("  Building expression (placeholder for now)");
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                ::substrait::proto::expression::Literal {
+                    literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
+                        0,
+                    )),
+                    nullable: false,
+                    type_variation_reference: 0,
+                },
+            )),
+        }
+    }
 }
 
 impl<'input> PlanVisitor<'input> for RelationVisitor<'input> {
@@ -1832,18 +1858,22 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
         // Add expression to the current relation (should be a Project)
         // Grammar: EXPRESSION expression SEMICOLON
         if let Some(relation_symbol) = self.current_relation_scope().cloned() {
-            // For now, create a placeholder literal expression
-            // TODO: Parse the expression tree and build proper Expression protobuf
-            let placeholder_expr = ::substrait::proto::Expression {
-                rex_type: Some(::substrait::proto::expression::RexType::Literal(
-                    ::substrait::proto::expression::Literal {
-                        literal_type: Some(
-                            ::substrait::proto::expression::literal::LiteralType::I64(0),
-                        ),
-                        nullable: false,
-                        type_variation_reference: 0,
-                    },
-                )),
+            // Try to build actual expression from AST
+            let expression = if let Some(expr_ctx) = ctx.expression() {
+                self.build_expression(&expr_ctx)
+            } else {
+                // Fallback to placeholder if no expression context
+                ::substrait::proto::Expression {
+                    rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                        ::substrait::proto::expression::Literal {
+                            literal_type: Some(
+                                ::substrait::proto::expression::literal::LiteralType::I64(0),
+                            ),
+                            nullable: false,
+                            type_variation_reference: 0,
+                        },
+                    )),
+                }
             };
 
             // Add the expression to the ProjectRel.expressions vector
@@ -1852,8 +1882,8 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                     if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                         // Get mutable access to the Rel
                         if let Some(::substrait::proto::rel::RelType::Project(ref mut project_rel)) = relation_data.relation.rel_type {
-                            project_rel.expressions.push(placeholder_expr);
-                            println!("  Added placeholder expression to project relation '{}'", relation_symbol.name());
+                            project_rel.expressions.push(expression);
+                            println!("  Added expression to project relation '{}'", relation_symbol.name());
                         }
                     }
                 }
