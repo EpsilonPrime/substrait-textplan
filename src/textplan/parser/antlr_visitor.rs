@@ -2068,14 +2068,154 @@ impl<'input> RelationVisitor<'input> {
             // Parse number literal
             let number_text = number_token.get_text();
 
-            // Try to parse as i32 first, then i64
-            if let Ok(val) = number_text.parse::<i32>() {
-                Some(LiteralType::I32(val))
-            } else if let Ok(val) = number_text.parse::<i64>() {
-                Some(LiteralType::I64(val))
+            // Check if there's a type suffix (e.g., _date, _decimal<3,2>)
+            if let Some(type_ctx) = constant_ctx.literal_basic_type() {
+                // Get the type name
+                let type_text = type_ctx.get_text();
+
+                // Parse the type name
+                let type_name = if let Some(id_ctx) = type_ctx.id() {
+                    id_ctx.get_text().to_lowercase()
+                } else {
+                    "".to_string()
+                };
+
+                // Handle different literal types based on type name
+                match type_name.as_str() {
+                    "date" => {
+                        if let Ok(days) = number_text.parse::<i32>() {
+                            Some(LiteralType::Date(days))
+                        } else {
+                            Some(LiteralType::Date(0))
+                        }
+                    }
+                    "time" => {
+                        if let Ok(micros) = number_text.parse::<i64>() {
+                            Some(LiteralType::Time(micros))
+                        } else {
+                            Some(LiteralType::Time(0))
+                        }
+                    }
+                    "interval_year" | "interval_year_month" => {
+                        // Parse as total months, convert to years/months
+                        if let Ok(total_months) = number_text.parse::<i32>() {
+                            let years = total_months / 12;
+                            let months = total_months % 12;
+                            Some(LiteralType::IntervalYearToMonth(
+                                ::substrait::proto::expression::literal::IntervalYearToMonth {
+                                    years,
+                                    months,
+                                }
+                            ))
+                        } else {
+                            Some(LiteralType::IntervalYearToMonth(
+                                ::substrait::proto::expression::literal::IntervalYearToMonth {
+                                    years: 0,
+                                    months: 0,
+                                }
+                            ))
+                        }
+                    }
+                    "decimal" => {
+                        // Parse the numeric value and convert to i128 bytes
+                        if let Ok(value) = number_text.parse::<i128>() {
+                            let bytes = value.to_le_bytes().to_vec();
+
+                            // Get precision and scale from literal_specifier if present
+                            let (precision, scale) = if let Some(spec_ctx) = type_ctx.literal_specifier() {
+                                // Parse numbers from the specifier (<precision,scale>)
+                                let numbers: Vec<i32> = spec_ctx.NUMBER_all()
+                                    .iter()
+                                    .filter_map(|n| n.get_text().parse::<i32>().ok())
+                                    .collect();
+                                if numbers.len() >= 2 {
+                                    (numbers[0], numbers[1])
+                                } else if numbers.len() == 1 {
+                                    (numbers[0], 0)
+                                } else {
+                                    (38, 0)
+                                }
+                            } else {
+                                (38, 0) // Default precision and scale
+                            };
+
+                            Some(LiteralType::Decimal(
+                                ::substrait::proto::expression::literal::Decimal {
+                                    value: bytes,
+                                    precision,
+                                    scale,
+                                }
+                            ))
+                        } else {
+                            Some(LiteralType::Decimal(
+                                ::substrait::proto::expression::literal::Decimal {
+                                    value: vec![0; 16],
+                                    precision: 38,
+                                    scale: 0,
+                                }
+                            ))
+                        }
+                    }
+                    "i8" => {
+                        if let Ok(val) = number_text.parse::<i32>() {
+                            Some(LiteralType::I8(val))
+                        } else {
+                            Some(LiteralType::I8(0))
+                        }
+                    }
+                    "i16" => {
+                        if let Ok(val) = number_text.parse::<i32>() {
+                            Some(LiteralType::I16(val))
+                        } else {
+                            Some(LiteralType::I16(0))
+                        }
+                    }
+                    "i32" => {
+                        if let Ok(val) = number_text.parse::<i32>() {
+                            Some(LiteralType::I32(val))
+                        } else {
+                            Some(LiteralType::I32(0))
+                        }
+                    }
+                    "i64" => {
+                        if let Ok(val) = number_text.parse::<i64>() {
+                            Some(LiteralType::I64(val))
+                        } else {
+                            Some(LiteralType::I64(0))
+                        }
+                    }
+                    "fp32" => {
+                        if let Ok(val) = number_text.parse::<f32>() {
+                            Some(LiteralType::Fp32(val))
+                        } else {
+                            Some(LiteralType::Fp32(0.0))
+                        }
+                    }
+                    "fp64" => {
+                        if let Ok(val) = number_text.parse::<f64>() {
+                            Some(LiteralType::Fp64(val))
+                        } else {
+                            Some(LiteralType::Fp64(0.0))
+                        }
+                    }
+                    _ => {
+                        // Unknown type, default to i64
+                        if let Ok(val) = number_text.parse::<i64>() {
+                            Some(LiteralType::I64(val))
+                        } else {
+                            Some(LiteralType::I64(0))
+                        }
+                    }
+                }
             } else {
-                // Fallback to 0
-                Some(LiteralType::I64(0))
+                // No type suffix, try to parse as i32 first, then i64
+                if let Ok(val) = number_text.parse::<i32>() {
+                    Some(LiteralType::I32(val))
+                } else if let Ok(val) = number_text.parse::<i64>() {
+                    Some(LiteralType::I64(val))
+                } else {
+                    Some(LiteralType::I64(0))
+                }
             }
         } else if let Some(string_token) = constant_ctx.STRING() {
             // Parse string literal (remove quotes)
@@ -2085,7 +2225,27 @@ impl<'input> RelationVisitor<'input> {
             } else {
                 string_text.to_string()
             };
-            Some(LiteralType::String(string_value))
+
+            // Check for type suffix for FixedChar or VarChar
+            if let Some(type_ctx) = constant_ctx.literal_basic_type() {
+                if let Some(id_ctx) = type_ctx.id() {
+                    let type_name = id_ctx.get_text().to_lowercase();
+                    match type_name.as_str() {
+                        "fixedchar" => Some(LiteralType::FixedChar(string_value)),
+                        "varchar" => Some(LiteralType::VarChar(
+                            ::substrait::proto::expression::literal::VarChar {
+                                value: string_value,
+                                length: 0,
+                            }
+                        )),
+                        _ => Some(LiteralType::String(string_value)),
+                    }
+                } else {
+                    Some(LiteralType::String(string_value))
+                }
+            } else {
+                Some(LiteralType::String(string_value))
+            }
         } else if constant_ctx.TRUEVAL().is_some() {
             Some(LiteralType::Boolean(true))
         } else if constant_ctx.FALSEVAL().is_some() {
