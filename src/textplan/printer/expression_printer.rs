@@ -783,6 +783,19 @@ impl<'a> ExpressionPrinter<'a> {
         if let Some(_right) = &set_comp.right {
             // Look up the relation symbol for this subquery
             if let Some(scope) = self.current_scope {
+                println!("DEBUG PRINTER: Looking for subquery with parent location hash: {}, index: {}",
+                    scope.source_location().location_hash(), self.current_scope_index);
+
+                // Debug: list all relations with parent query info
+                println!("DEBUG PRINTER: All relations:");
+                for symbol in self.symbol_table.symbols() {
+                    if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
+                        let parent_loc = symbol.parent_query_location();
+                        println!("  - '{}' parent_hash={}, parent_index={}",
+                            symbol.name(), parent_loc.location_hash(), symbol.parent_query_index());
+                    }
+                }
+
                 let symbol = self.symbol_table
                     .lookup_symbol_by_parent_query_and_type(
                         scope.source_location(),
@@ -792,6 +805,7 @@ impl<'a> ExpressionPrinter<'a> {
                 self.current_scope_index += 1;
 
                 if let Some(sym) = symbol {
+                    println!("DEBUG PRINTER: Found subquery relation: {}", sym.name());
                     result.push_str(&sym.name());
                 } else {
                     return Err(TextPlanError::InvalidExpression(

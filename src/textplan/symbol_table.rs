@@ -120,9 +120,9 @@ pub struct SymbolInfo {
     /// through traversal. Consider removing this field and related methods.
     permanent_location: Box<dyn Location>,
     /// The location of the parent query, if this symbol is in a subquery.
-    parent_query_location: Box<dyn Location>,
+    parent_query_location: std::sync::RwLock<Box<dyn Location>>,
     /// The index of the parent query, if this symbol is in a subquery.
-    parent_query_index: i32,
+    parent_query_index: std::sync::RwLock<i32>,
     /// The type of the symbol.
     symbol_type: SymbolType,
     /// Additional type information for the symbol.
@@ -149,8 +149,8 @@ impl SymbolInfo {
             alias: std::sync::RwLock::new(None),
             source_location: location.into(),
             permanent_location: Box::new(TextLocation::UNKNOWN_LOCATION),
-            parent_query_location: Box::new(TextLocation::UNKNOWN_LOCATION),
-            parent_query_index: -1,
+            parent_query_location: std::sync::RwLock::new(Box::new(TextLocation::UNKNOWN_LOCATION)),
+            parent_query_index: std::sync::RwLock::new(-1),
             symbol_type,
             subtype: std::sync::RwLock::new(subtype),
             blob,
@@ -189,13 +189,13 @@ impl SymbolInfo {
     }
 
     /// Returns a reference to the location of the parent query, if this symbol is in a subquery.
-    pub fn parent_query_location(&self) -> &dyn Location {
-        self.parent_query_location.as_ref()
+    pub fn parent_query_location(&self) -> Box<dyn Location> {
+        self.parent_query_location.read().unwrap().box_clone()
     }
 
     /// Returns the index of the parent query, if this symbol is in a subquery.
     pub fn parent_query_index(&self) -> i32 {
-        self.parent_query_index
+        *self.parent_query_index.read().unwrap()
     }
 
     /// Returns the type of the symbol.
@@ -233,13 +233,17 @@ impl SymbolInfo {
     }
 
     /// Sets the location of the parent query.
-    pub fn set_parent_query_location<L: Into<Box<dyn Location>>>(&mut self, location: L) {
-        self.parent_query_location = location.into();
+    pub fn set_parent_query_location<L: Into<Box<dyn Location>>>(&self, location: L) {
+        if let Ok(mut loc) = self.parent_query_location.write() {
+            *loc = location.into();
+        }
     }
 
     /// Sets the index of the parent query.
-    pub fn set_parent_query_index(&mut self, index: i32) {
-        self.parent_query_index = index;
+    pub fn set_parent_query_index(&self, index: i32) {
+        if let Ok(mut idx) = self.parent_query_index.write() {
+            *idx = index;
+        }
     }
 
     /// Sets the subtype of the symbol.
@@ -289,9 +293,9 @@ impl PartialEq for SymbolInfo {
                 .permanent_location
                 .equals(other.permanent_location.as_ref())
             && self
-                .parent_query_location
-                .equals(other.parent_query_location.as_ref())
-            && self.parent_query_index == other.parent_query_index
+                .parent_query_location.read().unwrap()
+                .equals(other.parent_query_location.read().unwrap().as_ref())
+            && *self.parent_query_index.read().unwrap() == *other.parent_query_index.read().unwrap()
             && self.symbol_type == other.symbol_type
     }
 }
@@ -459,25 +463,14 @@ impl SymbolTable {
         symbol: &Arc<SymbolInfo>,
         location: L,
     ) {
-        // Find the index of the symbol
-        if let Some(&index) = self.names.get(symbol.name()) {
-            // Mutate the symbol to set the parent query location
-            let mut_symbol = Arc::get_mut(self.symbols.get_mut(index).unwrap()).unwrap();
-            mut_symbol.set_parent_query_location(location);
-
-            // Note: We don't add an entry to the locations map for parent query locations
-            // since they're not expected to be looked up directly, but through the parent query index
-        }
+        // Use interior mutability to set parent query location
+        symbol.set_parent_query_location(location);
     }
 
     /// Sets the parent query index for a symbol.
     pub fn set_parent_query_index(&mut self, symbol: &Arc<SymbolInfo>, index: i32) {
-        // Find the index of the symbol
-        if let Some(&symbol_index) = self.names.get(symbol.name()) {
-            // Mutate the symbol to set the parent query index
-            let mut_symbol = Arc::get_mut(self.symbols.get_mut(symbol_index).unwrap()).unwrap();
-            mut_symbol.set_parent_query_index(index);
-        }
+        // Use interior mutability to set parent query index
+        symbol.set_parent_query_index(index);
     }
 
     /// Looks up a symbol by name.

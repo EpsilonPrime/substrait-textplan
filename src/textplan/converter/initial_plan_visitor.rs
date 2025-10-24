@@ -717,30 +717,33 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                 substrait::expression::RexType::Subquery(subquery) => {
                     use substrait::expression::subquery::SubqueryType;
 
-                    // Extract the subquery relation based on the subquery type
-                    let subquery_relation: Option<&substrait::Rel> = match &subquery.subquery_type {
-                        Some(SubqueryType::Scalar(scalar)) => scalar.input.as_ref().map(|b| b.as_ref()),
-                        Some(SubqueryType::InPredicate(in_pred)) => in_pred.haystack.as_ref().map(|b| b.as_ref()),
-                        Some(SubqueryType::SetPredicate(set_pred)) => set_pred.tuples.as_ref().map(|b| b.as_ref()),
-                        Some(SubqueryType::SetComparison(set_comp)) => set_comp.right.as_ref().map(|b| b.as_ref()),
-                        None => {
-                            println!("Warning: Subquery type not set");
-                            None
-                        }
+                    // Determine the field path to the subquery relation
+                    let subquery_field_path = match &subquery.subquery_type {
+                        Some(SubqueryType::Scalar(_)) => "subquery.scalar.input",
+                        Some(SubqueryType::InPredicate(_)) => "subquery.in_predicate.haystack",
+                        Some(SubqueryType::SetPredicate(_)) => "subquery.set_predicate.tuples",
+                        Some(SubqueryType::SetComparison(_)) => "subquery.set_comparison.right",
+                        None => return, // No subquery type, nothing to do
                     };
 
-                    if let Some(rel) = subquery_relation {
-                        // Look up the relation symbol by location
-                        let rel_location = ProtoLocation::new(rel);
-                        if let Some(symbol) = self.symbol_table.lookup_symbol_by_location_and_type(
-                            &rel_location,
-                            SymbolType::Relation,
-                        ) {
-                            // Set the parent query location to the current relation scope
-                            // Clone the current_location to get an owned ProtoLocation
-                            let parent_location = self.current_location().clone();
-                            self.symbol_table.set_parent_query_location(&symbol, parent_location);
-                        }
+                    // Build the full location by extending current location with the path to the relation
+                    let mut rel_location = self.current_location().clone();
+                    for field_name in subquery_field_path.split('.') {
+                        rel_location = rel_location.field(field_name);
+                    }
+
+                    // Look up the subquery relation symbol by its location
+                    if let Some(symbol) = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &rel_location,
+                        SymbolType::Relation,
+                    ) {
+                        // Set the parent query location to the current expression's location
+                        let parent_location = self.current_location().clone();
+                        self.symbol_table.set_parent_query_location(&symbol, parent_location);
+
+                        // Set the index for this subquery within its parent (0 for now)
+                        // TODO: track multiple subqueries properly with incrementing indices
+                        self.symbol_table.set_parent_query_index(&symbol, 0);
                     }
                 }
                 _ => {}
