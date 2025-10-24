@@ -945,36 +945,71 @@ impl PlanPrinter {
         symbol_table: &SymbolTable,
         result: &mut String,
     ) -> Result<(), TextPlanError> {
-        let mut functions: Vec<_> = symbol_table
-            .symbols()
-            .iter()
-            .filter(|s| s.symbol_type() == SymbolType::Function)
-            .cloned()
-            .collect();
+        use std::collections::HashMap;
+        use crate::textplan::common::structured_symbol_data::{ExtensionSpaceData, FunctionData};
 
-        if functions.is_empty() {
-            return Ok(());
-        }
-
-        // Sort functions alphabetically by their short name (alias)
-        functions.sort_by(|a, b| a.name().cmp(b.name()));
-
-        result.push_str("extension_space {\n");
-
-        for func in functions {
-            // Extract FunctionData from blob to get the full signature
-            // func.name() is the short alias like "and"
-            // FunctionData.name is the canonical name with signature like "and:bool_bool"
-            if let Some(blob_lock) = &func.blob {
-                if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(func_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::FunctionData>() {
-                        result.push_str(&format!("  function {} as {};\n", func_data.name, func.name()));
+        // Collect extension spaces by anchor
+        let mut extension_spaces: HashMap<u32, String> = HashMap::new();
+        for symbol in symbol_table.symbols() {
+            if symbol.symbol_type() == SymbolType::ExtensionSpace {
+                if let Some(blob_lock) = &symbol.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(ext_data) = blob_data.downcast_ref::<ExtensionSpaceData>() {
+                            extension_spaces.insert(ext_data.anchor_reference(), symbol.name().to_string());
+                        }
                     }
                 }
             }
         }
 
-        result.push_str("}\n");
+        // Collect functions grouped by their extension URI reference
+        let mut functions_by_uri: HashMap<Option<u32>, Vec<(String, String)>> = HashMap::new();
+        for symbol in symbol_table.symbols() {
+            if symbol.symbol_type() == SymbolType::Function {
+                if let Some(blob_lock) = &symbol.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(func_data) = blob_data.downcast_ref::<FunctionData>() {
+                            let uri_ref = func_data.extension_uri_reference;
+                            functions_by_uri
+                                .entry(uri_ref)
+                                .or_insert_with(Vec::new)
+                                .push((func_data.name.clone(), symbol.name().to_string()));
+                        }
+                    }
+                }
+            }
+        }
+
+        if functions_by_uri.is_empty() {
+            return Ok(());
+        }
+
+        // Sort URI references for deterministic output
+        let mut uri_refs: Vec<Option<u32>> = functions_by_uri.keys().cloned().collect();
+        uri_refs.sort_by_key(|uri_ref| uri_ref.unwrap_or(u32::MAX));
+
+        // Output an extension_space block for each URI reference
+        for uri_ref in uri_refs {
+            let mut functions = functions_by_uri.get(&uri_ref).unwrap().clone();
+
+            // Sort functions alphabetically by their alias
+            functions.sort_by(|a, b| a.1.cmp(&b.1));
+
+            // Get the URI string for this reference
+            let uri_str = if let Some(ref_val) = uri_ref {
+                extension_spaces.get(&ref_val).map(|s| s.as_str()).unwrap_or("")
+            } else {
+                ""
+            };
+
+            result.push_str(&format!("extension_space {} {{\n", uri_str));
+
+            for (full_name, alias) in functions {
+                result.push_str(&format!("  function {} as {};\n", full_name, alias));
+            }
+
+            result.push_str("}\n");
+        }
 
         Ok(())
     }

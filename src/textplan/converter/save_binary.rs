@@ -240,7 +240,18 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
 
                                                             field_refs
                                                                 .iter()
-                                                                .map(|sym| sym.name().to_string())
+                                                                .enumerate()
+                                                                .map(|(idx, sym)| {
+                                                                    // Check if there's an alternative expression (schema-qualified name) for this field
+                                                                    if let Some(alt_expr) = input_rel_data
+                                                                        .generated_field_reference_alternative_expression
+                                                                        .get(&idx)
+                                                                    {
+                                                                        alt_expr.clone()
+                                                                    } else {
+                                                                        sym.name().to_string()
+                                                                    }
+                                                                })
                                                                 .collect::<Vec<String>>()
                                                         } else {
                                                             Vec::new()
