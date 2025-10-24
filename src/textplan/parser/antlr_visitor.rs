@@ -1758,21 +1758,200 @@ impl<'input> RelationVisitor<'input> {
     /// Build an Expression protobuf from an expression AST node
     fn build_expression(
         &mut self,
-        _expr_ctx: &Rc<ExpressionContextAll<'input>>,
+        expr_ctx: &Rc<ExpressionContextAll<'input>>,
     ) -> ::substrait::proto::Expression {
-        // For now, return a simple placeholder i64 literal
-        // TODO: Properly parse expression tree and build correct Expression protobuf
-        // This requires downcasting the ExpressionContext to specific variant types
-        // and recursively building nested expressions
-        println!("  Building expression (placeholder for now)");
-        ::substrait::proto::Expression {
-            rex_type: Some(::substrait::proto::expression::RexType::Literal(
-                ::substrait::proto::expression::Literal {
-                    literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
-                        0,
+        // Match on the expression type
+        match expr_ctx.as_ref() {
+            ExpressionContextAll::ExpressionConstantContext(_ctx) => {
+                println!("  Building constant expression");
+                // TODO: Parse actual constant value
+                ::substrait::proto::Expression {
+                    rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                        ::substrait::proto::expression::Literal {
+                            literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
+                                0,
+                            )),
+                            nullable: false,
+                            type_variation_reference: 0,
+                        },
                     )),
-                    nullable: false,
-                    type_variation_reference: 0,
+                }
+            }
+            ExpressionContextAll::ExpressionColumnContext(ctx) => {
+                println!("  Building column reference expression");
+                self.build_column_reference(ctx)
+            }
+            ExpressionContextAll::ExpressionFunctionUseContext(ctx) => {
+                println!("  Building function call expression");
+                self.build_function_call(ctx)
+            }
+            ExpressionContextAll::ExpressionCastContext(_ctx) => {
+                println!("  Building cast expression (placeholder)");
+                // TODO: Implement cast expression
+                ::substrait::proto::Expression {
+                    rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                        ::substrait::proto::expression::Literal {
+                            literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
+                                0,
+                            )),
+                            nullable: false,
+                            type_variation_reference: 0,
+                        },
+                    )),
+                }
+            }
+            _ => {
+                println!("  Building unknown expression type (placeholder)");
+                ::substrait::proto::Expression {
+                    rex_type: Some(::substrait::proto::expression::RexType::Literal(
+                        ::substrait::proto::expression::Literal {
+                            literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
+                                0,
+                            )),
+                            nullable: false,
+                            type_variation_reference: 0,
+                        },
+                    )),
+                }
+            }
+        }
+    }
+
+    /// Build a column reference expression from a column context
+    fn build_column_reference(
+        &mut self,
+        ctx: &ExpressionColumnContext<'input>,
+    ) -> ::substrait::proto::Expression {
+        // Get the column name
+        let column_name = ctx
+            .column_name()
+            .map(|c| c.get_text())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        println!("    Column reference: {}", column_name);
+
+        // Look up the field index from the current relation's field_references
+        let field_index = self.lookup_field_index(&column_name);
+
+        println!("      -> field index: {}", field_index);
+
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::Selection(Box::new(
+                ::substrait::proto::expression::FieldReference {
+                    reference_type: Some(::substrait::proto::expression::field_reference::ReferenceType::DirectReference(
+                        ::substrait::proto::expression::ReferenceSegment {
+                            reference_type: Some(::substrait::proto::expression::reference_segment::ReferenceType::StructField(Box::new(
+                                ::substrait::proto::expression::reference_segment::StructField {
+                                    field: field_index as i32,
+                                    child: None,
+                                }
+                            ))),
+                        }
+                    )),
+                    root_type: Some(::substrait::proto::expression::field_reference::RootType::RootReference(
+                        ::substrait::proto::expression::field_reference::RootReference {}
+                    )),
+                },
+            ))),
+        }
+    }
+
+    /// Look up the field index from the schema symbol
+    fn lookup_field_index(&self, column_name: &str) -> usize {
+        // Parse column name - can be "field" or "schema.field"
+        let (schema_name, field_name) = if let Some(dot_pos) = column_name.rfind('.') {
+            (&column_name[..dot_pos], &column_name[dot_pos + 1..])
+        } else {
+            // No schema prefix - try to find in current relation's schema
+            ("", column_name)
+        };
+
+        // Look up the schema symbol
+        if !schema_name.is_empty() {
+            if let Some(schema_symbol) = self.symbol_table().lookup_symbol_by_name(schema_name) {
+                // Get the field index from the schema by iterating all symbols
+                if let Some(field_index) = self.get_field_index_from_schema(&schema_symbol, field_name) {
+                    return field_index;
+                }
+            }
+        } else {
+            // No schema prefix - try current relation's schema
+            if let Some(relation_symbol) = self.current_relation_scope() {
+                if let Some(blob_lock) = &relation_symbol.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                            if let Some(schema_arc) = &relation_data.schema {
+                                if let Some(field_index) = self.get_field_index_from_schema(schema_arc, field_name) {
+                                    return field_index;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("      WARNING: Field '{}' not found, defaulting to index 0", column_name);
+        // Default to 0 if not found
+        0
+    }
+
+    /// Get field index from a schema symbol by looking up the field name
+    fn get_field_index_from_schema(&self, schema_symbol: &Arc<SymbolInfo>, field_name: &str) -> Option<usize> {
+        // Iterate through all symbols in the symbol table to find schema columns
+        // that belong to this schema
+        let mut index = 0;
+        for symbol in self.symbol_table().symbols() {
+            if symbol.symbol_type() == SymbolType::SchemaColumn {
+                // Check if this column belongs to our schema
+                if let Some(sym_schema) = symbol.schema() {
+                    if Arc::ptr_eq(&sym_schema, schema_symbol) {
+                        // This column belongs to our schema - check if name matches
+                        if symbol.name() == field_name {
+                            return Some(index);
+                        }
+                        index += 1;
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Build a function call expression from a function use context
+    fn build_function_call(
+        &mut self,
+        ctx: &ExpressionFunctionUseContext<'input>,
+    ) -> ::substrait::proto::Expression {
+        // Get the function name
+        let function_name = ctx
+            .id()
+            .map(|id| id.get_text())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        println!("    Function call: {}", function_name);
+
+        // Recursively build arguments
+        let mut arguments = Vec::new();
+        for expr in ctx.expression_all() {
+            let arg_expr = self.build_expression(&expr);
+            arguments.push(::substrait::proto::FunctionArgument {
+                arg_type: Some(::substrait::proto::function_argument::ArgType::Value(arg_expr)),
+            });
+        }
+
+        println!("      with {} arguments", arguments.len());
+
+        // For now, use function_reference 0
+        // TODO: Look up actual function reference from symbol table
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::ScalarFunction(
+                ::substrait::proto::expression::ScalarFunction {
+                    function_reference: 0,
+                    arguments,
+                    output_type: None,
+                    options: Vec::new(),
+                    ..Default::default()
                 },
             )),
         }
@@ -1857,7 +2036,9 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     fn visit_relationExpression(&mut self, ctx: &RelationExpressionContext<'input>) {
         // Add expression to the current relation (should be a Project)
         // Grammar: EXPRESSION expression SEMICOLON
+        println!("visit_relationExpression called!");
         if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            println!("  Current relation: {}", relation_symbol.name());
             // Try to build actual expression from AST
             let expression = if let Some(expr_ctx) = ctx.expression() {
                 self.build_expression(&expr_ctx)
