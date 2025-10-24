@@ -1065,23 +1065,33 @@ impl<'input> MainPlanVisitor<'input> {
         // Get the name of the column using schema item context trait
         let name = ctx.id(0)?.get_text();
 
+        // Get the type from the literal_complex_type
+        let type_text = if let Some(type_ctx) = ctx.literal_complex_type() {
+            type_ctx.get_text()
+        } else {
+            "i64".to_string() // Default fallback
+        };
+
+        // Convert the type text to a Substrait Type protobuf
+        let proto_type = self.type_visitor.text_to_type_proto(ctx, &type_text);
+
+        // Store the Type protobuf in the blob
+        let blob = Some(Arc::new(std::sync::Mutex::new(proto_type)) as Arc<std::sync::Mutex<dyn std::any::Any + Send + Sync>>);
+
         // Create a location from the context's start token
-        // Get the start token directly - it's not an Option
         let token = ctx.start();
         let location = token_to_location(&token);
 
-        // Define the column in the symbol table
-        // Symbol table accessed directly via base
+        // Define the column in the symbol table with the type blob
         let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
             name,
             location,
             SymbolType::SchemaColumn,
-            None,
-            None,
+            None,  // subtype
+            blob,  // blob contains the Type protobuf
         );
 
         // Set the schema as the parent
-        // Set the schema as the parent - no mutable reference needed due to interior mutability
         symbol.set_schema(parent_schema.clone());
         Some(symbol)
     }

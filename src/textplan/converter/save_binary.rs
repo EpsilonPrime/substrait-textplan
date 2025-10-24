@@ -338,17 +338,45 @@ fn populate_read_rel(
                         // Add field name
                         field_names.push(symbol.name().to_string());
 
-                        // Add field type (TODO: parse actual type from symbol)
-                        // For now, hard-code i64 type with REQUIRED nullability
-                        field_types.push(::substrait::proto::Type {
-                            kind: Some(::substrait::proto::r#type::Kind::I64(
-                                ::substrait::proto::r#type::I64 {
-                                    type_variation_reference: 0,
-                                    nullability: ::substrait::proto::r#type::Nullability::Required
-                                        as i32,
-                                },
-                            )),
-                        });
+                        // Add field type from the symbol's blob
+                        let field_type = if let Some(blob_lock) = &symbol.blob {
+                            if let Ok(blob_data) = blob_lock.lock() {
+                                if let Some(proto_type) = blob_data.downcast_ref::<::substrait::proto::Type>() {
+                                    proto_type.clone()
+                                } else {
+                                    // Fallback to i64 if blob doesn't contain Type
+                                    ::substrait::proto::Type {
+                                        kind: Some(::substrait::proto::r#type::Kind::I64(
+                                            ::substrait::proto::r#type::I64 {
+                                                type_variation_reference: 0,
+                                                nullability: ::substrait::proto::r#type::Nullability::Required as i32,
+                                            },
+                                        )),
+                                    }
+                                }
+                            } else {
+                                // Fallback to i64 if lock fails
+                                ::substrait::proto::Type {
+                                    kind: Some(::substrait::proto::r#type::Kind::I64(
+                                        ::substrait::proto::r#type::I64 {
+                                            type_variation_reference: 0,
+                                            nullability: ::substrait::proto::r#type::Nullability::Required as i32,
+                                        },
+                                    )),
+                                }
+                            }
+                        } else {
+                            // Fallback to i64 if no blob
+                            ::substrait::proto::Type {
+                                kind: Some(::substrait::proto::r#type::Kind::I64(
+                                    ::substrait::proto::r#type::I64 {
+                                        type_variation_reference: 0,
+                                        nullability: ::substrait::proto::r#type::Nullability::Required as i32,
+                                    },
+                                )),
+                            }
+                        };
+                        field_types.push(field_type);
                     }
                 }
             }
