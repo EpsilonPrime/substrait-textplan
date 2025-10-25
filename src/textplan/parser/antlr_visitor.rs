@@ -2447,7 +2447,8 @@ impl<'input> RelationVisitor<'input> {
 
                     match type_name.as_str() {
                         "interval_day_second" => {
-                            // Expect {days, seconds, subseconds}
+                            // Expect {days, seconds, subseconds}_interval_day_second<precision>
+                            // precision defaults to 6 (microseconds) if not specified
                             if constants.len() >= 3 {
                                 let days = Self::extract_number_from_constant(&constants[0]);
                                 let seconds = Self::extract_number_from_constant(&constants[1]);
@@ -2457,12 +2458,30 @@ impl<'input> RelationVisitor<'input> {
                                     0i64
                                 };
 
+                                // Check for optional precision in literal_specifier: <precision>
+                                let precision = if let Some(spec_ctx) = type_ctx.literal_specifier() {
+                                    if let Some(number_token) = spec_ctx.NUMBER(0) {
+                                        number_token.get_text().parse::<i32>().unwrap_or(6)
+                                    } else {
+                                        6 // Default to microsecond precision
+                                    }
+                                } else {
+                                    6 // Default to microsecond precision
+                                };
+
+                                use ::substrait::proto::expression::literal::interval_day_to_second::PrecisionMode;
+                                let precision_mode = if precision == 6 {
+                                    None // Default, omit
+                                } else {
+                                    Some(PrecisionMode::Precision(precision))
+                                };
+
                                 Some(LiteralType::IntervalDayToSecond(
                                     ::substrait::proto::expression::literal::IntervalDayToSecond {
                                         days,
                                         seconds,
                                         subseconds,
-                                        precision_mode: None,
+                                        precision_mode,
                                     },
                                 ))
                             } else {
