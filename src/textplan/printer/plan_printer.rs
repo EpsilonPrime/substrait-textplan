@@ -679,8 +679,8 @@ impl PlanPrinter {
         indent: &str,
         result: &mut String,
     ) -> Result<(), TextPlanError> {
-        use ::substrait::proto::rel::RelType;
         use ::substrait::proto::fetch_rel::{CountMode, OffsetMode};
+        use ::substrait::proto::rel::RelType;
 
         // Extract offset and count from FetchRel using deprecated mode fields
         let (offset, count) = if let Some(blob_lock) = &relation.blob {

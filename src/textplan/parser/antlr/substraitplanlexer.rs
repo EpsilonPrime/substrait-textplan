@@ -7,201 +7,402 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use antlr_rust::atn::ATN;
+use antlr_rust::atn_deserializer::ATNDeserializer;
 use antlr_rust::char_stream::CharStream;
+use antlr_rust::dfa::DFA;
+use antlr_rust::error_listener::ErrorListener;
 use antlr_rust::int_stream::IntStream;
 use antlr_rust::lexer::{BaseLexer, Lexer, LexerRecog};
-use antlr_rust::atn_deserializer::ATNDeserializer;
-use antlr_rust::dfa::DFA;
-use antlr_rust::lexer_atn_simulator::{LexerATNSimulator, ILexerATNSimulator};
-use antlr_rust::PredictionContextCache;
-use antlr_rust::recognizer::{Recognizer,Actions};
-use antlr_rust::error_listener::ErrorListener;
-use antlr_rust::TokenSource;
-use antlr_rust::token_factory::{TokenFactory,CommonTokenFactory,TokenAware};
+use antlr_rust::lexer_atn_simulator::{ILexerATNSimulator, LexerATNSimulator};
+use antlr_rust::parser_rule_context::{cast, BaseParserRuleContext, ParserRuleContext};
+use antlr_rust::recognizer::{Actions, Recognizer};
+use antlr_rust::rule_context::{BaseRuleContext, EmptyContext, EmptyCustomRuleContext};
 use antlr_rust::token::*;
-use antlr_rust::rule_context::{BaseRuleContext,EmptyCustomRuleContext,EmptyContext};
-use antlr_rust::parser_rule_context::{ParserRuleContext,BaseParserRuleContext,cast};
-use antlr_rust::vocabulary::{Vocabulary,VocabularyImpl};
+use antlr_rust::token_factory::{CommonTokenFactory, TokenAware, TokenFactory};
+use antlr_rust::vocabulary::{Vocabulary, VocabularyImpl};
+use antlr_rust::PredictionContextCache;
+use antlr_rust::TokenSource;
 
-use antlr_rust::{lazy_static,Tid,TidAble,TidExt};
+use antlr_rust::{lazy_static, Tid, TidAble, TidExt};
 
-use std::sync::Arc;
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
+use std::sync::Arc;
 
+pub const SPACES: isize = 1;
+pub const EXTENSION_SPACE: isize = 2;
+pub const FUNCTION: isize = 3;
+pub const AS: isize = 4;
+pub const NAMED: isize = 5;
+pub const SCHEMA: isize = 6;
+pub const RELATION: isize = 7;
+pub const PIPELINES: isize = 8;
+pub const COMMON: isize = 9;
+pub const BASE_SCHEMA: isize = 10;
+pub const FILTER: isize = 11;
+pub const PROJECTION: isize = 12;
+pub const EXPRESSION: isize = 13;
+pub const ADVANCED_EXTENSION: isize = 14;
+pub const GROUPING: isize = 15;
+pub const MEASURE: isize = 16;
+pub const INVOCATION: isize = 17;
+pub const SORT: isize = 18;
+pub const BY: isize = 19;
+pub const COUNT: isize = 20;
+pub const OFFSET: isize = 21;
+pub const TYPE: isize = 22;
+pub const EMIT: isize = 23;
+pub const SUBQUERY: isize = 24;
+pub const EXISTS: isize = 25;
+pub const UNIQUE: isize = 26;
+pub const IN: isize = 27;
+pub const ALL: isize = 28;
+pub const ANY: isize = 29;
+pub const COMPARISON: isize = 30;
+pub const VIRTUAL_TABLE: isize = 31;
+pub const LOCAL_FILES: isize = 32;
+pub const NAMED_TABLE: isize = 33;
+pub const EXTENSION_TABLE: isize = 34;
+pub const SOURCE: isize = 35;
+pub const ROOT: isize = 36;
+pub const ITEMS: isize = 37;
+pub const NAMES: isize = 38;
+pub const URI_FILE: isize = 39;
+pub const URI_PATH: isize = 40;
+pub const URI_PATH_GLOB: isize = 41;
+pub const URI_FOLDER: isize = 42;
+pub const PARTITION_INDEX: isize = 43;
+pub const START: isize = 44;
+pub const LENGTH: isize = 45;
+pub const ORC: isize = 46;
+pub const PARQUET: isize = 47;
+pub const NULLVAL: isize = 48;
+pub const TRUEVAL: isize = 49;
+pub const FALSEVAL: isize = 50;
+pub const LIST: isize = 51;
+pub const MAP: isize = 52;
+pub const STRUCT: isize = 53;
+pub const ARROW: isize = 54;
+pub const COLON: isize = 55;
+pub const SEMICOLON: isize = 56;
+pub const LEFTBRACE: isize = 57;
+pub const RIGHTBRACE: isize = 58;
+pub const LEFTPAREN: isize = 59;
+pub const RIGHTPAREN: isize = 60;
+pub const COMMA: isize = 61;
+pub const PERIOD: isize = 62;
+pub const EQUAL: isize = 63;
+pub const LEFTBRACKET: isize = 64;
+pub const RIGHTBRACKET: isize = 65;
+pub const UNDERSCORE: isize = 66;
+pub const MINUS: isize = 67;
+pub const LEFTANGLEBRACKET: isize = 68;
+pub const RIGHTANGLEBRACKET: isize = 69;
+pub const QUESTIONMARK: isize = 70;
+pub const ATSIGN: isize = 71;
+pub const IDENTIFIER: isize = 72;
+pub const NUMBER: isize = 73;
+pub const STRING: isize = 74;
+pub const SINGLE_LINE_COMMENT: isize = 75;
+pub const URI: isize = 76;
+pub const EXTENSIONS_SPACES: isize = 77;
+pub const CommentsChannel: usize = 2;
+pub const DirectiveChannel: usize = 3;
+pub const EXTENSIONS: usize = 1;
+pub const channelNames: [&'static str; 2 + 2] = [
+    "DEFAULT_TOKEN_CHANNEL",
+    "HIDDEN",
+    "CommentsChannel",
+    "DirectiveChannel",
+];
 
-	pub const SPACES:isize=1; 
-	pub const EXTENSION_SPACE:isize=2; 
-	pub const FUNCTION:isize=3; 
-	pub const AS:isize=4; 
-	pub const NAMED:isize=5; 
-	pub const SCHEMA:isize=6; 
-	pub const RELATION:isize=7; 
-	pub const PIPELINES:isize=8; 
-	pub const COMMON:isize=9; 
-	pub const BASE_SCHEMA:isize=10; 
-	pub const FILTER:isize=11; 
-	pub const PROJECTION:isize=12; 
-	pub const EXPRESSION:isize=13; 
-	pub const ADVANCED_EXTENSION:isize=14; 
-	pub const GROUPING:isize=15; 
-	pub const MEASURE:isize=16; 
-	pub const INVOCATION:isize=17; 
-	pub const SORT:isize=18; 
-	pub const BY:isize=19; 
-	pub const COUNT:isize=20; 
-	pub const OFFSET:isize=21; 
-	pub const TYPE:isize=22; 
-	pub const EMIT:isize=23; 
-	pub const SUBQUERY:isize=24; 
-	pub const EXISTS:isize=25; 
-	pub const UNIQUE:isize=26; 
-	pub const IN:isize=27; 
-	pub const ALL:isize=28; 
-	pub const ANY:isize=29; 
-	pub const COMPARISON:isize=30; 
-	pub const VIRTUAL_TABLE:isize=31; 
-	pub const LOCAL_FILES:isize=32; 
-	pub const NAMED_TABLE:isize=33; 
-	pub const EXTENSION_TABLE:isize=34; 
-	pub const SOURCE:isize=35; 
-	pub const ROOT:isize=36; 
-	pub const ITEMS:isize=37; 
-	pub const NAMES:isize=38; 
-	pub const URI_FILE:isize=39; 
-	pub const URI_PATH:isize=40; 
-	pub const URI_PATH_GLOB:isize=41; 
-	pub const URI_FOLDER:isize=42; 
-	pub const PARTITION_INDEX:isize=43; 
-	pub const START:isize=44; 
-	pub const LENGTH:isize=45; 
-	pub const ORC:isize=46; 
-	pub const PARQUET:isize=47; 
-	pub const NULLVAL:isize=48; 
-	pub const TRUEVAL:isize=49; 
-	pub const FALSEVAL:isize=50; 
-	pub const LIST:isize=51; 
-	pub const MAP:isize=52; 
-	pub const STRUCT:isize=53; 
-	pub const ARROW:isize=54; 
-	pub const COLON:isize=55; 
-	pub const SEMICOLON:isize=56; 
-	pub const LEFTBRACE:isize=57; 
-	pub const RIGHTBRACE:isize=58; 
-	pub const LEFTPAREN:isize=59; 
-	pub const RIGHTPAREN:isize=60; 
-	pub const COMMA:isize=61; 
-	pub const PERIOD:isize=62; 
-	pub const EQUAL:isize=63; 
-	pub const LEFTBRACKET:isize=64; 
-	pub const RIGHTBRACKET:isize=65; 
-	pub const UNDERSCORE:isize=66; 
-	pub const MINUS:isize=67; 
-	pub const LEFTANGLEBRACKET:isize=68; 
-	pub const RIGHTANGLEBRACKET:isize=69; 
-	pub const QUESTIONMARK:isize=70; 
-	pub const ATSIGN:isize=71; 
-	pub const IDENTIFIER:isize=72; 
-	pub const NUMBER:isize=73; 
-	pub const STRING:isize=74; 
-	pub const SINGLE_LINE_COMMENT:isize=75; 
-	pub const URI:isize=76; 
-	pub const EXTENSIONS_SPACES:isize=77;
-	pub const CommentsChannel: usize=2; 
-	 pub const DirectiveChannel: usize=3;
-	pub const EXTENSIONS: usize=1;
-	pub const channelNames: [&'static str;2+2] = [
-		"DEFAULT_TOKEN_CHANNEL", "HIDDEN", "CommentsChannel", "DirectiveChannel"
-	];
+pub const modeNames: [&'static str; 2] = ["DEFAULT_MODE", "EXTENSIONS"];
 
-	pub const modeNames: [&'static str;2] = [
-		"DEFAULT_MODE", "EXTENSIONS"
-	];
+pub const ruleNames: [&'static str; 89] = [
+    "EXTENSION_SPACE",
+    "FUNCTION",
+    "AS",
+    "NAMED",
+    "SCHEMA",
+    "RELATION",
+    "PIPELINES",
+    "COMMON",
+    "BASE_SCHEMA",
+    "FILTER",
+    "PROJECTION",
+    "EXPRESSION",
+    "ADVANCED_EXTENSION",
+    "GROUPING",
+    "MEASURE",
+    "INVOCATION",
+    "SORT",
+    "BY",
+    "COUNT",
+    "OFFSET",
+    "TYPE",
+    "EMIT",
+    "SUBQUERY",
+    "EXISTS",
+    "UNIQUE",
+    "IN",
+    "ALL",
+    "ANY",
+    "COMPARISON",
+    "VIRTUAL_TABLE",
+    "LOCAL_FILES",
+    "NAMED_TABLE",
+    "EXTENSION_TABLE",
+    "SOURCE",
+    "ROOT",
+    "ITEMS",
+    "NAMES",
+    "URI_FILE",
+    "URI_PATH",
+    "URI_PATH_GLOB",
+    "URI_FOLDER",
+    "PARTITION_INDEX",
+    "START",
+    "LENGTH",
+    "ORC",
+    "PARQUET",
+    "NULLVAL",
+    "TRUEVAL",
+    "FALSEVAL",
+    "LIST",
+    "MAP",
+    "STRUCT",
+    "ARROW",
+    "COLON",
+    "SEMICOLON",
+    "LEFTBRACE",
+    "RIGHTBRACE",
+    "LEFTPAREN",
+    "RIGHTPAREN",
+    "QUOTE",
+    "COMMA",
+    "PERIOD",
+    "EQUAL",
+    "LEFTBRACKET",
+    "RIGHTBRACKET",
+    "UNDERSCORE",
+    "MINUS",
+    "LEFTANGLEBRACKET",
+    "RIGHTANGLEBRACKET",
+    "QUESTIONMARK",
+    "ATSIGN",
+    "IDENTIFIER",
+    "NUMBER",
+    "STRING",
+    "ESCAPEDQUOTE",
+    "HEX",
+    "DIGIT",
+    "RAW_LITERAL_SINGLE_BACKTICK",
+    "RAW_LITERAL_DOUBLE_BACKTICK",
+    "RAW_LITERAL_TRIPLE_BACKTICK",
+    "SINGLE_LINE_COMMENT",
+    "SPACES",
+    "SCHEME",
+    "HOSTNAME",
+    "FILENAME",
+    "PATH",
+    "URI",
+    "EXTENSIONS_LEFTBRACE",
+    "EXTENSIONS_SPACES",
+];
 
-	pub const ruleNames: [&'static str;89] = [
-		"EXTENSION_SPACE", "FUNCTION", "AS", "NAMED", "SCHEMA", "RELATION", "PIPELINES", 
-		"COMMON", "BASE_SCHEMA", "FILTER", "PROJECTION", "EXPRESSION", "ADVANCED_EXTENSION", 
-		"GROUPING", "MEASURE", "INVOCATION", "SORT", "BY", "COUNT", "OFFSET", 
-		"TYPE", "EMIT", "SUBQUERY", "EXISTS", "UNIQUE", "IN", "ALL", "ANY", "COMPARISON", 
-		"VIRTUAL_TABLE", "LOCAL_FILES", "NAMED_TABLE", "EXTENSION_TABLE", "SOURCE", 
-		"ROOT", "ITEMS", "NAMES", "URI_FILE", "URI_PATH", "URI_PATH_GLOB", "URI_FOLDER", 
-		"PARTITION_INDEX", "START", "LENGTH", "ORC", "PARQUET", "NULLVAL", "TRUEVAL", 
-		"FALSEVAL", "LIST", "MAP", "STRUCT", "ARROW", "COLON", "SEMICOLON", "LEFTBRACE", 
-		"RIGHTBRACE", "LEFTPAREN", "RIGHTPAREN", "QUOTE", "COMMA", "PERIOD", "EQUAL", 
-		"LEFTBRACKET", "RIGHTBRACKET", "UNDERSCORE", "MINUS", "LEFTANGLEBRACKET", 
-		"RIGHTANGLEBRACKET", "QUESTIONMARK", "ATSIGN", "IDENTIFIER", "NUMBER", 
-		"STRING", "ESCAPEDQUOTE", "HEX", "DIGIT", "RAW_LITERAL_SINGLE_BACKTICK", 
-		"RAW_LITERAL_DOUBLE_BACKTICK", "RAW_LITERAL_TRIPLE_BACKTICK", "SINGLE_LINE_COMMENT", 
-		"SPACES", "SCHEME", "HOSTNAME", "FILENAME", "PATH", "URI", "EXTENSIONS_LEFTBRACE", 
-		"EXTENSIONS_SPACES"
-	];
+pub const _LITERAL_NAMES: [Option<&'static str>; 72] = [
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    None,
+    Some("'->'"),
+    Some("':'"),
+    Some("';'"),
+    Some("'{'"),
+    Some("'}'"),
+    Some("'('"),
+    Some("')'"),
+    Some("','"),
+    Some("'.'"),
+    Some("'='"),
+    Some("'['"),
+    Some("']'"),
+    Some("'_'"),
+    Some("'-'"),
+    Some("'<'"),
+    Some("'>'"),
+    Some("'?'"),
+    Some("'@'"),
+];
+pub const _SYMBOLIC_NAMES: [Option<&'static str>; 78] = [
+    None,
+    Some("SPACES"),
+    Some("EXTENSION_SPACE"),
+    Some("FUNCTION"),
+    Some("AS"),
+    Some("NAMED"),
+    Some("SCHEMA"),
+    Some("RELATION"),
+    Some("PIPELINES"),
+    Some("COMMON"),
+    Some("BASE_SCHEMA"),
+    Some("FILTER"),
+    Some("PROJECTION"),
+    Some("EXPRESSION"),
+    Some("ADVANCED_EXTENSION"),
+    Some("GROUPING"),
+    Some("MEASURE"),
+    Some("INVOCATION"),
+    Some("SORT"),
+    Some("BY"),
+    Some("COUNT"),
+    Some("OFFSET"),
+    Some("TYPE"),
+    Some("EMIT"),
+    Some("SUBQUERY"),
+    Some("EXISTS"),
+    Some("UNIQUE"),
+    Some("IN"),
+    Some("ALL"),
+    Some("ANY"),
+    Some("COMPARISON"),
+    Some("VIRTUAL_TABLE"),
+    Some("LOCAL_FILES"),
+    Some("NAMED_TABLE"),
+    Some("EXTENSION_TABLE"),
+    Some("SOURCE"),
+    Some("ROOT"),
+    Some("ITEMS"),
+    Some("NAMES"),
+    Some("URI_FILE"),
+    Some("URI_PATH"),
+    Some("URI_PATH_GLOB"),
+    Some("URI_FOLDER"),
+    Some("PARTITION_INDEX"),
+    Some("START"),
+    Some("LENGTH"),
+    Some("ORC"),
+    Some("PARQUET"),
+    Some("NULLVAL"),
+    Some("TRUEVAL"),
+    Some("FALSEVAL"),
+    Some("LIST"),
+    Some("MAP"),
+    Some("STRUCT"),
+    Some("ARROW"),
+    Some("COLON"),
+    Some("SEMICOLON"),
+    Some("LEFTBRACE"),
+    Some("RIGHTBRACE"),
+    Some("LEFTPAREN"),
+    Some("RIGHTPAREN"),
+    Some("COMMA"),
+    Some("PERIOD"),
+    Some("EQUAL"),
+    Some("LEFTBRACKET"),
+    Some("RIGHTBRACKET"),
+    Some("UNDERSCORE"),
+    Some("MINUS"),
+    Some("LEFTANGLEBRACKET"),
+    Some("RIGHTANGLEBRACKET"),
+    Some("QUESTIONMARK"),
+    Some("ATSIGN"),
+    Some("IDENTIFIER"),
+    Some("NUMBER"),
+    Some("STRING"),
+    Some("SINGLE_LINE_COMMENT"),
+    Some("URI"),
+    Some("EXTENSIONS_SPACES"),
+];
+lazy_static! {
+    static ref _shared_context_cache: Arc<PredictionContextCache> =
+        Arc::new(PredictionContextCache::new());
+    static ref VOCABULARY: Box<dyn Vocabulary> = Box::new(VocabularyImpl::new(
+        _LITERAL_NAMES.iter(),
+        _SYMBOLIC_NAMES.iter(),
+        None
+    ));
+}
 
-
-	pub const _LITERAL_NAMES: [Option<&'static str>;72] = [
-		None, None, None, None, None, None, None, None, None, None, None, None, 
-		None, None, None, None, None, None, None, None, None, None, None, None, 
-		None, None, None, None, None, None, None, None, None, None, None, None, 
-		None, None, None, None, None, None, None, None, None, None, None, None, 
-		None, None, None, None, None, None, Some("'->'"), Some("':'"), Some("';'"), 
-		Some("'{'"), Some("'}'"), Some("'('"), Some("')'"), Some("','"), Some("'.'"), 
-		Some("'='"), Some("'['"), Some("']'"), Some("'_'"), Some("'-'"), Some("'<'"), 
-		Some("'>'"), Some("'?'"), Some("'@'")
-	];
-	pub const _SYMBOLIC_NAMES: [Option<&'static str>;78]  = [
-		None, Some("SPACES"), Some("EXTENSION_SPACE"), Some("FUNCTION"), Some("AS"), 
-		Some("NAMED"), Some("SCHEMA"), Some("RELATION"), Some("PIPELINES"), Some("COMMON"), 
-		Some("BASE_SCHEMA"), Some("FILTER"), Some("PROJECTION"), Some("EXPRESSION"), 
-		Some("ADVANCED_EXTENSION"), Some("GROUPING"), Some("MEASURE"), Some("INVOCATION"), 
-		Some("SORT"), Some("BY"), Some("COUNT"), Some("OFFSET"), Some("TYPE"), 
-		Some("EMIT"), Some("SUBQUERY"), Some("EXISTS"), Some("UNIQUE"), Some("IN"), 
-		Some("ALL"), Some("ANY"), Some("COMPARISON"), Some("VIRTUAL_TABLE"), Some("LOCAL_FILES"), 
-		Some("NAMED_TABLE"), Some("EXTENSION_TABLE"), Some("SOURCE"), Some("ROOT"), 
-		Some("ITEMS"), Some("NAMES"), Some("URI_FILE"), Some("URI_PATH"), Some("URI_PATH_GLOB"), 
-		Some("URI_FOLDER"), Some("PARTITION_INDEX"), Some("START"), Some("LENGTH"), 
-		Some("ORC"), Some("PARQUET"), Some("NULLVAL"), Some("TRUEVAL"), Some("FALSEVAL"), 
-		Some("LIST"), Some("MAP"), Some("STRUCT"), Some("ARROW"), Some("COLON"), 
-		Some("SEMICOLON"), Some("LEFTBRACE"), Some("RIGHTBRACE"), Some("LEFTPAREN"), 
-		Some("RIGHTPAREN"), Some("COMMA"), Some("PERIOD"), Some("EQUAL"), Some("LEFTBRACKET"), 
-		Some("RIGHTBRACKET"), Some("UNDERSCORE"), Some("MINUS"), Some("LEFTANGLEBRACKET"), 
-		Some("RIGHTANGLEBRACKET"), Some("QUESTIONMARK"), Some("ATSIGN"), Some("IDENTIFIER"), 
-		Some("NUMBER"), Some("STRING"), Some("SINGLE_LINE_COMMENT"), Some("URI"), 
-		Some("EXTENSIONS_SPACES")
-	];
-	lazy_static!{
-	    static ref _shared_context_cache: Arc<PredictionContextCache> = Arc::new(PredictionContextCache::new());
-		static ref VOCABULARY: Box<dyn Vocabulary> = Box::new(VocabularyImpl::new(_LITERAL_NAMES.iter(), _SYMBOLIC_NAMES.iter(), None));
-	}
-
-
-pub type LexerContext<'input> = BaseRuleContext<'input,EmptyCustomRuleContext<'input,LocalTokenFactory<'input> >>;
+pub type LexerContext<'input> =
+    BaseRuleContext<'input, EmptyCustomRuleContext<'input, LocalTokenFactory<'input>>>;
 pub type LocalTokenFactory<'input> = CommonTokenFactory;
 
-type From<'a> = <LocalTokenFactory<'a> as TokenFactory<'a> >::From;
+type From<'a> = <LocalTokenFactory<'a> as TokenFactory<'a>>::From;
 
-pub struct SubstraitPlanLexer<'input, Input:CharStream<From<'input> >> {
-	base: BaseLexer<'input,SubstraitPlanLexerActions,Input,LocalTokenFactory<'input>>,
+pub struct SubstraitPlanLexer<'input, Input: CharStream<From<'input>>> {
+    base: BaseLexer<'input, SubstraitPlanLexerActions, Input, LocalTokenFactory<'input>>,
 }
 
 antlr_rust::tid! { impl<'input,Input> TidAble<'input> for SubstraitPlanLexer<'input,Input> where Input:CharStream<From<'input> > }
 
-impl<'input, Input:CharStream<From<'input> >> Deref for SubstraitPlanLexer<'input,Input>{
-	type Target = BaseLexer<'input,SubstraitPlanLexerActions,Input,LocalTokenFactory<'input>>;
+impl<'input, Input: CharStream<From<'input>>> Deref for SubstraitPlanLexer<'input, Input> {
+    type Target = BaseLexer<'input, SubstraitPlanLexerActions, Input, LocalTokenFactory<'input>>;
 
-	fn deref(&self) -> &Self::Target {
-		&self.base
-	}
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
 }
 
-impl<'input, Input:CharStream<From<'input> >> DerefMut for SubstraitPlanLexer<'input,Input>{
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.base
-	}
+impl<'input, Input: CharStream<From<'input>>> DerefMut for SubstraitPlanLexer<'input, Input> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
 }
 
-
-impl<'input, Input:CharStream<From<'input> >> SubstraitPlanLexer<'input,Input>{
+impl<'input, Input: CharStream<From<'input>>> SubstraitPlanLexer<'input, Input> {
     fn get_rule_names(&self) -> &'static [&'static str] {
         &ruleNames
     }
@@ -217,50 +418,62 @@ impl<'input, Input:CharStream<From<'input> >> SubstraitPlanLexer<'input,Input>{
         "SubstraitPlanLexer.g4"
     }
 
-	pub fn new_with_token_factory(input: Input, tf: &'input LocalTokenFactory<'input>) -> Self {
-		antlr_rust::recognizer::check_version("0","3");
-    	Self {
-			base: BaseLexer::new_base_lexer(
-				input,
-				LexerATNSimulator::new_lexer_atnsimulator(
-					_ATN.clone(),
-					_decision_to_DFA.clone(),
-					_shared_context_cache.clone(),
-				),
-				SubstraitPlanLexerActions{},
-				tf
-			)
-	    }
-	}
+    pub fn new_with_token_factory(input: Input, tf: &'input LocalTokenFactory<'input>) -> Self {
+        antlr_rust::recognizer::check_version("0", "3");
+        Self {
+            base: BaseLexer::new_base_lexer(
+                input,
+                LexerATNSimulator::new_lexer_atnsimulator(
+                    _ATN.clone(),
+                    _decision_to_DFA.clone(),
+                    _shared_context_cache.clone(),
+                ),
+                SubstraitPlanLexerActions {},
+                tf,
+            ),
+        }
+    }
 }
 
-impl<'input, Input:CharStream<From<'input> >> SubstraitPlanLexer<'input,Input> where &'input LocalTokenFactory<'input>:Default{
-	pub fn new(input: Input) -> Self{
-		SubstraitPlanLexer::new_with_token_factory(input, <&LocalTokenFactory<'input> as Default>::default())
-	}
+impl<'input, Input: CharStream<From<'input>>> SubstraitPlanLexer<'input, Input>
+where
+    &'input LocalTokenFactory<'input>: Default,
+{
+    pub fn new(input: Input) -> Self {
+        SubstraitPlanLexer::new_with_token_factory(
+            input,
+            <&LocalTokenFactory<'input> as Default>::default(),
+        )
+    }
 }
 
-pub struct SubstraitPlanLexerActions {
+pub struct SubstraitPlanLexerActions {}
+
+impl SubstraitPlanLexerActions {}
+
+impl<'input, Input: CharStream<From<'input>>>
+    Actions<'input, BaseLexer<'input, SubstraitPlanLexerActions, Input, LocalTokenFactory<'input>>>
+    for SubstraitPlanLexerActions
+{
 }
 
-impl SubstraitPlanLexerActions{
+impl<'input, Input: CharStream<From<'input>>> SubstraitPlanLexer<'input, Input> {}
+
+impl<'input, Input: CharStream<From<'input>>>
+    LexerRecog<
+        'input,
+        BaseLexer<'input, SubstraitPlanLexerActions, Input, LocalTokenFactory<'input>>,
+    > for SubstraitPlanLexerActions
+{
+}
+impl<'input> TokenAware<'input> for SubstraitPlanLexerActions {
+    type TF = LocalTokenFactory<'input>;
 }
 
-impl<'input, Input:CharStream<From<'input> >> Actions<'input,BaseLexer<'input,SubstraitPlanLexerActions,Input,LocalTokenFactory<'input>>> for SubstraitPlanLexerActions{
-	}
-
-	impl<'input, Input:CharStream<From<'input> >> SubstraitPlanLexer<'input,Input>{
-
-}
-
-impl<'input, Input:CharStream<From<'input> >> LexerRecog<'input,BaseLexer<'input,SubstraitPlanLexerActions,Input,LocalTokenFactory<'input>>> for SubstraitPlanLexerActions{
-}
-impl<'input> TokenAware<'input> for SubstraitPlanLexerActions{
-	type TF = LocalTokenFactory<'input>;
-}
-
-impl<'input, Input:CharStream<From<'input> >> TokenSource<'input> for SubstraitPlanLexer<'input,Input>{
-	type TF = LocalTokenFactory<'input>;
+impl<'input, Input: CharStream<From<'input>>> TokenSource<'input>
+    for SubstraitPlanLexer<'input, Input>
+{
+    type TF = LocalTokenFactory<'input>;
 
     fn next_token(&mut self) -> <Self::TF as TokenFactory<'input>>::Tok {
         self.base.next_token()
@@ -278,38 +491,30 @@ impl<'input, Input:CharStream<From<'input> >> TokenSource<'input> for SubstraitP
         self.base.get_input_stream()
     }
 
-	fn get_source_name(&self) -> String {
-		self.base.get_source_name()
-	}
+    fn get_source_name(&self) -> String {
+        self.base.get_source_name()
+    }
 
     fn get_token_factory(&self) -> &'input Self::TF {
         self.base.get_token_factory()
     }
 }
 
+lazy_static! {
+    static ref _ATN: Arc<ATN> =
+        Arc::new(ATNDeserializer::new(None).deserialize(_serializedATN.chars()));
+    static ref _decision_to_DFA: Arc<Vec<antlr_rust::RwLock<DFA>>> = {
+        let mut dfa = Vec::new();
+        let size = _ATN.decision_to_state.len();
+        for i in 0..size {
+            dfa.push(DFA::new(_ATN.clone(), _ATN.get_decision_state(i), i as isize).into())
+        }
+        Arc::new(dfa)
+    };
+}
 
-
-	lazy_static! {
-	    static ref _ATN: Arc<ATN> =
-	        Arc::new(ATNDeserializer::new(None).deserialize(_serializedATN.chars()));
-	    static ref _decision_to_DFA: Arc<Vec<antlr_rust::RwLock<DFA>>> = {
-	        let mut dfa = Vec::new();
-	        let size = _ATN.decision_to_state.len();
-	        for i in 0..size {
-	            dfa.push(DFA::new(
-	                _ATN.clone(),
-	                _ATN.get_decision_state(i),
-	                i as isize,
-	            ).into())
-	        }
-	        Arc::new(dfa)
-	    };
-	}
-
-
-
-	const _serializedATN:&'static str =
-		"\x03\u{608b}\u{a72a}\u{8133}\u{b9ed}\u{417c}\u{3be7}\u{7786}\u{5964}\x02\
+const _serializedATN: &'static str =
+    "\x03\u{608b}\u{a72a}\u{8133}\u{b9ed}\u{417c}\u{3be7}\u{7786}\u{5964}\x02\
 		\x4f\u{343}\x08\x01\x08\x01\x04\x02\x09\x02\x04\x03\x09\x03\x04\x04\x09\
 		\x04\x04\x05\x09\x05\x04\x06\x09\x06\x04\x07\x09\x07\x04\x08\x09\x08\x04\
 		\x09\x09\x09\x04\x0a\x09\x0a\x04\x0b\x09\x0b\x04\x0c\x09\x0c\x04\x0d\x09\
