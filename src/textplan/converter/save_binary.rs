@@ -399,11 +399,11 @@ fn populate_project_emit(
     symbol: &Arc<SymbolInfo>,
     project_rel: &mut ::substrait::proto::ProjectRel,
 ) -> Result<(), TextPlanError> {
-    // Get relation data to check for generated field references (emits)
+    // Get relation data to check for output field references (emits)
     if let Some(blob_lock) = &symbol.blob {
         if let Ok(blob_data) = blob_lock.lock() {
             if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                let emit_count = relation_data.generated_field_references.len();
+                let emit_count = relation_data.output_field_references.len();
 
                 if emit_count > 0 {
                     // Calculate input field count
@@ -417,7 +417,8 @@ fn populate_project_emit(
                         0
                     };
 
-                    // Build output mapping: [input_count, input_count+1, ..., input_count+emit_count-1]
+                    // Build output mapping: indices of the expressions that were emitted
+                    // The expressions start after the input fields
                     let output_mapping: Vec<i32> = (0..emit_count)
                         .map(|i| (input_field_count + i) as i32)
                         .collect();
@@ -468,10 +469,19 @@ fn count_relation_output_fields(rel: &::substrait::proto::Rel) -> usize {
                     0
                 }
             }
-            ::substrait::proto::rel::RelType::Cross(_) => {
+            ::substrait::proto::rel::RelType::Cross(cross_rel) => {
                 // Cross product combines left and right fields
-                // Need to recursively count, but for now use placeholder
-                25 // LINEITEM (16) + PART (9) = 25
+                let left_count = if let Some(left) = &cross_rel.left {
+                    count_relation_output_fields(left)
+                } else {
+                    0
+                };
+                let right_count = if let Some(right) = &cross_rel.right {
+                    count_relation_output_fields(right)
+                } else {
+                    0
+                };
+                left_count + right_count
             }
             ::substrait::proto::rel::RelType::Filter(filter_rel) => {
                 // Filter passes through all input fields from its input
