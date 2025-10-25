@@ -88,12 +88,231 @@ mod tests {
             }
         }
 
-        // Step 3: Update all function references in relations
-        // (This is simplified - a full implementation would recurse through all expression types)
-        // For now, we rely on the fact that if our code generates the correct structure,
-        // the references will match after both plans are normalized the same way.
+        // Step 3: Update all function references in relations (recursively)
+        for relation in plan.relations.iter_mut() {
+            normalize_plan_relation(relation, &function_mapping);
+        }
 
         plan
+    }
+
+    /// Recursively normalize function references in expressions
+    fn normalize_expression(
+        expr: &mut ::substrait::proto::Expression,
+        mapping: &std::collections::HashMap<u32, u32>,
+    ) {
+        use ::substrait::proto::expression::RexType;
+
+        match &mut expr.rex_type {
+            Some(RexType::ScalarFunction(ref mut func)) => {
+                if let Some(&new_ref) = mapping.get(&func.function_reference) {
+                    func.function_reference = new_ref;
+                }
+                for arg in func.arguments.iter_mut() {
+                    if let Some(::substrait::proto::function_argument::ArgType::Value(ref mut val)) = arg.arg_type {
+                        normalize_expression(val, mapping);
+                    }
+                }
+            }
+            Some(RexType::Cast(ref mut cast)) => {
+                if let Some(ref mut input) = cast.input {
+                    normalize_expression(input, mapping);
+                }
+            }
+            Some(RexType::IfThen(ref mut if_then)) => {
+                for if_clause in if_then.ifs.iter_mut() {
+                    if let Some(ref mut if_expr) = if_clause.r#if {
+                        normalize_expression(if_expr, mapping);
+                    }
+                    if let Some(ref mut then_expr) = if_clause.then {
+                        normalize_expression(then_expr, mapping);
+                    }
+                }
+                if let Some(ref mut else_expr) = if_then.r#else {
+                    normalize_expression(else_expr, mapping);
+                }
+            }
+            Some(RexType::Subquery(ref mut subquery)) => {
+                use ::substrait::proto::expression::subquery::SubqueryType;
+                match &mut subquery.subquery_type {
+                    Some(SubqueryType::Scalar(ref mut scalar)) => {
+                        if let Some(ref mut input) = scalar.input {
+                            normalize_relation(input, mapping);
+                        }
+                    }
+                    Some(SubqueryType::InPredicate(ref mut in_pred)) => {
+                        for needle in in_pred.needles.iter_mut() {
+                            normalize_expression(needle, mapping);
+                        }
+                        if let Some(ref mut haystack) = in_pred.haystack {
+                            normalize_relation(haystack, mapping);
+                        }
+                    }
+                    Some(SubqueryType::SetPredicate(ref mut set_pred)) => {
+                        if let Some(ref mut tuples) = set_pred.tuples {
+                            normalize_relation(tuples, mapping);
+                        }
+                    }
+                    Some(SubqueryType::SetComparison(ref mut set_comp)) => {
+                        if let Some(ref mut left) = set_comp.left {
+                            normalize_expression(left, mapping);
+                        }
+                        if let Some(ref mut right) = set_comp.right {
+                            normalize_relation(right, mapping);
+                        }
+                    }
+                    None => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Recursively normalize function references in relations
+    fn normalize_relation(
+        rel: &mut ::substrait::proto::Rel,
+        mapping: &std::collections::HashMap<u32, u32>,
+    ) {
+        use ::substrait::proto::rel::RelType;
+
+        match &mut rel.rel_type {
+            Some(RelType::Read(ref mut read)) => {
+                if let Some(ref mut filter) = read.filter {
+                    normalize_expression(filter, mapping);
+                }
+                if let Some(ref mut best_effort_filter) = read.best_effort_filter {
+                    normalize_expression(best_effort_filter, mapping);
+                }
+            }
+            Some(RelType::Filter(ref mut filter)) => {
+                if let Some(ref mut input) = filter.input {
+                    normalize_relation(input, mapping);
+                }
+                if let Some(ref mut condition) = filter.condition {
+                    normalize_expression(condition, mapping);
+                }
+            }
+            Some(RelType::Fetch(ref mut fetch)) => {
+                if let Some(ref mut input) = fetch.input {
+                    normalize_relation(input, mapping);
+                }
+            }
+            Some(RelType::Aggregate(ref mut agg)) => {
+                if let Some(ref mut input) = agg.input {
+                    normalize_relation(input, mapping);
+                }
+                for measure in agg.measures.iter_mut() {
+                    if let Some(ref mut agg_func) = measure.measure {
+                        if let Some(&new_ref) = mapping.get(&agg_func.function_reference) {
+                            agg_func.function_reference = new_ref;
+                        }
+                        for arg in agg_func.arguments.iter_mut() {
+                            if let Some(::substrait::proto::function_argument::ArgType::Value(ref mut val)) = arg.arg_type {
+                                normalize_expression(val, mapping);
+                            }
+                        }
+                    }
+                }
+            }
+            Some(RelType::Sort(ref mut sort)) => {
+                if let Some(ref mut input) = sort.input {
+                    normalize_relation(input, mapping);
+                }
+                for sort_field in sort.sorts.iter_mut() {
+                    if let Some(ref mut expr) = sort_field.expr {
+                        normalize_expression(expr, mapping);
+                    }
+                }
+            }
+            Some(RelType::Join(ref mut join)) => {
+                if let Some(ref mut left) = join.left {
+                    normalize_relation(left, mapping);
+                }
+                if let Some(ref mut right) = join.right {
+                    normalize_relation(right, mapping);
+                }
+                if let Some(ref mut expression) = join.expression {
+                    normalize_expression(expression, mapping);
+                }
+                if let Some(ref mut post_join_filter) = join.post_join_filter {
+                    normalize_expression(post_join_filter, mapping);
+                }
+            }
+            Some(RelType::Project(ref mut project)) => {
+                if let Some(ref mut input) = project.input {
+                    normalize_relation(input, mapping);
+                }
+                for expr in project.expressions.iter_mut() {
+                    normalize_expression(expr, mapping);
+                }
+            }
+            Some(RelType::Set(ref mut set)) => {
+                for input in set.inputs.iter_mut() {
+                    normalize_relation(input, mapping);
+                }
+            }
+            Some(RelType::ExtensionSingle(ref mut ext)) => {
+                if let Some(ref mut input) = ext.input {
+                    normalize_relation(input, mapping);
+                }
+            }
+            Some(RelType::ExtensionMulti(ref mut ext)) => {
+                for input in ext.inputs.iter_mut() {
+                    normalize_relation(input, mapping);
+                }
+            }
+            Some(RelType::Cross(ref mut cross)) => {
+                if let Some(ref mut left) = cross.left {
+                    normalize_relation(left, mapping);
+                }
+                if let Some(ref mut right) = cross.right {
+                    normalize_relation(right, mapping);
+                }
+            }
+            Some(RelType::HashJoin(ref mut hash_join)) => {
+                if let Some(ref mut left) = hash_join.left {
+                    normalize_relation(left, mapping);
+                }
+                if let Some(ref mut right) = hash_join.right {
+                    normalize_relation(right, mapping);
+                }
+                if let Some(ref mut post_join_filter) = hash_join.post_join_filter {
+                    normalize_expression(post_join_filter, mapping);
+                }
+            }
+            Some(RelType::MergeJoin(ref mut merge_join)) => {
+                if let Some(ref mut left) = merge_join.left {
+                    normalize_relation(left, mapping);
+                }
+                if let Some(ref mut right) = merge_join.right {
+                    normalize_relation(right, mapping);
+                }
+                if let Some(ref mut post_join_filter) = merge_join.post_join_filter {
+                    normalize_expression(post_join_filter, mapping);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Normalize function references in a PlanRel (root or rel)
+    fn normalize_plan_relation(
+        plan_rel: &mut ::substrait::proto::PlanRel,
+        mapping: &std::collections::HashMap<u32, u32>,
+    ) {
+        use ::substrait::proto::plan_rel::RelType;
+
+        match &mut plan_rel.rel_type {
+            Some(RelType::Root(ref mut root)) => {
+                if let Some(ref mut input) = root.input {
+                    normalize_relation(input, mapping);
+                }
+            }
+            Some(RelType::Rel(ref mut rel)) => {
+                normalize_relation(rel, mapping);
+            }
+            None => {}
+        }
     }
 
     /// Helper function for roundtrip tests: JSON → Plan → TextPlan → SymbolTable → Binary → Plan comparison.
@@ -182,7 +401,7 @@ mod tests {
         println!("Roundtrip binary size: {} bytes", roundtrip_binary.len());
 
         // Step 7: Binary → Plan (deserialize roundtrip result)
-        let mut roundtrip_plan = match crate::proto::load_plan_from_binary(&roundtrip_binary) {
+        let roundtrip_plan = match crate::proto::load_plan_from_binary(&roundtrip_binary) {
             Ok(plan) => plan,
             Err(err) => {
                 panic!(
@@ -193,8 +412,8 @@ mod tests {
         };
 
         // Step 8: Normalize both plans for comparison (like C++ ReferenceNormalizer)
-        let mut normalized_original = normalize_plan(original_plan.clone());
-        let mut normalized_roundtrip = normalize_plan(roundtrip_plan.clone());
+        let normalized_original = normalize_plan(original_plan.clone());
+        let normalized_roundtrip = normalize_plan(roundtrip_plan.clone());
 
         // Step 9: Compare normalized plans
         if normalized_original != normalized_roundtrip {
