@@ -830,48 +830,87 @@ impl<'input> MainPlanVisitor<'input> {
 
     /// Add input fields from continuing pipeline and new pipelines to the current relation's field_references.
     /// For READ relations, populates from the schema. For other relations, populates from input pipelines.
-    /// This must be called after creating a relation but before processing its details/expressions.
+    /// This recursively populates upstream relations first to ensure fields are available.
     fn add_input_fields_to_schema(&self, relation_symbol: &Arc<SymbolInfo>) {
+        println!("    add_input_fields_to_schema called for '{}'", relation_symbol.name());
+
+        // Check if already populated (early return to avoid unnecessary work)
+        if let Some(blob_lock) = &relation_symbol.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    if !relation_data.field_references.is_empty() {
+                        println!("      '{}' already has {} field_references, skipping",
+                            relation_symbol.name(), relation_data.field_references.len());
+                        return; // Already populated
+                    }
+                }
+            }
+        }
+
+        // Recursively populate upstream relations first
+        if let Some(blob_lock) = &relation_symbol.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    // Collect upstream relations to populate (need to drop lock before recursing)
+                    let mut upstreams = Vec::new();
+                    if let Some(cont) = &relation_data.continuing_pipeline {
+                        upstreams.push(cont.clone());
+                    }
+                    for pipe in &relation_data.new_pipelines {
+                        upstreams.push(pipe.clone());
+                    }
+                    drop(blob_data);
+                    drop(blob_lock);
+
+                    // Recursively populate upstreams
+                    for upstream in upstreams {
+                        self.add_input_fields_to_schema(&upstream);
+                    }
+                }
+            }
+        }
+
+        // Now populate this relation's field_references from its (now-populated) upstreams
         if let Some(blob_lock) = &relation_symbol.blob {
             if let Ok(mut blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
                     // Check if this is a READ relation
                     if let Some(RelType::Read(_)) = &relation_data.relation.rel_type {
+                        println!("      '{}' is READ, populating from schema", relation_symbol.name());
                         // For READ relations, populate field_references from the schema
                         if let Some(schema_arc) = &relation_data.schema {
-                            // Find all SchemaColumn symbols that have this schema as their source
+                            println!("        Schema: '{}'", schema_arc.name());
                             for symbol in self.symbol_table().symbols() {
                                 if symbol.symbol_type() == SymbolType::SchemaColumn {
                                     if let Some(symbol_source) = symbol.source() {
                                         if Arc::ptr_eq(&symbol_source, schema_arc) {
+                                            println!("          Adding field: '{}'", symbol.name());
                                             relation_data.field_references.push(symbol.clone());
                                         }
                                     }
                                 }
                             }
+                            println!("        Total fields added: {}", relation_data.field_references.len());
+                        } else {
+                            println!("        No schema found!");
                         }
                         return;
                     }
 
-                    // For non-READ relations, add fields from continuing pipeline (the input relation)
+                    // For non-READ relations, add fields from continuing pipeline
                     if let Some(continuing_pipeline) = &relation_data.continuing_pipeline {
                         if let Some(cont_blob_lock) = &continuing_pipeline.blob {
                             if let Ok(cont_blob_data) = cont_blob_lock.lock() {
-                                if let Some(cont_relation_data) =
-                                    cont_blob_data.downcast_ref::<RelationData>()
-                                {
+                                if let Some(cont_relation_data) = cont_blob_data.downcast_ref::<RelationData>() {
                                     if !cont_relation_data.output_field_references.is_empty() {
-                                        // There is an emit sequence so use that
                                         for field in &cont_relation_data.output_field_references {
                                             relation_data.field_references.push(field.clone());
                                         }
                                     } else {
-                                        // No emit, so access all field references and generated fields
                                         for field in &cont_relation_data.field_references {
                                             relation_data.field_references.push(field.clone());
                                         }
-                                        for field in &cont_relation_data.generated_field_references
-                                        {
+                                        for field in &cont_relation_data.generated_field_references {
                                             relation_data.field_references.push(field.clone());
                                         }
                                     }
@@ -884,9 +923,7 @@ impl<'input> MainPlanVisitor<'input> {
                     for pipeline in &relation_data.new_pipelines.clone() {
                         if let Some(pipe_blob_lock) = &pipeline.blob {
                             if let Ok(pipe_blob_data) = pipe_blob_lock.lock() {
-                                if let Some(pipe_relation_data) =
-                                    pipe_blob_data.downcast_ref::<RelationData>()
-                                {
+                                if let Some(pipe_relation_data) = pipe_blob_data.downcast_ref::<RelationData>() {
                                     if !pipe_relation_data.output_field_references.is_empty() {
                                         for field in &pipe_relation_data.output_field_references {
                                             relation_data.field_references.push(field.clone());
@@ -895,8 +932,7 @@ impl<'input> MainPlanVisitor<'input> {
                                         for field in &pipe_relation_data.field_references {
                                             relation_data.field_references.push(field.clone());
                                         }
-                                        for field in &pipe_relation_data.generated_field_references
-                                        {
+                                        for field in &pipe_relation_data.generated_field_references {
                                             relation_data.field_references.push(field.clone());
                                         }
                                     }
@@ -1288,13 +1324,13 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
         // Process the relation and add it to the symbol table
         let relation_symbol = self.process_relation(ctx);
 
-        // Add input fields from pipelines before processing details
+        // Visit children to process relation details (this sets schema, base_schema, etc.)
+        self.visit_children(ctx);
+
+        // Add input fields from pipelines AFTER processing details (so schema is set)
         if let Some(symbol) = &relation_symbol {
             self.add_input_fields_to_schema(symbol);
         }
-
-        // Visit children to process relation details
-        self.visit_children(ctx);
 
         // Clear the current relation scope when done with this relation
         self.set_current_relation_scope(None);
@@ -1307,13 +1343,13 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
         // Process the root relation and add it to the symbol table
         let relation_symbol = self.process_root_relation(ctx);
 
-        // Add input fields from pipelines before processing details
+        // Visit children to process relation details (this sets schema, base_schema, etc.)
+        self.visit_children(ctx);
+
+        // Add input fields from pipelines AFTER processing details (so schema is set)
         if let Some(symbol) = &relation_symbol {
             self.add_input_fields_to_schema(symbol);
         }
-
-        // Visit children to process relation details
-        self.visit_children(ctx);
 
         // Clear the current relation scope when done with this relation
         self.set_current_relation_scope(None);
@@ -2128,6 +2164,47 @@ impl<'input> RelationVisitor<'input> {
     /// This returns the index within the field_references vector, which is the
     /// position relative to this relation's input, not the absolute schema position.
     /// Falls back to schema-based lookup if field_references is not yet populated.
+    /// Check if a field symbol matches the given name criteria
+    /// Matches on: alias, name, or fully qualified name (schema.field)
+    fn field_matches(
+        &self,
+        field_symbol: &Arc<SymbolInfo>,
+        field_name: &str,
+        schema_name: &str,
+        full_column_name: &str,
+    ) -> bool {
+        // Check alias first (if present)
+        if let Some(alias) = field_symbol.alias() {
+            if alias == field_name || alias == full_column_name {
+                return true;
+            }
+        }
+
+        // Check field name
+        if field_symbol.name() == field_name {
+            // If schema prefix provided, verify it matches
+            if !schema_name.is_empty() {
+                if let Some(field_schema) = field_symbol.schema() {
+                    return field_schema.name() == schema_name;
+                }
+                return false;
+            }
+            return true;
+        }
+
+        // Check fully qualified name (schema.field)
+        if !schema_name.is_empty() {
+            if let Some(field_schema) = field_symbol.schema() {
+                let qualified = format!("{}.{}", field_schema.name(), field_symbol.name());
+                if qualified == full_column_name {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn lookup_field_index(&self, column_name: &str) -> usize {
         // Parse column name - can be "field" or "schema.field"
         let (schema_name, field_name) = if let Some(dot_pos) = column_name.rfind('.') {
@@ -2137,25 +2214,41 @@ impl<'input> RelationVisitor<'input> {
             ("", column_name)
         };
 
-        // Try to look up from current relation's field_references first
+        // Try to look up from current relation's field references
+        // Search order (like C++): generated_field_references first, then field_references
         if let Some(relation_symbol) = self.current_relation_scope() {
             if let Some(blob_lock) = &relation_symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
                     if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
-                        // If field_references is populated, use it
-                        if !relation_data.field_references.is_empty() {
-                            for (index, field_symbol) in relation_data.field_references.iter().enumerate() {
-                                if field_symbol.name() == field_name {
-                                    return index;
-                                }
+                        let field_ref_size = relation_data.field_references.len();
+
+                        println!("      Looking up '{}' in relation '{}': field_refs={}, generated={}",
+                            column_name, relation_symbol.name(), field_ref_size, relation_data.generated_field_references.len());
+
+                        // First search generated_field_references (in reverse order, like C++)
+                        for (rev_idx, field_symbol) in relation_data.generated_field_references.iter().rev().enumerate() {
+                            if self.field_matches(field_symbol, field_name, schema_name, column_name) {
+                                let actual_idx = relation_data.generated_field_references.len() - rev_idx - 1;
+                                return field_ref_size + actual_idx;
                             }
+                        }
+
+                        // Then search field_references (in reverse order, like C++)
+                        for (rev_idx, field_symbol) in relation_data.field_references.iter().rev().enumerate() {
+                            if self.field_matches(field_symbol, field_name, schema_name, column_name) {
+                                return relation_data.field_references.len() - rev_idx - 1;
+                            }
+                        }
+
+                        // Not found in either list
+                        if field_ref_size > 0 || !relation_data.generated_field_references.is_empty() {
                             println!(
-                                "      WARNING: Field '{}' not found in field_references (has {}), defaulting to index 0",
-                                column_name, relation_data.field_references.len()
+                                "      WARNING: Field '{}' not found (field_refs={}, generated={}), defaulting to index 0",
+                                column_name, field_ref_size, relation_data.generated_field_references.len()
                             );
                             return 0;
                         }
-                        // Otherwise fall back to schema-based lookup
+                        // Fall through to schema-based lookup
                     }
                 }
             }
