@@ -720,6 +720,7 @@ impl PlanProtoVisitor for InitialPlanVisitor {
         if let Some(rex_type) = &expression.rex_type {
             match rex_type {
                 substrait::expression::RexType::Subquery(subquery) => {
+                    println!("DEBUG INIT: Found subquery expression at location: {}", self.current_location().path_string());
                     use substrait::expression::subquery::SubqueryType;
 
                     // Determine the field path to the subquery relation
