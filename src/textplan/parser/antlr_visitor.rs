@@ -1896,6 +1896,20 @@ impl<'input> RelationVisitor<'input> {
     /// Populates field_references for a relation from its input pipelines.
     /// This is called lazily when lookup_field_index needs field information.
     fn add_input_fields_to_schema(&self, relation_symbol: &Arc<SymbolInfo>) {
+        use std::collections::HashSet;
+        use std::cell::RefCell;
+
+        thread_local! {
+            static VISITING: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+        }
+
+        // Check if we're currently visiting this relation (cycle detection)
+        let is_visiting = VISITING.with(|v| v.borrow().contains(relation_symbol.name()));
+        if is_visiting {
+            println!("    CYCLE DETECTED: Already visiting '{}', stopping recursion", relation_symbol.name());
+            return;
+        }
+
         println!("    add_input_fields_to_schema called for '{}'", relation_symbol.name());
 
         // Check if already populated (early return to avoid unnecessary work)
@@ -1911,6 +1925,9 @@ impl<'input> RelationVisitor<'input> {
             }
         }
 
+        // Mark as visiting
+        VISITING.with(|v| v.borrow_mut().insert(relation_symbol.name().to_string()));
+
         // Recursively populate upstream relations first
         if let Some(blob_lock) = &relation_symbol.blob {
             if let Ok(blob_data) = blob_lock.lock() {
@@ -1924,7 +1941,6 @@ impl<'input> RelationVisitor<'input> {
                         upstreams.push(pipe.clone());
                     }
                     drop(blob_data);
-                    drop(blob_lock);
 
                     // Recursively populate upstreams
                     for upstream in upstreams {
@@ -2007,6 +2023,9 @@ impl<'input> RelationVisitor<'input> {
                 }
             }
         }
+
+        // Remove from visiting set
+        VISITING.with(|v| v.borrow_mut().remove(relation_symbol.name()));
 
         println!("    Finished populating field_references for '{}'", relation_symbol.name());
     }
