@@ -147,6 +147,7 @@ mod tests {
 
         assert!(!text_plan.is_empty(), "Empty textplan from binary");
         println!("Generated textplan ({} bytes)", text_plan.len());
+        println!("\n=== Generated TextPlan ===\n{}", add_line_numbers(&text_plan));
 
         // Step 5: TextPlan → Parse → Symbol Table
         let parse_result = parse_stream(&text_plan);

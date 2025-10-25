@@ -45,6 +45,8 @@ pub struct RelationData {
     // relation along with the id of the first occurrence. Used to detect when
     // fully qualified references are necessary.
     pub seen_field_reference_names: HashMap<String, usize>,
+    // Root output names (for root relations only).
+    pub root_names: Vec<String>,
 }
 
 impl RelationData {
@@ -65,6 +67,7 @@ impl RelationData {
             generated_field_reference_aliases: HashMap::new(),
             output_field_references: Vec::new(),
             seen_field_reference_names: HashMap::new(),
+            root_names: Vec::new(),
         }
     }
 
@@ -85,6 +88,7 @@ impl RelationData {
             generated_field_reference_aliases: HashMap::new(),
             output_field_references: Vec::new(),
             seen_field_reference_names: HashMap::new(),
+            root_names: Vec::new(),
         }
     }
 }

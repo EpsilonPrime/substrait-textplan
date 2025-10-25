@@ -94,8 +94,8 @@ impl PlanPrinter {
             result.push('\n');
         }
 
-        // Don't print ROOT relations - they're internal to the plan structure
-        // self.process_root_relations(symbol_table, &mut result)?;
+        // Print ROOT relations with output names
+        self.process_root_relations(symbol_table, &mut result)?;
 
         // Process all other relations
         self.process_relations(symbol_table, &mut result)?;
@@ -177,12 +177,31 @@ impl PlanPrinter {
         // Get the indentation for this level
         let indent = " ".repeat(self.indent_size);
 
+        // Extract root names from the blob (stored as Vec<String>)
+        let names = if let Some(blob_lock) = &root.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(names_vec) = blob_data.downcast_ref::<Vec<String>>() {
+                    names_vec.clone()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
         // Add the names of the root relations
         result.push_str(&format!("{}NAMES = [", indent));
 
-        // For a real implementation, we would look up the relations referenced by this root
-        // and add their names. For now, just use the root's name as a placeholder.
-        result.push_str(&format!("\"{}\"", root.display_name()));
+        // Add each name as an unquoted identifier (not a string literal)
+        for (i, name) in names.iter().enumerate() {
+            if i > 0 {
+                result.push_str(", ");
+            }
+            result.push_str(name);
+        }
 
         result.push_str("]\n");
 

@@ -196,13 +196,14 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
             if is_pipeline_terminal {
                 // Check if this is a "root" symbol - wrap in Root plan relation
                 if symbol.name() == "root" {
-                    // Get the input from new_pipelines[0]
+                    // Get the input from new_pipelines[0] and root_names from the root symbol
                     if let Some(blob_lock) = &symbol.blob {
                         if let Ok(blob_data) = blob_lock.lock() {
                             if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
                                 if !relation_data.new_pipelines.is_empty() {
-                                    // Clone input_symbol to avoid borrow issues
+                                    // Clone input_symbol and root_names to avoid borrow issues
                                     let input_symbol = relation_data.new_pipelines[0].clone();
+                                    let root_names = relation_data.root_names.clone();
                                     drop(blob_data); // Drop the lock early
 
                                     // Get the input's Rel and build the tree
@@ -222,59 +223,9 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                                                     &mut visited,
                                                 )?;
 
-                                                // Extract output field names from the input relation
-                                                let output_names = if let Some(input_blob) =
-                                                    &input_symbol.blob
-                                                {
-                                                    if let Ok(input_data) = input_blob.lock() {
-                                                        if let Some(input_rel_data) = input_data
-                                                            .downcast_ref::<RelationData>(
-                                                        ) {
-                                                            // Use output_field_references if populated, otherwise use field_references + generated_field_references
-                                                            let field_refs = if !input_rel_data
-                                                                .output_field_references
-                                                                .is_empty()
-                                                            {
-                                                                &input_rel_data
-                                                                    .output_field_references
-                                                            } else {
-                                                                // Combine field_references and generated_field_references
-                                                                // For now, just use generated_field_references since project generates new fields
-                                                                &input_rel_data
-                                                                    .generated_field_references
-                                                            };
-
-                                                            field_refs
-                                                                .iter()
-                                                                .map(|sym| {
-                                                                    // Use the simple field name for root output names.
-                                                                    // If the symbol name is schema-qualified (e.g., "schema.FIELD"),
-                                                                    // extract just the field name part.
-                                                                    let full_name = sym.name();
-                                                                    if let Some(dot_pos) =
-                                                                        full_name.rfind('.')
-                                                                    {
-                                                                        full_name[(dot_pos + 1)..]
-                                                                            .to_string()
-                                                                    } else {
-                                                                        full_name.to_string()
-                                                                    }
-                                                                })
-                                                                .collect::<Vec<String>>()
-                                                        } else {
-                                                            Vec::new()
-                                                        }
-                                                    } else {
-                                                        Vec::new()
-                                                    }
-                                                } else {
-                                                    Vec::new()
-                                                };
-
                                                 println!(
-                                                    "  Root names extracted from '{}': {:?}",
-                                                    input_symbol.name(),
-                                                    output_names
+                                                    "  Root names from root symbol: {:?}",
+                                                    root_names
                                                 );
 
                                                 // Wrap in Root plan relation
@@ -282,7 +233,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                                                     rel_type: Some(plan_rel::RelType::Root(
                                                         RelRoot {
                                                             input: Some(input_rel),
-                                                            names: output_names,
+                                                            names: root_names,
                                                         },
                                                     )),
                                                 });
@@ -811,6 +762,16 @@ fn add_inputs_to_relation(
                 populate_project_emit(symbol, project_rel)?;
             }
             rel::RelType::Aggregate(agg_rel) => {
+                // Set common to direct emission (aggregates pass through grouping fields)
+                if agg_rel.common.is_none() {
+                    agg_rel.common = Some(::substrait::proto::RelCommon {
+                        emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
+                            ::substrait::proto::rel_common::Direct {},
+                        )),
+                        ..Default::default()
+                    });
+                }
+
                 if let (Some(next), Some(next_rel)) =
                     (&continuing_pipeline, &continuing_pipeline_rel)
                 {

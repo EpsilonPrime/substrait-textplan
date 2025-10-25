@@ -1031,7 +1031,20 @@ impl<'input> MainPlanVisitor<'input> {
         // Root is a Relation symbol with RelationType::Root subtype (matching C++: kRelation + kRoot)
         // It indicates that the pipeline output should be wrapped in a RelRoot at the plan level
         // We need RelationData with an empty Rel for pipeline connectivity
-        let relation_data = RelationData::new_empty();
+        let mut relation_data = RelationData::new_empty();
+
+        // Extract root output names from the grammar: ROOT { NAMES = [id, id, ...] }
+        let root_names: Vec<String> = ctx
+            .id_all()
+            .iter()
+            .map(|id_ctx| id_ctx.get_text())
+            .collect();
+
+        eprintln!("Root relation has {} output names: {:?}", root_names.len(), root_names);
+
+        // Store the root names in the RelationData
+        relation_data.root_names = root_names;
+
         let blob = Some(Arc::new(Mutex::new(relation_data)) as Arc<Mutex<dyn Any + Send + Sync>>);
 
         // Define the root symbol as a Relation with Root subtype (matching C++)
