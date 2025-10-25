@@ -695,7 +695,9 @@ impl<'a> ExpressionPrinter<'a> {
             Some(SubqueryType::SetComparison(set_comp)) => {
                 self.print_set_comparison_subquery(set_comp)
             }
-            Some(SubqueryType::Scalar(_)) => Ok("SCALAR_SUBQUERY_NOT_YET_IMPLEMENTED".to_string()),
+            Some(SubqueryType::Scalar(scalar)) => {
+                self.print_scalar_subquery(scalar)
+            }
             Some(SubqueryType::InPredicate(_)) => {
                 Ok("IN_PREDICATE_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
             }
@@ -706,6 +708,54 @@ impl<'a> ExpressionPrinter<'a> {
                 "Subquery has no subquery_type".to_string(),
             )),
         }
+    }
+
+    fn print_scalar_subquery(
+        &mut self,
+        scalar: &::substrait::proto::expression::subquery::Scalar,
+    ) -> Result<String, TextPlanError> {
+        let mut result = String::new();
+
+        // Print SUBQUERY keyword
+        result.push_str("SUBQUERY ");
+
+        // Find the subquery relation symbol
+        if let Some(_input) = &scalar.input {
+            // Look up the relation symbol for this subquery
+            if let Some(scope) = self.current_scope {
+                println!(
+                    "DEBUG PRINTER: Looking for scalar subquery with parent location hash: {}, index: {}",
+                    scope.source_location().location_hash(),
+                    self.current_scope_index
+                );
+
+                let symbol = self.symbol_table.lookup_symbol_by_parent_query_and_type(
+                    scope.source_location(),
+                    self.current_scope_index,
+                    crate::textplan::SymbolType::Relation,
+                );
+                self.current_scope_index += 1;
+
+                if let Some(sym) = symbol {
+                    println!("DEBUG PRINTER: Found scalar subquery relation: {}", sym.name());
+                    result.push_str(&sym.name());
+                } else {
+                    return Err(TextPlanError::InvalidExpression(
+                        "Could not find scalar subquery relation symbol".to_string(),
+                    ));
+                }
+            } else {
+                return Err(TextPlanError::InvalidExpression(
+                    "No current scope for scalar subquery lookup".to_string(),
+                ));
+            }
+        } else {
+            return Err(TextPlanError::InvalidExpression(
+                "Scalar subquery has no input relation".to_string(),
+            ));
+        }
+
+        Ok(result)
     }
 
     fn print_set_comparison_subquery(

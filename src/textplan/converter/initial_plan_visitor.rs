@@ -738,6 +738,8 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                     }
 
                     // Look up the subquery relation symbol by its location
+                    println!("DEBUG INIT: Looking for subquery relation at location: {}", rel_location.path_string());
+
                     if let Some(symbol) = self
                         .symbol_table
                         .lookup_symbol_by_location_and_type(&rel_location, SymbolType::Relation)
@@ -759,6 +761,8 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                         // Set the index for this subquery within its parent (0 for now)
                         // TODO: track multiple subqueries properly with incrementing indices
                         self.symbol_table.set_parent_query_index(&symbol, 0);
+                    } else {
+                        println!("DEBUG INIT: FAILED to find subquery relation at location: {}", rel_location.path_string());
                     }
                 }
                 _ => {}

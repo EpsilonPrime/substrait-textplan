@@ -3035,10 +3035,41 @@ impl<'input> RelationVisitor<'input> {
     /// Build a scalar subquery expression (e.g., SUBQUERY relation)
     fn build_scalar_subquery(
         &mut self,
-        _ctx: &ExpressionScalarSubqueryContext<'input>,
+        ctx: &ExpressionScalarSubqueryContext<'input>,
     ) -> ::substrait::proto::Expression {
-        println!("    Scalar subquery: TODO - not implemented");
-        // TODO: Implement scalar subquery
+        // Get the relation reference name (e.g., "SUBQUERY some_relation")
+        if let Some(rel_ref) = ctx.relation_ref() {
+            let relation_name = rel_ref.get_text();
+            println!("    Scalar subquery: relation name = '{}'", relation_name);
+
+            // Look up the relation symbol in the symbol table
+            if let Some(relation_symbol) = self.symbol_table.lookup_symbol_by_name(&relation_name) {
+                // Get the relation proto from the relation data
+                if let Some(blob_lock) = &relation_symbol.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                            // Create the scalar subquery expression
+                            return ::substrait::proto::Expression {
+                                rex_type: Some(::substrait::proto::expression::RexType::Subquery(Box::new(
+                                    ::substrait::proto::expression::Subquery {
+                                        subquery_type: Some(::substrait::proto::expression::subquery::SubqueryType::Scalar(
+                                            Box::new(::substrait::proto::expression::subquery::Scalar {
+                                                input: Some(Box::new(relation_data.relation.clone())),
+                                            }),
+                                        )),
+                                    },
+                                ))),
+                            };
+                        }
+                    }
+                }
+            } else {
+                println!("    WARNING: Scalar subquery relation '{}' not found in symbol table", relation_name);
+            }
+        }
+
+        // Fallback: return a placeholder
+        println!("    Scalar subquery: failed to build, returning placeholder");
         ::substrait::proto::Expression {
             rex_type: Some(::substrait::proto::expression::RexType::Literal(
                 ::substrait::proto::expression::Literal {
