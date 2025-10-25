@@ -917,4 +917,23 @@ impl PlanProtoVisitor for InitialPlanVisitor {
             }
         }
     }
+
+    /// Migrate old grouping format to new format when loading from binary.
+    /// Old format: Grouping.grouping_expressions (deprecated)
+    /// New format: AggregateRel.grouping_expressions + Grouping.expression_references
+    #[allow(deprecated)]
+    fn pre_process_aggregate_rel(&mut self, obj: &substrait::AggregateRel) {
+        // Check if we need to migrate from old to new format
+        // If AggregateRel.grouping_expressions is empty but Grouping.grouping_expressions is populated,
+        // we need to migrate
+        let needs_migration = obj.grouping_expressions.is_empty()
+            && obj.groupings.iter().any(|g| !g.grouping_expressions.is_empty());
+
+        if needs_migration {
+            // NOTE: We can't modify obj here since it's immutable. The migration will need to happen
+            // in the parser when we reconstruct the relation from textplan.
+            // For now, we'll use the deprecated field in add_grouping_to_relation.
+            // The proper solution is to have the parser always output the new format.
+        }
+    }
 }

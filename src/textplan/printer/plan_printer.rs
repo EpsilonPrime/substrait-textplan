@@ -531,26 +531,49 @@ impl PlanPrinter {
     ) -> Result<(), TextPlanError> {
         use ::substrait::proto::rel::RelType;
 
-        // Extract the measures (clone to avoid holding the lock)
-        let measures = if let Some(blob_lock) = &relation.blob {
+        // Extract grouping_expressions and measures (clone to avoid holding the lock)
+        #[allow(deprecated)]
+        let (grouping_expressions, measures) = if let Some(blob_lock) = &relation.blob {
             if let Ok(blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
                     if let Some(RelType::Aggregate(agg_rel)) = &relation_data.relation.rel_type {
-                        agg_rel.measures.clone()
+                        // Use new format if available, fallback to old deprecated format
+                        let grouping_exprs = if !agg_rel.grouping_expressions.is_empty() {
+                            agg_rel.grouping_expressions.clone()
+                        } else {
+                            // Fallback: collect expressions from deprecated Grouping.grouping_expressions
+                            agg_rel.groupings
+                                .iter()
+                                .flat_map(|g| g.grouping_expressions.clone())
+                                .collect()
+                        };
+                        (grouping_exprs, agg_rel.measures.clone())
                     } else {
-                        Vec::new()
+                        (Vec::new(), Vec::new())
                     }
                 } else {
-                    Vec::new()
+                    (Vec::new(), Vec::new())
                 }
             } else {
-                Vec::new()
+                (Vec::new(), Vec::new())
             }
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
 
-        // Print measures (lock is released)
+        // Print grouping expressions (lock is released)
+        if !grouping_expressions.is_empty() {
+            let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
+            for expr in &grouping_expressions {
+                let expr_text = expr_printer.print_expression(expr)?;
+                result.push_str(&format!("{}GROUPING {};\n", indent, expr_text));
+            }
+            if !measures.is_empty() {
+                result.push('\n');
+            }
+        }
+
+        // Print measures
         for measure in &measures {
             result.push_str(&format!("{}measure {{\n", indent));
             let measure_indent = format!("{}  ", indent);

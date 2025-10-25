@@ -2862,6 +2862,44 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
         self.visit_children(ctx);
     }
 
+    fn visit_relationGrouping(&mut self, ctx: &RelationGroupingContext<'input>) {
+        // Add grouping expressions to the current relation (should be an Aggregate)
+        // Grammar: GROUPING expression SEMICOLON
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            if let Some(expr_ctx) = ctx.expression() {
+                // Build the grouping expression
+                let expr = self.build_expression(&expr_ctx);
+
+                // Add to AggregateRel.grouping_expressions and update Grouping.expression_references
+                if let Some(blob_lock) = &relation_symbol.blob {
+                    if let Ok(mut blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                            if let Some(::substrait::proto::rel::RelType::Aggregate(ref mut agg_rel)) = relation_data.relation.rel_type {
+                                // Add expression to the shared list
+                                agg_rel.grouping_expressions.push(expr);
+                                let expr_index = (agg_rel.grouping_expressions.len() - 1) as u32;
+
+                                // Ensure there's at least one Grouping, or create one
+                                if agg_rel.groupings.is_empty() {
+                                    agg_rel.groupings.push(::substrait::proto::aggregate_rel::Grouping {
+                                        grouping_expressions: Vec::new(), // deprecated, keep empty
+                                        expression_references: Vec::new(),
+                                    });
+                                }
+
+                                // Add reference to the first grouping
+                                agg_rel.groupings[0].expression_references.push(expr_index);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Visit children
+        self.visit_children(ctx);
+    }
+
     fn visit_relationMeasure(&mut self, ctx: &RelationMeasureContext<'input>) {
         // Add measures to the current relation (should be an Aggregate)
         // Grammar: MEASURE LEFTBRACE measure_detail* RIGHTBRACE
