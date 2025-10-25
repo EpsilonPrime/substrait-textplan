@@ -24,6 +24,8 @@ pub struct RelationData {
     pub source: Option<Arc<SymbolInfo>>,
     // Schema keeps track schema used in this relation.
     pub schema: Option<Arc<SymbolInfo>>,
+    // Fallback schema name if schema symbol wasn't found during parsing (to be resolved later).
+    pub schema_name: Option<String>,
     // Column name for each field known to this relation (in field order). Used
     // to determine what fields are coming in as well and fields are going out.
     pub field_references: Vec<Arc<SymbolInfo>>,
@@ -56,6 +58,7 @@ impl RelationData {
             relation,
             source: None,
             schema: None,
+            schema_name: None,
             field_references: Vec::new(),
             generated_field_references: Vec::new(),
             generated_field_reference_alternative_expression: HashMap::new(),
@@ -75,6 +78,7 @@ impl RelationData {
             relation: substrait::proto::Rel::default(),
             source: None,
             schema: None,
+            schema_name: None,
             field_references: Vec::new(),
             generated_field_references: Vec::new(),
             generated_field_reference_alternative_expression: HashMap::new(),

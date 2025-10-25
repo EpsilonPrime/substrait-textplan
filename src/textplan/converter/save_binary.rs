@@ -246,16 +246,18 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
 
                                                             field_refs
                                                                 .iter()
-                                                                .enumerate()
-                                                                .map(|(idx, sym)| {
-                                                                    // Check if there's an alternative expression (schema-qualified name) for this field
-                                                                    if let Some(alt_expr) = input_rel_data
-                                                                        .generated_field_reference_alternative_expression
-                                                                        .get(&idx)
+                                                                .map(|sym| {
+                                                                    // Use the simple field name for root output names.
+                                                                    // If the symbol name is schema-qualified (e.g., "schema.FIELD"),
+                                                                    // extract just the field name part.
+                                                                    let full_name = sym.name();
+                                                                    if let Some(dot_pos) =
+                                                                        full_name.rfind('.')
                                                                     {
-                                                                        alt_expr.clone()
+                                                                        full_name[(dot_pos + 1)..]
+                                                                            .to_string()
                                                                     } else {
-                                                                        sym.name().to_string()
+                                                                        full_name.to_string()
                                                                     }
                                                                 })
                                                                 .collect::<Vec<String>>()
@@ -340,10 +342,24 @@ fn populate_read_rel(
     symbol_table: &SymbolTable,
     source_symbol: &Option<Arc<SymbolInfo>>,
     schema_symbol: &Option<Arc<SymbolInfo>>,
+    schema_name: &Option<String>,
     read_rel: &mut ::substrait::proto::ReadRel,
 ) -> Result<(), TextPlanError> {
+    // Try to resolve schema symbol by name if not already resolved
+    let resolved_schema = if schema_symbol.is_none() && schema_name.is_some() {
+        let name = schema_name.as_ref().unwrap();
+        // Attempt late binding of schema name to symbol
+        symbol_table.lookup_symbol_by_name(name)
+    } else {
+        schema_symbol.clone()
+    };
+
     // Populate base_schema from schema symbol
-    if let Some(schema_sym) = schema_symbol {
+    // If baseSchema is already populated in the ReadRel (e.g., from binary), preserve it
+    if read_rel.base_schema.is_some() && resolved_schema.is_none() {
+        println!("  Preserving existing baseSchema (schema symbol not resolved)");
+        // Keep the existing baseSchema
+    } else if let Some(schema_sym) = &resolved_schema {
         // Find all SchemaColumn symbols that belong to this schema
         let mut field_names = Vec::new();
         let mut field_types = Vec::new();
@@ -697,6 +713,7 @@ fn add_inputs_to_relation(
         // Clone source and schema symbols for building protobufs
         let source_symbol = relation_data.source.clone();
         let schema_symbol = relation_data.schema.clone();
+        let schema_name = relation_data.schema_name.clone();
 
         println!(
             "  '{}' has continuing_pipeline={:?}, new_pipelines.len={}",
@@ -711,6 +728,7 @@ fn add_inputs_to_relation(
             new_pipelines_rels,
             source_symbol,
             schema_symbol,
+            schema_name,
         )
     };
     // All locks are dropped here
@@ -721,6 +739,7 @@ fn add_inputs_to_relation(
         new_pipelines_rels,
         source_symbol,
         schema_symbol,
+        schema_name,
     ) = result;
     println!("  Lock dropped for '{}'", symbol.name());
 
@@ -732,11 +751,28 @@ fn add_inputs_to_relation(
             rel::RelType::Read(read_rel) => {
                 println!("    '{}' is Read (no inputs)", symbol.name());
                 // Populate the ReadRel from symbol references
-                populate_read_rel(symbol_table, &source_symbol, &schema_symbol, read_rel)?;
+                populate_read_rel(
+                    symbol_table,
+                    &source_symbol,
+                    &schema_symbol,
+                    &schema_name,
+                    read_rel,
+                )?;
                 // Read has no inputs
             }
             rel::RelType::Filter(filter_rel) => {
                 println!("    '{}' is Filter", symbol.name());
+
+                // Set common to direct emission (filters pass through all fields)
+                if filter_rel.common.is_none() {
+                    filter_rel.common = Some(::substrait::proto::RelCommon {
+                        emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
+                            ::substrait::proto::rel_common::Direct {},
+                        )),
+                        ..Default::default()
+                    });
+                }
+
                 if let (Some(next), Some(next_rel)) =
                     (&continuing_pipeline, &continuing_pipeline_rel)
                 {

@@ -1063,6 +1063,9 @@ impl<'input> MainPlanVisitor<'input> {
         &mut self,
         ctx: &Schema_definitionContext<'input>,
     ) -> Option<Arc<SymbolInfo>> {
+        // Extract schema name from the id token
+        let schema_name = ctx.id()?.get_text();
+
         // Create a location from the context's start token
         // Get the start token directly - it's not an Option
         let token = ctx.start();
@@ -1071,7 +1074,7 @@ impl<'input> MainPlanVisitor<'input> {
         // Define the schema in the symbol table
         // Symbol table accessed directly via base
         let symbol = self.type_visitor.base.symbol_table_mut().define_symbol(
-            "schema".to_string(),
+            schema_name,
             location,
             SymbolType::Schema,
             None,
@@ -2088,12 +2091,23 @@ impl<'input> RelationVisitor<'input> {
 
         println!("      with {} arguments", arguments.len());
 
+        // Extract output type if present (from ARROW literal_complex_type)
+        let output_type = if let Some(type_ctx) = ctx.literal_complex_type() {
+            let type_text = type_ctx.get_text();
+            // Create a temporary TypeVisitor to parse the type
+            let type_visitor =
+                TypeVisitor::new(self.symbol_table.clone(), self.error_listener.clone());
+            Some(type_visitor.text_to_type_proto(ctx, &type_text))
+        } else {
+            None
+        };
+
         ::substrait::proto::Expression {
             rex_type: Some(::substrait::proto::expression::RexType::ScalarFunction(
                 ::substrait::proto::expression::ScalarFunction {
                     function_reference,
                     arguments,
-                    output_type: None,
+                    output_type,
                     options: Vec::new(),
                     ..Default::default()
                 },
@@ -2181,6 +2195,15 @@ impl<'input> RelationVisitor<'input> {
                         ::substrait::proto::expression::cast::FailureBehavior::Unspecified as i32,
                 },
             ))),
+        }
+    }
+
+    /// Extract a numeric value from a constant context.
+    fn extract_number_from_constant(constant_ctx: &Rc<ConstantContextAll<'input>>) -> i32 {
+        if let Some(number_token) = constant_ctx.NUMBER() {
+            number_token.get_text().parse::<i32>().unwrap_or(0)
+        } else {
+            0
         }
     }
 
@@ -2400,8 +2423,84 @@ impl<'input> RelationVisitor<'input> {
             Some(LiteralType::Boolean(false))
         } else if constant_ctx.NULLVAL().is_some() {
             Some(LiteralType::Null(::substrait::proto::Type::default()))
+        } else if let Some(struct_ctx) = constant_ctx.struct_literal() {
+            // Handle struct literals - check if it has an interval type suffix
+            if let Some(type_ctx) = constant_ctx.literal_basic_type() {
+                if let Some(id_ctx) = type_ctx.id() {
+                    let type_name = id_ctx.get_text().to_lowercase();
+
+                    // Parse the constants inside the struct
+                    let constants = struct_ctx.constant_all();
+
+                    match type_name.as_str() {
+                        "interval_day_second" => {
+                            // Expect {days, seconds, subseconds}
+                            if constants.len() >= 3 {
+                                let days = Self::extract_number_from_constant(&constants[0]);
+                                let seconds = Self::extract_number_from_constant(&constants[1]);
+                                let subseconds = if let Some(number_token) = constants[2].NUMBER() {
+                                    number_token.get_text().parse::<i64>().unwrap_or(0)
+                                } else {
+                                    0i64
+                                };
+
+                                Some(LiteralType::IntervalDayToSecond(
+                                    ::substrait::proto::expression::literal::IntervalDayToSecond {
+                                        days,
+                                        seconds,
+                                        subseconds,
+                                        precision_mode: None,
+                                    },
+                                ))
+                            } else {
+                                // Not enough components
+                                Some(LiteralType::IntervalDayToSecond(
+                                    ::substrait::proto::expression::literal::IntervalDayToSecond {
+                                        days: 0,
+                                        seconds: 0,
+                                        subseconds: 0,
+                                        precision_mode: None,
+                                    },
+                                ))
+                            }
+                        }
+                        "interval_year_month" => {
+                            // Expect {years, months}
+                            if constants.len() >= 2 {
+                                let years = Self::extract_number_from_constant(&constants[0]);
+                                let months = Self::extract_number_from_constant(&constants[1]);
+
+                                Some(LiteralType::IntervalYearToMonth(
+                                    ::substrait::proto::expression::literal::IntervalYearToMonth {
+                                        years,
+                                        months,
+                                    },
+                                ))
+                            } else {
+                                // Not enough components
+                                Some(LiteralType::IntervalYearToMonth(
+                                    ::substrait::proto::expression::literal::IntervalYearToMonth {
+                                        years: 0,
+                                        months: 0,
+                                    },
+                                ))
+                            }
+                        }
+                        _ => {
+                            // Unknown struct literal type
+                            Some(LiteralType::I64(0))
+                        }
+                    }
+                } else {
+                    // Struct without type suffix
+                    Some(LiteralType::I64(0))
+                }
+            } else {
+                // Struct without type suffix
+                Some(LiteralType::I64(0))
+            }
         } else {
-            // TODO: Handle map_literal, struct_literal
+            // TODO: Handle map_literal
             // For now, default to i64(0)
             Some(LiteralType::I64(0))
         };
@@ -2741,7 +2840,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                 if let Some(expr_ctx) = measure_detail_ctx.expression() {
                     // For aggregate measures, we need to extract the function reference and arguments
                     // directly instead of building a ScalarFunction expression
-                    let (function_reference, arguments) = match expr_ctx.as_ref() {
+                    let (function_reference, arguments, output_type) = match expr_ctx.as_ref() {
                         ExpressionContextAll::ExpressionFunctionUseContext(func_ctx) => {
                             // Get function name and look up reference
                             let function_name = func_ctx
@@ -2760,7 +2859,20 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                                     ),
                                 });
                             }
-                            (func_ref, args)
+
+                            // Extract output type if present
+                            let out_type = if let Some(type_ctx) = func_ctx.literal_complex_type() {
+                                let type_text = type_ctx.get_text();
+                                let type_visitor = TypeVisitor::new(
+                                    self.symbol_table.clone(),
+                                    self.error_listener.clone(),
+                                );
+                                Some(type_visitor.text_to_type_proto(func_ctx, &type_text))
+                            } else {
+                                None
+                            };
+
+                            (func_ref, args, out_type)
                         }
                         _ => {
                             // For non-function expressions, wrap in arguments
@@ -2772,7 +2884,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                                     ),
                                 ),
                             };
-                            (0, vec![arg])
+                            (0, vec![arg], None)
                         }
                     };
 
@@ -2780,7 +2892,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                     let agg_func = ::substrait::proto::AggregateFunction {
                         function_reference,
                         arguments,
-                        output_type: None,
+                        output_type,
                         phase: ::substrait::proto::AggregationPhase::InitialToResult.into(),
                         invocation:
                             ::substrait::proto::aggregate_function::AggregationInvocation::All
@@ -2874,6 +2986,16 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                             if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                                 relation_data.schema = Some(schema_symbol);
                                 println!("  Linked relation '{}' to schema '{}'", relation_symbol.name(), schema_name);
+                            }
+                        }
+                    }
+                } else {
+                    // Schema not found yet (might be defined later in textplan)
+                    // Store the name for later resolution in save_binary
+                    if let Some(blob_lock) = &relation_symbol.blob {
+                        if let Ok(mut blob_data) = blob_lock.lock() {
+                            if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                                relation_data.schema_name = Some(schema_name.to_string());
                             }
                         }
                     }

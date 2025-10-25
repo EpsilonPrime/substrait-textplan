@@ -92,10 +92,11 @@ impl<'a> ExpressionPrinter<'a> {
             Some(LiteralType::Time(micros)) => format!("{}_time", micros),
             Some(LiteralType::IntervalYearToMonth(interval)) => {
                 // IntervalYearToMonth has years and months fields
+                // Use struct literal format for multiple components
                 if interval.months != 0 {
                     format!(
-                        "{}_interval_year_month",
-                        interval.years * 12 + interval.months
+                        "{{{}, {}}}_interval_year_month",
+                        interval.years, interval.months
                     )
                 } else {
                     format!("{}_interval_year", interval.years)
@@ -103,8 +104,9 @@ impl<'a> ExpressionPrinter<'a> {
             }
             Some(LiteralType::IntervalDayToSecond(interval)) => {
                 // IntervalDayToSecond has days, seconds, and subseconds fields
+                // Use struct literal format: {days, seconds, subseconds}_interval_day_second
                 format!(
-                    "{}_{}_{}_interval_day_second",
+                    "{{{}, {}, {}}}_interval_day_second",
                     interval.days, interval.seconds, interval.subseconds
                 )
             }
@@ -327,15 +329,6 @@ impl<'a> ExpressionPrinter<'a> {
     ) -> Result<String, TextPlanError> {
         let mut result = String::new();
 
-        // Add newline and indentation for nested functions (mimics C++ behavior)
-        if self.function_depth > 1 {
-            result.push('\n');
-            // Indent with 2 spaces per depth level
-            for _ in 0..self.function_depth {
-                result.push_str("  ");
-            }
-        }
-
         // Look up the function name from the symbol table
         let function_name = self.lookup_function_reference(func.function_reference);
 
@@ -358,11 +351,7 @@ impl<'a> ExpressionPrinter<'a> {
 
             // Add comma/space separator for non-first arguments
             if !first {
-                result.push(',');
-                // Add space before arg unless it starts with newline
-                if !arg_str.starts_with('\n') {
-                    result.push(' ');
-                }
+                result.push_str(", ");
             }
             first = false;
             result.push_str(&arg_str);
@@ -373,11 +362,7 @@ impl<'a> ExpressionPrinter<'a> {
             let arg_str = self.print_expression(arg)?;
             // Add comma/space separator for non-first arguments
             if !first {
-                result.push(',');
-                // Add space before arg unless it starts with newline
-                if !arg_str.starts_with('\n') {
-                    result.push(' ');
-                }
+                result.push_str(", ");
             }
             first = false;
             result.push_str(&arg_str);
@@ -412,15 +397,6 @@ impl<'a> ExpressionPrinter<'a> {
     ) -> Result<String, TextPlanError> {
         let mut result = String::new();
 
-        // Add newline and indentation for nested functions (mimics C++ behavior)
-        if self.function_depth > 1 {
-            result.push('\n');
-            // Indent with 2 spaces per depth level
-            for _ in 0..self.function_depth {
-                result.push_str("  ");
-            }
-        }
-
         // Look up the function name from the symbol table
         let function_name = self.lookup_function_reference(func.function_reference);
 
@@ -443,11 +419,7 @@ impl<'a> ExpressionPrinter<'a> {
 
             // Add comma/space separator for non-first arguments
             if !first {
-                result.push(',');
-                // Add space before arg unless it starts with newline
-                if !arg_str.starts_with('\n') {
-                    result.push(' ');
-                }
+                result.push_str(", ");
             }
             first = false;
             result.push_str(&arg_str);
@@ -458,11 +430,7 @@ impl<'a> ExpressionPrinter<'a> {
             let arg_str = self.print_expression(arg)?;
             // Add comma/space separator for non-first arguments
             if !first {
-                result.push(',');
-                // Add space before arg unless it starts with newline
-                if !arg_str.starts_with('\n') {
-                    result.push(' ');
-                }
+                result.push_str(", ");
             }
             first = false;
             result.push_str(&arg_str);
