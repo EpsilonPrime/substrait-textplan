@@ -828,6 +828,87 @@ impl<'input> MainPlanVisitor<'input> {
         Some(())
     }
 
+    /// Add input fields from continuing pipeline and new pipelines to the current relation's field_references.
+    /// For READ relations, populates from the schema. For other relations, populates from input pipelines.
+    /// This must be called after creating a relation but before processing its details/expressions.
+    fn add_input_fields_to_schema(&self, relation_symbol: &Arc<SymbolInfo>) {
+        if let Some(blob_lock) = &relation_symbol.blob {
+            if let Ok(mut blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                    // Check if this is a READ relation
+                    if let Some(RelType::Read(_)) = &relation_data.relation.rel_type {
+                        // For READ relations, populate field_references from the schema
+                        if let Some(schema_arc) = &relation_data.schema {
+                            // Find all SchemaColumn symbols that have this schema as their source
+                            for symbol in self.symbol_table().symbols() {
+                                if symbol.symbol_type() == SymbolType::SchemaColumn {
+                                    if let Some(symbol_source) = symbol.source() {
+                                        if Arc::ptr_eq(&symbol_source, schema_arc) {
+                                            relation_data.field_references.push(symbol.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return;
+                    }
+
+                    // For non-READ relations, add fields from continuing pipeline (the input relation)
+                    if let Some(continuing_pipeline) = &relation_data.continuing_pipeline {
+                        if let Some(cont_blob_lock) = &continuing_pipeline.blob {
+                            if let Ok(cont_blob_data) = cont_blob_lock.lock() {
+                                if let Some(cont_relation_data) =
+                                    cont_blob_data.downcast_ref::<RelationData>()
+                                {
+                                    if !cont_relation_data.output_field_references.is_empty() {
+                                        // There is an emit sequence so use that
+                                        for field in &cont_relation_data.output_field_references {
+                                            relation_data.field_references.push(field.clone());
+                                        }
+                                    } else {
+                                        // No emit, so access all field references and generated fields
+                                        for field in &cont_relation_data.field_references {
+                                            relation_data.field_references.push(field.clone());
+                                        }
+                                        for field in &cont_relation_data.generated_field_references
+                                        {
+                                            relation_data.field_references.push(field.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Add fields from new pipelines (e.g., for joins)
+                    for pipeline in &relation_data.new_pipelines.clone() {
+                        if let Some(pipe_blob_lock) = &pipeline.blob {
+                            if let Ok(pipe_blob_data) = pipe_blob_lock.lock() {
+                                if let Some(pipe_relation_data) =
+                                    pipe_blob_data.downcast_ref::<RelationData>()
+                                {
+                                    if !pipe_relation_data.output_field_references.is_empty() {
+                                        for field in &pipe_relation_data.output_field_references {
+                                            relation_data.field_references.push(field.clone());
+                                        }
+                                    } else {
+                                        for field in &pipe_relation_data.field_references {
+                                            relation_data.field_references.push(field.clone());
+                                        }
+                                        for field in &pipe_relation_data.generated_field_references
+                                        {
+                                            relation_data.field_references.push(field.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Process a relation and add it to the symbol table.
     fn process_relation(&mut self, ctx: &RelationContext<'input>) -> Option<Arc<SymbolInfo>> {
         // Get the name from the relation_ref's first id
@@ -1040,7 +1121,11 @@ impl<'input> MainPlanVisitor<'input> {
             .map(|id_ctx| id_ctx.get_text())
             .collect();
 
-        eprintln!("Root relation has {} output names: {:?}", root_names.len(), root_names);
+        eprintln!(
+            "Root relation has {} output names: {:?}",
+            root_names.len(),
+            root_names
+        );
 
         // Store the root names in the RelationData
         relation_data.root_names = root_names;
@@ -1201,7 +1286,12 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
         println!("Visiting relation: {}", ctx.get_text());
 
         // Process the relation and add it to the symbol table
-        self.process_relation(ctx);
+        let relation_symbol = self.process_relation(ctx);
+
+        // Add input fields from pipelines before processing details
+        if let Some(symbol) = &relation_symbol {
+            self.add_input_fields_to_schema(symbol);
+        }
 
         // Visit children to process relation details
         self.visit_children(ctx);
@@ -1215,7 +1305,12 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
         println!("Visiting root relation: {}", ctx.get_text());
 
         // Process the root relation and add it to the symbol table
-        self.process_root_relation(ctx);
+        let relation_symbol = self.process_root_relation(ctx);
+
+        // Add input fields from pipelines before processing details
+        if let Some(symbol) = &relation_symbol {
+            self.add_input_fields_to_schema(symbol);
+        }
 
         // Visit children to process relation details
         self.visit_children(ctx);
@@ -1588,8 +1683,8 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
             // - Unary relations (Filter, Project, etc.) use continuing_pipeline for single input
 
             // Check if this is a terminal/root relation by name (since rel_type may not be set yet)
-            // Root relations like "root", "root1", etc. should use new_pipelines
-            let is_root_by_name = relation_name == "root" || relation_name.starts_with("root");
+            // Only the "root" relation itself is terminal by name, not relations named "root1", "root2", etc.
+            let is_root_by_name = relation_name == "root";
 
             let relation_category = if is_root_by_name {
                 "terminal"
@@ -1600,7 +1695,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
                     Some(::substrait::proto::rel::RelType::Set(_)) => "binary",
                     Some(::substrait::proto::rel::RelType::HashJoin(_)) => "binary",
                     Some(::substrait::proto::rel::RelType::MergeJoin(_)) => "binary",
-                    Some(::substrait::proto::rel::RelType::Fetch(_)) => "terminal",
+                    Some(::substrait::proto::rel::RelType::Fetch(_)) => "unary",
                     Some(::substrait::proto::rel::RelType::ExtensionSingle(_)) => "unary",
                     Some(::substrait::proto::rel::RelType::ExtensionLeaf(_)) => "terminal",
                     _ => "unary",
@@ -1680,6 +1775,32 @@ pub struct RelationVisitor<'input> {
     error_listener: Arc<ErrorListener>,
     current_relation_scope: Option<Arc<SymbolInfo>>,
     _phantom: std::marker::PhantomData<&'input ()>,
+}
+
+/// Helper function to parse sort direction from string
+fn parse_sort_direction(text: &str) -> i32 {
+    // Normalize the text: lowercase and remove underscores/special chars
+    let normalized = text
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>();
+
+    use ::substrait::proto::sort_field::SortDirection;
+    match normalized.as_str() {
+        "ascnullsfirst" => SortDirection::AscNullsFirst as i32,
+        "ascnullslast" => SortDirection::AscNullsLast as i32,
+        "descnullsfirst" => SortDirection::DescNullsFirst as i32,
+        "descnullslast" => SortDirection::DescNullsLast as i32,
+        "clustered" => SortDirection::Clustered as i32,
+        _ => {
+            eprintln!(
+                "Unrecognized sort direction: {}, using ASC_NULLS_LAST",
+                text
+            );
+            SortDirection::AscNullsLast as i32
+        }
+    }
 }
 
 impl<'input> RelationVisitor<'input> {
@@ -2003,20 +2124,46 @@ impl<'input> RelationVisitor<'input> {
         }
     }
 
-    /// Look up the field index from the schema symbol
+    /// Look up the field index from the current relation's field_references.
+    /// This returns the index within the field_references vector, which is the
+    /// position relative to this relation's input, not the absolute schema position.
+    /// Falls back to schema-based lookup if field_references is not yet populated.
     fn lookup_field_index(&self, column_name: &str) -> usize {
         // Parse column name - can be "field" or "schema.field"
         let (schema_name, field_name) = if let Some(dot_pos) = column_name.rfind('.') {
             (&column_name[..dot_pos], &column_name[dot_pos + 1..])
         } else {
-            // No schema prefix - try to find in current relation's schema
+            // No schema prefix
             ("", column_name)
         };
 
-        // Look up the schema symbol
+        // Try to look up from current relation's field_references first
+        if let Some(relation_symbol) = self.current_relation_scope() {
+            if let Some(blob_lock) = &relation_symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                        // If field_references is populated, use it
+                        if !relation_data.field_references.is_empty() {
+                            for (index, field_symbol) in relation_data.field_references.iter().enumerate() {
+                                if field_symbol.name() == field_name {
+                                    return index;
+                                }
+                            }
+                            println!(
+                                "      WARNING: Field '{}' not found in field_references (has {}), defaulting to index 0",
+                                column_name, relation_data.field_references.len()
+                            );
+                            return 0;
+                        }
+                        // Otherwise fall back to schema-based lookup
+                    }
+                }
+            }
+        }
+
+        // Fallback: Look up from schema (for parser, before field_references is populated)
         if !schema_name.is_empty() {
             if let Some(schema_symbol) = self.symbol_table().lookup_symbol_by_name(schema_name) {
-                // Get the field index from the schema by iterating all symbols
                 if let Some(field_index) =
                     self.get_field_index_from_schema(&schema_symbol, field_name)
                 {
@@ -2447,51 +2594,38 @@ impl<'input> RelationVisitor<'input> {
 
                     match type_name.as_str() {
                         "interval_day_second" => {
-                            // Expect {days, seconds, subseconds}_interval_day_second<precision>
-                            // precision defaults to 6 (microseconds) if not specified
+                            // Expect {days, seconds, microseconds}_interval_day_second (deprecated format)
+                            // Use deprecated PrecisionMode::Microseconds to store the microseconds value
                             if constants.len() >= 3 {
                                 let days = Self::extract_number_from_constant(&constants[0]);
                                 let seconds = Self::extract_number_from_constant(&constants[1]);
-                                let subseconds = if let Some(number_token) = constants[2].NUMBER() {
-                                    number_token.get_text().parse::<i64>().unwrap_or(0)
+                                let microseconds = if let Some(number_token) = constants[2].NUMBER()
+                                {
+                                    number_token.get_text().parse::<i32>().unwrap_or(0)
                                 } else {
-                                    0i64
-                                };
-
-                                // Check for optional precision in literal_specifier: <precision>
-                                let precision = if let Some(spec_ctx) = type_ctx.literal_specifier() {
-                                    if let Some(number_token) = spec_ctx.NUMBER(0) {
-                                        number_token.get_text().parse::<i32>().unwrap_or(6)
-                                    } else {
-                                        6 // Default to microsecond precision
-                                    }
-                                } else {
-                                    6 // Default to microsecond precision
+                                    0i32
                                 };
 
                                 use ::substrait::proto::expression::literal::interval_day_to_second::PrecisionMode;
-                                let precision_mode = if precision == 6 {
-                                    None // Default, omit
-                                } else {
-                                    Some(PrecisionMode::Precision(precision))
-                                };
-
                                 Some(LiteralType::IntervalDayToSecond(
                                     ::substrait::proto::expression::literal::IntervalDayToSecond {
                                         days,
                                         seconds,
-                                        subseconds,
-                                        precision_mode,
+                                        subseconds: 0, // Not used in deprecated format
+                                        precision_mode: Some(PrecisionMode::Microseconds(
+                                            microseconds,
+                                        )),
                                     },
                                 ))
                             } else {
                                 // Not enough components
+                                use ::substrait::proto::expression::literal::interval_day_to_second::PrecisionMode;
                                 Some(LiteralType::IntervalDayToSecond(
                                     ::substrait::proto::expression::literal::IntervalDayToSecond {
                                         days: 0,
                                         seconds: 0,
                                         subseconds: 0,
-                                        precision_mode: None,
+                                        precision_mode: Some(PrecisionMode::Microseconds(0)),
                                     },
                                 ))
                             }
@@ -2862,33 +2996,74 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
         self.visit_children(ctx);
     }
 
+    #[allow(deprecated)]
     fn visit_relationGrouping(&mut self, ctx: &RelationGroupingContext<'input>) {
         // Add grouping expressions to the current relation (should be an Aggregate)
         // Grammar: GROUPING expression SEMICOLON
+        // NOTE: Using deprecated Grouping.grouping_expressions format for now to match test data
         if let Some(relation_symbol) = self.current_relation_scope().cloned() {
             if let Some(expr_ctx) = ctx.expression() {
                 // Build the grouping expression
                 let expr = self.build_expression(&expr_ctx);
 
-                // Add to AggregateRel.grouping_expressions and update Grouping.expression_references
+                // Add to deprecated Grouping.grouping_expressions (old format for roundtrip compatibility)
                 if let Some(blob_lock) = &relation_symbol.blob {
                     if let Ok(mut blob_data) = blob_lock.lock() {
                         if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                             if let Some(::substrait::proto::rel::RelType::Aggregate(ref mut agg_rel)) = relation_data.relation.rel_type {
-                                // Add expression to the shared list
-                                agg_rel.grouping_expressions.push(expr);
-                                let expr_index = (agg_rel.grouping_expressions.len() - 1) as u32;
-
                                 // Ensure there's at least one Grouping, or create one
                                 if agg_rel.groupings.is_empty() {
                                     agg_rel.groupings.push(::substrait::proto::aggregate_rel::Grouping {
-                                        grouping_expressions: Vec::new(), // deprecated, keep empty
+                                        grouping_expressions: Vec::new(),
                                         expression_references: Vec::new(),
                                     });
                                 }
 
-                                // Add reference to the first grouping
-                                agg_rel.groupings[0].expression_references.push(expr_index);
+                                // Add expression directly to the deprecated field
+                                agg_rel.groupings[0].grouping_expressions.push(expr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Visit children
+        self.visit_children(ctx);
+    }
+
+    fn visit_relationSort(&mut self, ctx: &RelationSortContext<'input>) {
+        // Add sort field to the current relation (should be a Sort)
+        // Grammar: sort_field -> SORT expression (BY id)? SEMICOLON
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            if let Some(sort_field_ctx) = ctx.sort_field() {
+                if let Some(expr_ctx) = sort_field_ctx.expression() {
+                    // Build the sort expression
+                    let expr = self.build_expression(&expr_ctx);
+
+                    // Parse the direction if provided
+                    let direction = if let Some(id_ctx) = sort_field_ctx.id() {
+                        parse_sort_direction(&id_ctx.get_text())
+                    } else {
+                        // Default to ASC NULLS LAST if not specified
+                        ::substrait::proto::sort_field::SortDirection::AscNullsLast as i32
+                    };
+
+                    // Create the SortField
+                    let sort_field = ::substrait::proto::SortField {
+                        expr: Some(expr),
+                        sort_kind: Some(::substrait::proto::sort_field::SortKind::Direction(
+                            direction,
+                        )),
+                    };
+
+                    // Add to SortRel
+                    if let Some(blob_lock) = &relation_symbol.blob {
+                        if let Ok(mut blob_data) = blob_lock.lock() {
+                            if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                                if let Some(::substrait::proto::rel::RelType::Sort(ref mut sort_rel)) = relation_data.relation.rel_type {
+                                    sort_rel.sorts.push(sort_field);
+                                }
                             }
                         }
                     }
@@ -3125,6 +3300,54 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                         if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                             relation_data.generated_field_references.push(field_symbol.clone());
                             println!("  Added field reference '{}' to relation '{}'", field_name, relation_symbol.name());
+                        }
+                    }
+                }
+            }
+        }
+        self.visit_children(ctx);
+    }
+
+    fn visit_relationCount(&mut self, ctx: &RelationCountContext<'input>) {
+        // Handle COUNT NUMBER SEMICOLON for Fetch relations
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            if let Some(number_ctx) = ctx.NUMBER() {
+                let count_text = number_ctx.get_text();
+                if let Ok(count_value) = count_text.parse::<i64>() {
+                    // Update the FetchRel with count
+                    if let Some(blob_lock) = &relation_symbol.blob {
+                        if let Ok(mut blob_data) = blob_lock.lock() {
+                            if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                                use ::substrait::proto::rel::RelType;
+                                if let Some(RelType::Fetch(ref mut fetch_rel)) = &mut relation_data.relation.rel_type {
+                                    use ::substrait::proto::fetch_rel::CountMode;
+                                    fetch_rel.count_mode = Some(CountMode::Count(count_value));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.visit_children(ctx);
+    }
+
+    fn visit_relationOffset(&mut self, ctx: &RelationOffsetContext<'input>) {
+        // Handle OFFSET NUMBER SEMICOLON for Fetch relations
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            if let Some(number_ctx) = ctx.NUMBER() {
+                let offset_text = number_ctx.get_text();
+                if let Ok(offset_value) = offset_text.parse::<i64>() {
+                    // Update the FetchRel with offset
+                    if let Some(blob_lock) = &relation_symbol.blob {
+                        if let Ok(mut blob_data) = blob_lock.lock() {
+                            if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                                use ::substrait::proto::rel::RelType;
+                                if let Some(RelType::Fetch(ref mut fetch_rel)) = &mut relation_data.relation.rel_type {
+                                    use ::substrait::proto::fetch_rel::OffsetMode;
+                                    fetch_rel.offset_mode = Some(OffsetMode::Offset(offset_value));
+                                }
+                            }
                         }
                     }
                 }

@@ -103,30 +103,22 @@ impl<'a> ExpressionPrinter<'a> {
                 }
             }
             Some(LiteralType::IntervalDayToSecond(interval)) => {
-                // IntervalDayToSecond has days, seconds, subseconds, and optional precision_mode
-                // Default precision is 6 (microseconds)
-                // Use struct literal format: {days, seconds, subseconds}_interval_day_second<precision>
+                // IntervalDayToSecond: Use deprecated microseconds format for compatibility
+                // The deprecated format stores microseconds in precision_mode.Microseconds variant
                 use ::substrait::proto::expression::literal::interval_day_to_second::PrecisionMode;
 
-                let precision = match &interval.precision_mode {
-                    Some(PrecisionMode::Precision(p)) => *p,
-                    Some(PrecisionMode::Microseconds(_)) => 6, // Old deprecated format, treat as microseconds
-                    None => 6, // Default to microsecond precision
+                let microseconds = match &interval.precision_mode {
+                    Some(PrecisionMode::Microseconds(micros)) => *micros,
+                    Some(PrecisionMode::Precision(_)) | None => {
+                        // Convert subseconds to microseconds (assuming precision 6)
+                        interval.subseconds as i32
+                    }
                 };
 
-                if precision == 6 {
-                    // Default precision, omit from output
-                    format!(
-                        "{{{}, {}, {}}}_interval_day_second",
-                        interval.days, interval.seconds, interval.subseconds
-                    )
-                } else {
-                    // Non-default precision, include in output
-                    format!(
-                        "{{{}, {}, {}}}_interval_day_second<{}>",
-                        interval.days, interval.seconds, interval.subseconds, precision
-                    )
-                }
+                format!(
+                    "{{{}, {}, {}}}_interval_day_second",
+                    interval.days, interval.seconds, microseconds
+                )
             }
             Some(LiteralType::FixedChar(s)) => format!("\"{}\"_fixedchar", escape_string(s)),
             Some(LiteralType::VarChar(val)) => {

@@ -12,6 +12,9 @@ mod tests {
     use crate::textplan::converter::process_plan_with_visitor;
     use crate::textplan::converter::save_binary::save_to_binary;
     use crate::textplan::parser::parse_text::parse_stream;
+    use crate::textplan::tests::proto_matchers::{
+        compare_plans, format_differences, ProtoMatcherConfig,
+    };
 
     /// Add line numbers to text for better error reporting
     fn add_line_numbers(text: &str) -> String {
@@ -109,7 +112,10 @@ mod tests {
                     func.function_reference = new_ref;
                 }
                 for arg in func.arguments.iter_mut() {
-                    if let Some(::substrait::proto::function_argument::ArgType::Value(ref mut val)) = arg.arg_type {
+                    if let Some(::substrait::proto::function_argument::ArgType::Value(
+                        ref mut val,
+                    )) = arg.arg_type
+                    {
                         normalize_expression(val, mapping);
                     }
                 }
@@ -207,7 +213,10 @@ mod tests {
                             agg_func.function_reference = new_ref;
                         }
                         for arg in agg_func.arguments.iter_mut() {
-                            if let Some(::substrait::proto::function_argument::ArgType::Value(ref mut val)) = arg.arg_type {
+                            if let Some(::substrait::proto::function_argument::ArgType::Value(
+                                ref mut val,
+                            )) = arg.arg_type
+                            {
                                 normalize_expression(val, mapping);
                             }
                         }
@@ -366,7 +375,10 @@ mod tests {
 
         assert!(!text_plan.is_empty(), "Empty textplan from binary");
         println!("Generated textplan ({} bytes)", text_plan.len());
-        println!("\n=== Generated TextPlan ===\n{}", add_line_numbers(&text_plan));
+        println!(
+            "\n=== Generated TextPlan ===\n{}",
+            add_line_numbers(&text_plan)
+        );
 
         // Step 5: TextPlan → Parse → Symbol Table
         let parse_result = parse_stream(&text_plan);
@@ -415,23 +427,46 @@ mod tests {
         let normalized_original = normalize_plan(original_plan.clone());
         let normalized_roundtrip = normalize_plan(roundtrip_plan.clone());
 
-        // Step 9: Compare normalized plans
-        if normalized_original != normalized_roundtrip {
-            // Plans differ - convert both to JSON for better error reporting
+        // Step 9: Compare normalized plans using proto matchers
+        let config = ProtoMatcherConfig::ignoring_version();
+        let differences = compare_plans(&normalized_original, &normalized_roundtrip, &config);
+
+        if !differences.is_empty() {
+            // Plans differ - show detailed differences and intermediate textplan
             let original_json = crate::proto::save_plan_to_json(&original_plan)
                 .unwrap_or_else(|_| "Failed to serialize original plan".to_string());
             let roundtrip_json = crate::proto::save_plan_to_json(&roundtrip_plan)
                 .unwrap_or_else(|_| "Failed to serialize roundtrip plan".to_string());
 
-            println!("\n=== Original Plan JSON ===\n{}\n", original_json);
-            println!("\n=== Roundtrip Plan JSON ===\n{}\n", roundtrip_json);
+            eprintln!("\n{}", "=".repeat(80));
+            eprintln!("ROUNDTRIP TEST FAILED: {}", file_path);
+            eprintln!("{}", "=".repeat(80));
+
+            eprintln!("\n{}", format_differences(&differences, 10));
+
+            eprintln!("{}", "=".repeat(80));
+            eprintln!("INTERMEDIATE TEXTPLAN:");
+            eprintln!("{}", "=".repeat(80));
+            eprintln!("{}", add_line_numbers(&text_plan));
+
+            eprintln!("\n{}", "=".repeat(80));
+            eprintln!("ORIGINAL PLAN JSON:");
+            eprintln!("{}", "=".repeat(80));
+            eprintln!("{}", original_json);
+
+            eprintln!("\n{}", "=".repeat(80));
+            eprintln!("ROUNDTRIP PLAN JSON:");
+            eprintln!("{}", "=".repeat(80));
+            eprintln!("{}", roundtrip_json);
 
             panic!(
                 "Roundtrip plan does not match original for {}\n\
+                 Found {} difference(s)\n\
                  Original: {} bytes binary, {} bytes JSON\n\
                  Roundtrip: {} bytes binary, {} bytes JSON\n\
-                 Note: Comparison ignores version field",
+                 See detailed output above for differences and intermediate textplan",
                 file_path,
+                differences.len(),
                 original_binary.len(),
                 original_json.len(),
                 roundtrip_binary.len(),

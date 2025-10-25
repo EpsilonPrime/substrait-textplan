@@ -333,6 +333,12 @@ impl PlanPrinter {
                     &mut result,
                 )?;
             }
+            RelationType::Sort => {
+                self.add_sort_relation_properties(relation, symbol_table, &indent, &mut result)?;
+            }
+            RelationType::Fetch => {
+                self.add_fetch_relation_properties(relation, symbol_table, &indent, &mut result)?;
+            }
             // Add cases for other relation types as needed
             _ => {
                 // Default case: add a comment for unimplemented relation types
@@ -542,7 +548,8 @@ impl PlanPrinter {
                             agg_rel.grouping_expressions.clone()
                         } else {
                             // Fallback: collect expressions from deprecated Grouping.grouping_expressions
-                            agg_rel.groupings
+                            agg_rel
+                                .groupings
                                 .iter()
                                 .flat_map(|g| g.grouping_expressions.clone())
                                 .collect()
@@ -594,6 +601,121 @@ impl PlanPrinter {
 
             result.push_str(&format!("{}}}\n", indent));
         }
+
+        Ok(())
+    }
+
+    fn add_sort_relation_properties(
+        &self,
+        relation: &Arc<SymbolInfo>,
+        symbol_table: &SymbolTable,
+        indent: &str,
+        result: &mut String,
+    ) -> Result<(), TextPlanError> {
+        use ::substrait::proto::rel::RelType;
+
+        // Extract sort fields (clone to avoid holding the lock)
+        let sorts = if let Some(blob_lock) = &relation.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    if let Some(RelType::Sort(sort_rel)) = &relation_data.relation.rel_type {
+                        sort_rel.sorts.clone()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        // Print sort fields
+        if !sorts.is_empty() {
+            let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
+            for sort_field in &sorts {
+                // Print the expression
+                let expr_text =
+                    expr_printer.print_expression(&sort_field.expr.as_ref().unwrap())?;
+
+                // Print the direction (following C++ format: "by DIRECTION_NAME")
+                use ::substrait::proto::sort_field::SortKind;
+                let direction_suffix = match &sort_field.sort_kind {
+                    Some(SortKind::Direction(dir)) => {
+                        use ::substrait::proto::sort_field::SortDirection;
+                        match SortDirection::try_from(*dir) {
+                            Ok(SortDirection::AscNullsFirst) => " by ASC_NULLS_FIRST".to_string(),
+                            Ok(SortDirection::AscNullsLast) => " by ASC_NULLS_LAST".to_string(),
+                            Ok(SortDirection::DescNullsFirst) => " by DESC_NULLS_FIRST".to_string(),
+                            Ok(SortDirection::DescNullsLast) => " by DESC_NULLS_LAST".to_string(),
+                            Ok(SortDirection::Clustered) => " by CLUSTERED".to_string(),
+                            _ => String::new(), // Unspecified, no suffix
+                        }
+                    }
+                    Some(SortKind::ComparisonFunctionReference(func_ref)) => {
+                        // For custom comparison functions
+                        format!(" by function_{}", func_ref)
+                    }
+                    None => String::new(), // No direction specified
+                };
+
+                result.push_str(&format!(
+                    "{}sort {}{};\n",
+                    indent, expr_text, direction_suffix
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn add_fetch_relation_properties(
+        &self,
+        relation: &Arc<SymbolInfo>,
+        _symbol_table: &SymbolTable,
+        indent: &str,
+        result: &mut String,
+    ) -> Result<(), TextPlanError> {
+        use ::substrait::proto::rel::RelType;
+        use ::substrait::proto::fetch_rel::{CountMode, OffsetMode};
+
+        // Extract offset and count from FetchRel using deprecated mode fields
+        let (offset, count) = if let Some(blob_lock) = &relation.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    if let Some(RelType::Fetch(fetch_rel)) = &relation_data.relation.rel_type {
+                        let offset = match &fetch_rel.offset_mode {
+                            Some(OffsetMode::Offset(val)) => *val,
+                            Some(OffsetMode::OffsetExpr(_)) => 0, // Expression-based offset not yet supported in textplan
+                            None => 0,
+                        };
+                        let count = match &fetch_rel.count_mode {
+                            Some(CountMode::Count(val)) => *val,
+                            Some(CountMode::CountExpr(_)) => 0, // Expression-based count not yet supported in textplan
+                            None => 0,
+                        };
+                        (offset, count)
+                    } else {
+                        (0, 0)
+                    }
+                } else {
+                    (0, 0)
+                }
+            } else {
+                (0, 0)
+            }
+        } else {
+            (0, 0)
+        };
+
+        // Print offset (always, to ensure roundtrip)
+        result.push_str(&format!("{}offset {};\n", indent, offset));
+
+        // Always print count
+        result.push_str(&format!("{}count {};\n", indent, count));
 
         Ok(())
     }

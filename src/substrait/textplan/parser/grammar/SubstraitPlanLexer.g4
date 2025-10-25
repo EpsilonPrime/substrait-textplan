@@ -42,6 +42,7 @@ INVOCATION: [Ii][Nn][Vv][Oo][Cc][Aa][Tt][Ii][Oo][Nn];
 SORT: [Ss][Oo][Rr][Tt];
 BY: [Bb][Yy];
 COUNT: [Cc][Oo][Uu][Nn][Tt];
+OFFSET: [Oo][Ff][Ff][Ss][Ee][Tt];
 TYPE: [Tt][Yy][Pp][Ee];
 EMIT: [Ee][Mm][Ii][Tt];
 

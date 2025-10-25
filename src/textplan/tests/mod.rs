@@ -5,4 +5,5 @@
 mod base_plan_visitor_test;
 mod converter_test;
 mod parser_test;
+pub mod proto_matchers;
 mod roundtrip_test;

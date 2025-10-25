@@ -927,7 +927,10 @@ impl PlanProtoVisitor for InitialPlanVisitor {
         // If AggregateRel.grouping_expressions is empty but Grouping.grouping_expressions is populated,
         // we need to migrate
         let needs_migration = obj.grouping_expressions.is_empty()
-            && obj.groupings.iter().any(|g| !g.grouping_expressions.is_empty());
+            && obj
+                .groupings
+                .iter()
+                .any(|g| !g.grouping_expressions.is_empty());
 
         if needs_migration {
             // NOTE: We can't modify obj here since it's immutable. The migration will need to happen

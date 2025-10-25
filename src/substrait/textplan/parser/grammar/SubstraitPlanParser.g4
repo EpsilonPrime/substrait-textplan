@@ -81,6 +81,7 @@ relation_detail
    | MEASURE LEFTBRACE measure_detail* RIGHTBRACE           # relationMeasure
    | sort_field                                             # relationSort
    | COUNT NUMBER SEMICOLON                                 # relationCount
+   | OFFSET NUMBER SEMICOLON                                # relationOffset
    | TYPE id SEMICOLON                                      # relationJoinType
    | EMIT column_name SEMICOLON                             # relationEmit
    ;

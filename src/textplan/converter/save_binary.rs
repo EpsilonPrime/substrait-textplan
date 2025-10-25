@@ -141,59 +141,22 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
             symbol.symbol_type()
         );
         if symbol.symbol_type() == SymbolType::Relation {
-            // Check if this is a pipeline terminal (end of pipeline with no continuing relation)
-            let is_pipeline_terminal = {
+            // Skip if this is a subquery relation (following C++ logic)
+            if symbol.parent_query_index() >= 0 {
                 println!(
-                    "  Checking if '{}' is pipeline_terminal (locking for check)",
-                    symbol.name()
+                    "  Skipping subquery relation '{}' (parent_query_index={})",
+                    symbol.name(),
+                    symbol.parent_query_index()
                 );
-                if let Some(blob_lock) = &symbol.blob {
-                    if let Ok(blob_data) = blob_lock.lock() {
-                        println!(
-                            "    Successfully locked '{}' for pipeline_terminal check",
-                            symbol.name()
-                        );
-                        if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                            // A pipeline terminal (end of pipeline to output) has:
-                            // - continuing_pipeline == None (nothing follows it in the pipeline)
-                            // - pipeline_start != None (it's part of a pipeline, not orphaned)
-                            // - pipeline_start does NOT point to self (it's not the data source leaf)
-                            let is_not_pipeline_start = relation_data
-                                .pipeline_start
-                                .as_ref()
-                                .map_or(true, |start| !Arc::ptr_eq(start, symbol));
-                            let result = relation_data.continuing_pipeline.is_none()
-                                && relation_data.pipeline_start.is_some()
-                                && is_not_pipeline_start;
-                            println!(
-                                "Relation '{}': continuing_pipeline={:?}, pipeline_start={:?}, is_pipeline_terminal={}",
-                                symbol.name(),
-                                relation_data.continuing_pipeline.as_ref().map(|s| s.name()),
-                                relation_data.pipeline_start.as_ref().map(|s| s.name()),
-                                result
-                            );
-                            result
-                        } else {
-                            false
-                        }
-                    } else {
-                        println!(
-                            "    FAILED to lock '{}' for pipeline_terminal check",
-                            symbol.name()
-                        );
-                        false
-                    }
-                } else {
-                    false
-                }
-            };
-            println!(
-                "  Lock dropped for '{}' after pipeline_terminal check",
-                symbol.name()
-            );
-            // Lock is dropped here before we recurse
+                continue;
+            }
 
-            if is_pipeline_terminal {
+            // Check if this relation should be output as a top-level PlanRel
+            // Output if it's named "root" (special case) or if it's a pipeline terminal
+            // that's not nested in another relation's pipeline
+            let should_output = symbol.name() == "root";
+
+            if should_output {
                 // Check if this is a "root" symbol - wrap in Root plan relation
                 if symbol.name() == "root" {
                     // Get the input from new_pipelines[0] and root_names from the root symbol
@@ -245,19 +208,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                         }
                     }
                 } else {
-                    // Not a root symbol - check if it's a subquery relation
-                    // Subquery relations should NOT be output as top-level PlanRels
-                    // They only exist embedded within their parent relation's expressions
-                    if symbol.parent_query_index() >= 0 {
-                        println!(
-                            "  Skipping subquery relation '{}' (parent_query_index={})",
-                            symbol.name(),
-                            symbol.parent_query_index()
-                        );
-                        continue;
-                    }
-
-                    // Add as regular Rel
+                    // Not a root symbol - add as regular Rel
                     if let Some(blob_lock) = &symbol.blob {
                         if let Ok(blob_data) = blob_lock.lock() {
                             if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
@@ -800,6 +751,148 @@ fn add_inputs_to_relation(
                         add_inputs_to_relation(symbol_table, next, input, visited)?;
                     }
                 }
+            }
+            rel::RelType::Fetch(fetch_rel) => {
+                println!("    '{}' is Fetch", symbol.name());
+
+                // Set common to direct emission (fetch passes through all fields)
+                if fetch_rel.common.is_none() {
+                    fetch_rel.common = Some(::substrait::proto::RelCommon {
+                        emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
+                            ::substrait::proto::rel_common::Direct {},
+                        )),
+                        ..Default::default()
+                    });
+                }
+
+                // Fetch is a unary relation (one input from continuing_pipeline)
+                if let (Some(next), Some(next_rel)) =
+                    (&continuing_pipeline, &continuing_pipeline_rel)
+                {
+                    println!(
+                        "      Fetch '{}' has continuing_pipeline: '{}'",
+                        symbol.name(),
+                        next.name()
+                    );
+                    fetch_rel.input = Some(Box::new(next_rel.clone()));
+                    if let Some(input) = &mut fetch_rel.input {
+                        println!(
+                            "      Recursing from Fetch '{}' to '{}'",
+                            symbol.name(),
+                            next.name()
+                        );
+                        add_inputs_to_relation(symbol_table, next, input, visited)?;
+                        println!(
+                            "      Returned from recursion to '{}' from '{}'",
+                            next.name(),
+                            symbol.name()
+                        );
+                    }
+                }
+            }
+            rel::RelType::Set(set_rel) => {
+                println!("    '{}' is Set", symbol.name());
+
+                // Set common to direct emission
+                if set_rel.common.is_none() {
+                    set_rel.common = Some(::substrait::proto::RelCommon {
+                        emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
+                            ::substrait::proto::rel_common::Direct {},
+                        )),
+                        ..Default::default()
+                    });
+                }
+
+                // Set relations have multiple inputs in new_pipelines
+                for (pipeline_sym, pipeline_rel) in
+                    new_pipelines.iter().zip(new_pipelines_rels.iter())
+                {
+                    if let Some(input_rel) = pipeline_rel {
+                        let mut input = input_rel.clone();
+                        add_inputs_to_relation(symbol_table, pipeline_sym, &mut input, visited)?;
+                        set_rel.inputs.push(input);
+                    }
+                }
+            }
+            rel::RelType::HashJoin(hash_join_rel) => {
+                println!("    '{}' is HashJoin", symbol.name());
+
+                if new_pipelines.len() >= 2 && new_pipelines_rels.len() >= 2 {
+                    // Left input
+                    if let Some(left_rel) = &new_pipelines_rels[0] {
+                        hash_join_rel.left = Some(Box::new(left_rel.clone()));
+                        if let Some(left) = &mut hash_join_rel.left {
+                            add_inputs_to_relation(symbol_table, &new_pipelines[0], left, visited)?;
+                        }
+                    }
+                    // Right input
+                    if let Some(right_rel) = &new_pipelines_rels[1] {
+                        hash_join_rel.right = Some(Box::new(right_rel.clone()));
+                        if let Some(right) = &mut hash_join_rel.right {
+                            add_inputs_to_relation(
+                                symbol_table,
+                                &new_pipelines[1],
+                                right,
+                                visited,
+                            )?;
+                        }
+                    }
+                }
+            }
+            rel::RelType::MergeJoin(merge_join_rel) => {
+                println!("    '{}' is MergeJoin", symbol.name());
+
+                if new_pipelines.len() >= 2 && new_pipelines_rels.len() >= 2 {
+                    // Left input
+                    if let Some(left_rel) = &new_pipelines_rels[0] {
+                        merge_join_rel.left = Some(Box::new(left_rel.clone()));
+                        if let Some(left) = &mut merge_join_rel.left {
+                            add_inputs_to_relation(symbol_table, &new_pipelines[0], left, visited)?;
+                        }
+                    }
+                    // Right input
+                    if let Some(right_rel) = &new_pipelines_rels[1] {
+                        merge_join_rel.right = Some(Box::new(right_rel.clone()));
+                        if let Some(right) = &mut merge_join_rel.right {
+                            add_inputs_to_relation(
+                                symbol_table,
+                                &new_pipelines[1],
+                                right,
+                                visited,
+                            )?;
+                        }
+                    }
+                }
+            }
+            rel::RelType::ExtensionSingle(ext_single_rel) => {
+                println!("    '{}' is ExtensionSingle", symbol.name());
+
+                if let (Some(next), Some(next_rel)) =
+                    (&continuing_pipeline, &continuing_pipeline_rel)
+                {
+                    ext_single_rel.input = Some(Box::new(next_rel.clone()));
+                    if let Some(input) = &mut ext_single_rel.input {
+                        add_inputs_to_relation(symbol_table, next, input, visited)?;
+                    }
+                }
+            }
+            rel::RelType::ExtensionMulti(ext_multi_rel) => {
+                println!("    '{}' is ExtensionMulti", symbol.name());
+
+                // Extension multi has multiple inputs in new_pipelines
+                for (pipeline_sym, pipeline_rel) in
+                    new_pipelines.iter().zip(new_pipelines_rels.iter())
+                {
+                    if let Some(input_rel) = pipeline_rel {
+                        let mut input = input_rel.clone();
+                        add_inputs_to_relation(symbol_table, pipeline_sym, &mut input, visited)?;
+                        ext_multi_rel.inputs.push(input);
+                    }
+                }
+            }
+            rel::RelType::ExtensionLeaf(_ext_leaf_rel) => {
+                println!("    '{}' is ExtensionLeaf (no inputs)", symbol.name());
+                // Extension leaf has no inputs
             }
             // Binary relations (two inputs)
             rel::RelType::Join(join_rel) => {
