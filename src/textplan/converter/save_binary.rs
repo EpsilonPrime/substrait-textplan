@@ -782,6 +782,16 @@ fn add_inputs_to_relation(
                 }
             }
             rel::RelType::Sort(sort_rel) => {
+                // Set common to direct emission (sorts pass through all fields)
+                if sort_rel.common.is_none() {
+                    sort_rel.common = Some(::substrait::proto::RelCommon {
+                        emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
+                            ::substrait::proto::rel_common::Direct {},
+                        )),
+                        ..Default::default()
+                    });
+                }
+
                 if let (Some(next), Some(next_rel)) =
                     (&continuing_pipeline, &continuing_pipeline_rel)
                 {
