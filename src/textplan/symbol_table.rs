@@ -335,12 +335,14 @@ impl SymbolTable {
     /// Returns a unique name for a symbol.
     ///
     /// If the given name is already used, a number is appended to make it unique.
+    /// Follows C++ convention: name, name2, name3, ... (skipping name1).
     pub fn get_unique_name(&self, base_name: &str) -> String {
         if !self.names.contains_key(base_name) {
             return base_name.to_string();
         }
 
-        let mut i = 1;
+        // Start at 2 to match C++ behavior (name, name2, name3, ...)
+        let mut i = 2;
         loop {
             let name = format!("{}{}", base_name, i);
             if !self.names.contains_key(&name) {

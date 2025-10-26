@@ -6,7 +6,7 @@
 // It recursively discovers all message types by parsing proto files.
 
 use phf::phf_map;
-use prost_types::{DescriptorProto, FileDescriptorSet};
+use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorSet};
 use serde::Serialize;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::error::Error;
@@ -15,6 +15,21 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tinytemplate::TinyTemplate;
+
+/// Helper function to check if a field is a Rel type.
+///
+/// Rel-typed fields should be visited last to ensure that expressions
+/// (which may contain subqueries) are processed before child relations.
+/// This ensures subquery schemas are created before main query schemas.
+fn is_rel_field(field: &FieldDescriptorProto) -> bool {
+    if let Some(type_name) = field.type_name.as_ref() {
+        // Check if the type name ends with ".Rel" (like "substrait.Rel")
+        // or is exactly ".substrait.Rel"
+        type_name.ends_with(".Rel") || type_name == ".substrait.Rel"
+    } else {
+        false
+    }
+}
 
 /// Error type for visitor generator operations
 #[derive(Debug)]
@@ -398,6 +413,32 @@ pub trait Traversable {
         output.push_str(&rendered.unwrap());
     }
 
+    /// Get fields in the correct traversal order.
+    ///
+    /// Fields are ordered so that Rel-typed fields come last. This ensures that
+    /// expressions (which may contain subqueries) are processed before child relations,
+    /// so subquery schemas are created before main query schemas.
+    fn get_ordered_fields<'a>(
+        &self,
+        _full_name: &str,
+        message: &'a DescriptorProto,
+    ) -> Vec<&'a FieldDescriptorProto> {
+        let mut non_rel_fields = Vec::new();
+        let mut rel_fields = Vec::new();
+
+        for field in &message.field {
+            if is_rel_field(field) {
+                rel_fields.push(field);
+            } else {
+                non_rel_fields.push(field);
+            }
+        }
+
+        // Return non-Rel fields first, then Rel fields
+        non_rel_fields.extend(rel_fields);
+        non_rel_fields
+    }
+
     /// Generate an implementation for a visit method
     fn generate_visit_method(
         &self,
@@ -441,9 +482,12 @@ impl Traversable for {type_path} \{
         }
         output.push_str(&rendered.unwrap());
 
+        // Get fields in the correct traversal order (Rel fields last)
+        let ordered_fields = self.get_ordered_fields(full_name, message);
+
         // Output
         let mut handled_oneofs = HashSet::new();
-        for rel_msg in &message.field {
+        for rel_msg in ordered_fields {
             if let Some(oneof_index) = rel_msg.oneof_index {
                 if handled_oneofs.contains(&oneof_index) {
                     continue;
