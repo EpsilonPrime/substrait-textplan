@@ -1869,6 +1869,7 @@ pub struct RelationVisitor<'input> {
     error_listener: Arc<ErrorListener>,
     current_relation_scope: Option<Arc<SymbolInfo>>,
     prescan_mode: bool,
+    processing_emit: bool,  // Track if we're currently processing an emit clause
     _phantom: std::marker::PhantomData<&'input ()>,
 }
 
@@ -1906,6 +1907,7 @@ impl<'input> RelationVisitor<'input> {
             error_listener,
             current_relation_scope: None,
             prescan_mode: false,
+            processing_emit: false,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -3037,10 +3039,18 @@ impl<'input> RelationVisitor<'input> {
             if let Some(blob_lock) = &relation_symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
                     if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
-                        let field_ref_size = relation_data.field_references.len();
+                        // Following C++ behavior: For aggregates during emit processing,
+                        // set field_ref_size to 0 so lookups only find generated fields
+                        // (C++ SubstraitPlanRelationVisitor::findFieldReferenceByName lines 2036-2038)
+                        let is_aggregate = matches!(&relation_data.relation.rel_type, Some(::substrait::proto::rel::RelType::Aggregate(_)));
+                        let field_ref_size = if is_aggregate && self.processing_emit {
+                            0  // Aggregates during emit only expose generated fields
+                        } else {
+                            relation_data.field_references.len()
+                        };
 
-                        println!("      Looking up '{}' in relation '{}': field_refs={}, generated={}",
-                            column_name, relation_symbol.name(), field_ref_size, relation_data.generated_field_references.len());
+                        println!("      Looking up '{}' in relation '{}': field_refs={}, generated={}, processing_emit={}",
+                            column_name, relation_symbol.name(), field_ref_size, relation_data.generated_field_references.len(), self.processing_emit);
 
                         // First search generated_field_references (in reverse order, like C++)
                         for (rev_idx, field_symbol) in relation_data.generated_field_references.iter().rev().enumerate() {
@@ -3925,8 +3935,35 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
 
         // Add generated field references from expressions (after visiting relation details)
         // This matches the C++ addExpressionsToSchema pattern
-        if let Some(relation_symbol) = symbol {
+        if let Some(relation_symbol) = symbol.clone() {
             self.add_expressions_to_schema(&relation_symbol);
+
+            // Special handling for aggregates: copy generatedFieldReferences to outputFieldReferences
+            // Following C++ SubstraitPlanRelationVisitor::visitRelation lines 387-393
+            if let Some(blob_lock) = &relation_symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        let is_aggregate = matches!(&relation_data.relation.rel_type, Some(::substrait::proto::rel::RelType::Aggregate(_)));
+                        if is_aggregate {
+                            let generated_refs = relation_data.generated_field_references.clone();
+                            drop(blob_data);
+                            drop(blob_lock);
+
+                            // Now update outputFieldReferences
+                            if let Some(blob_lock) = &relation_symbol.blob {
+                                if let Ok(mut blob_data) = blob_lock.lock() {
+                                    if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                                        relation_data.output_field_references.extend(generated_refs);
+                                        println!("  Aggregate '{}': copied {} generated fields to output_field_references",
+                                            relation_symbol.name(),
+                                            relation_data.output_field_references.len());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Clear scope when done
@@ -4049,7 +4086,27 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                                 }
 
                                 // Add expression directly to the deprecated field
-                                agg_rel.groupings[0].grouping_expressions.push(expr);
+                                agg_rel.groupings[0].grouping_expressions.push(expr.clone());
+
+                                // Following C++ behavior: If this is a simple field selection,
+                                // add the referenced field to generated_field_references
+                                if let Some(::substrait::proto::expression::RexType::Selection(ref selection)) = expr.rex_type {
+                                    // Check if this is a root reference (field selection from current relation)
+                                    if let Some(::substrait::proto::expression::field_reference::RootType::RootReference(_)) = selection.root_type {
+                                        // Check if it's a direct struct field reference
+                                        if let Some(::substrait::proto::expression::field_reference::ReferenceType::DirectReference(ref ref_segment)) = selection.reference_type {
+                                            if let Some(::substrait::proto::expression::reference_segment::ReferenceType::StructField(ref struct_field)) = ref_segment.reference_type {
+                                                let field_index = struct_field.field as usize;
+                                                if field_index < relation_data.field_references.len() {
+                                                    let field_symbol = relation_data.field_references[field_index].clone();
+                                                    relation_data.generated_field_references.push(field_symbol);
+                                                    println!("  Added grouping field '{}' to generated_field_references",
+                                                        relation_data.field_references[field_index].name());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -4376,6 +4433,10 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
             self.add_expressions_to_schema(&relation_symbol);
         }
 
+        // Mark that we're processing emit (affects field lookup behavior for aggregates)
+        // Following C++ SubstraitPlanRelationVisitor which tracks processingEmit_
+        self.processing_emit = true;
+
         // Handle EMIT column_name SEMICOLON
         // Emit specifies which fields from the input should be output
         if let Some(relation_symbol) = self.current_relation_scope().cloned() {
@@ -4428,6 +4489,9 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
             }
         }
         self.visit_children(ctx);
+
+        // Reset processing_emit flag
+        self.processing_emit = false;
     }
 
     fn visit_relationCount(&mut self, ctx: &RelationCountContext<'input>) {
