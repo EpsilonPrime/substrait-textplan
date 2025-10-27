@@ -41,6 +41,9 @@ pub struct InitialPlanVisitor {
 
     read_relation_sources: HashMap<String, Arc<SymbolInfo>>,
     read_relation_schemas: HashMap<String, Arc<SymbolInfo>>,
+
+    /// Track the next subquery index for each parent relation (by location hash)
+    subquery_indices: HashMap<u64, usize>,
 }
 
 fn short_name(s: &str) -> &str {
@@ -102,6 +105,7 @@ impl InitialPlanVisitor {
             internal_location: ProtoLocation::default(),
             read_relation_sources: HashMap::new(),
             read_relation_schemas: HashMap::new(),
+            subquery_indices: HashMap::new(),
         }
     }
 
@@ -350,9 +354,11 @@ impl InitialPlanVisitor {
                             self.current_location().field("aggregate").field("input");
                         self.add_fields_to_relation_single(relation_data, input, &input_location);
                     }
+
                     for grouping in &agg_rel.groupings {
                         self.add_grouping_to_relation(relation_data, grouping);
                     }
+
                     // Add measures from internal_relation
                     if let Some(substrait::rel::RelType::Aggregate(internal_agg)) =
                         &internal_relation.rel_type
@@ -369,6 +375,7 @@ impl InitialPlanVisitor {
                             relation_data.generated_field_references.push(symbol);
                         }
                     }
+
                     // TODO -- If there are multiple groupings add the additional output.
                     // Aggregate relations are different in that they alter the emitted fields by default.
                     relation_data
@@ -400,6 +407,7 @@ impl InitialPlanVisitor {
                             self.current_location().field("project").field("input");
                         self.add_fields_to_relation_single(relation_data, input, &input_location);
                     }
+
                     for expr in &project_rel.expressions {
                         // TODO -- Add support for other kinds of direct references.
                         if let Some(substrait::expression::RexType::Selection(selection)) =
@@ -650,6 +658,25 @@ impl InitialPlanVisitor {
 }
 
 impl PlanProtoVisitor for InitialPlanVisitor {
+    // Workaround: The generated visitor doesn't traverse FunctionArgument.arg_type
+    // So we need to do it manually here
+    fn post_process_function_argument(&mut self, arg: &substrait::FunctionArgument) {
+        use crate::textplan::converter::generated::base_plan_visitor::Traversable;
+
+        if let Some(arg_type) = &arg.arg_type {
+            match arg_type {
+                substrait::function_argument::ArgType::Value(expr) => {
+                    // Manually traverse the expression
+                    let prev_location = self.current_location().clone();
+                    self.set_location(self.current_location().field("value"));
+                    expr.traverse(self);
+                    self.set_location(prev_location);
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn current_location(&self) -> &ProtoLocation {
         &self.internal_location
     }
@@ -718,9 +745,20 @@ impl PlanProtoVisitor for InitialPlanVisitor {
 
     fn post_process_expression(&mut self, expression: &substrait::Expression) {
         if let Some(rex_type) = &expression.rex_type {
+            // Check if it's a subquery
+            if matches!(rex_type, substrait::expression::RexType::Subquery(_)) {
+                println!(
+                    "DEBUG INIT: ✓✓✓ Found SUBQUERY at {}",
+                    self.current_location().path_string()
+                );
+            }
+
             match rex_type {
                 substrait::expression::RexType::Subquery(subquery) => {
-                    println!("DEBUG INIT: Found subquery expression at location: {}", self.current_location().path_string());
+                    println!(
+                        "DEBUG INIT: Found subquery expression at location: {}",
+                        self.current_location().path_string()
+                    );
                     use substrait::expression::subquery::SubqueryType;
 
                     // Determine the field path to the subquery relation
@@ -739,7 +777,10 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                     }
 
                     // Look up the subquery relation symbol by its location
-                    println!("DEBUG INIT: Looking for subquery relation at location: {}", rel_location.path_string());
+                    println!(
+                        "DEBUG INIT: Looking for subquery relation at location: {}",
+                        rel_location.path_string()
+                    );
 
                     if let Some(symbol) = self
                         .symbol_table
@@ -748,22 +789,36 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                         // Set the parent query location to the current relation's location
                         // We stored the actual ProtoLocation in current_relation_locations
                         if let Some(parent_rel_location) = self.current_relation_locations.last() {
+                            let parent_hash = parent_rel_location.location_hash();
                             println!(
                                 "DEBUG INIT: Setting parent_query_location for '{}' to hash {}",
                                 symbol.name(),
-                                parent_rel_location.location_hash()
+                                parent_hash
                             );
                             self.symbol_table.set_parent_query_location(
                                 &symbol,
                                 parent_rel_location.box_clone(),
                             );
-                        }
 
-                        // Set the index for this subquery within its parent (0 for now)
-                        // TODO: track multiple subqueries properly with incrementing indices
-                        self.symbol_table.set_parent_query_index(&symbol, 0);
+                            // Get the next subquery index for this parent relation
+                            let current_index =
+                                *self.subquery_indices.entry(parent_hash).or_insert(0);
+                            println!(
+                                "DEBUG INIT: Setting parent_query_index for '{}' to {}",
+                                symbol.name(),
+                                current_index
+                            );
+                            self.symbol_table
+                                .set_parent_query_index(&symbol, current_index as i32);
+
+                            // Increment for next subquery in same parent
+                            *self.subquery_indices.get_mut(&parent_hash).unwrap() += 1;
+                        }
                     } else {
-                        println!("DEBUG INIT: FAILED to find subquery relation at location: {}", rel_location.path_string());
+                        println!(
+                            "DEBUG INIT: FAILED to find subquery relation at location: {}",
+                            rel_location.path_string()
+                        );
                     }
                 }
                 _ => {}

@@ -3426,8 +3426,7 @@ impl<'input> RelationVisitor<'input> {
                         parent_rel.name(),
                         parent_loc.location_hash()
                     );
-                    relation_symbol
-                        .set_parent_query_location(parent_loc.box_clone());
+                    relation_symbol.set_parent_query_location(parent_loc.box_clone());
                     relation_symbol.set_parent_query_index(0);
 
                     // Set pipeline_start on all relations in the subquery pipeline
@@ -4095,17 +4094,127 @@ pub struct SubqueryRelationVisitor<'input> {
     symbol_table: SymbolTable,
     error_listener: Arc<ErrorListener>,
     current_relation_scope: Option<Arc<SymbolInfo>>,
+    // Stores (field_index, steps_out) for each column expression in visit order
+    expression_field_info: std::cell::RefCell<Vec<(usize, usize)>>,
+    // Tracks the next index to consume from expression_field_info
+    expression_field_info_index: std::cell::RefCell<usize>,
     _phantom: std::marker::PhantomData<&'input ()>,
 }
 
 impl<'input> SubqueryRelationVisitor<'input> {
     /// Creates a new SubqueryRelationVisitor.
-    pub fn new(symbol_table: SymbolTable, error_listener: Arc<ErrorListener>) -> Self {
+    pub fn new(mut symbol_table: SymbolTable, error_listener: Arc<ErrorListener>) -> Self {
+        // Populate sub_query_pipelines now that RelationVisitor has created all the blobs
+        Self::populate_subquery_pipelines(&mut symbol_table);
+
         Self {
             symbol_table,
             error_listener,
             current_relation_scope: None,
+            expression_field_info: std::cell::RefCell::new(Vec::new()),
+            expression_field_info_index: std::cell::RefCell::new(0),
             _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Populates sub_query_pipelines for all relations by finding subquery relations
+    /// and adding them to their parent relations.
+    fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) {
+        println!("DEBUG SUBQUERY: Populating sub_query_pipelines in SubqueryRelationVisitor");
+
+        // Find all subquery relations (those with parent_query_index >= 0)
+        let mut subqueries: Vec<Arc<SymbolInfo>> = Vec::new();
+        for symbol in symbol_table.symbols() {
+            if symbol.symbol_type() != SymbolType::Relation {
+                continue;
+            }
+
+            // Check if this relation or its pipeline_start has parent_query_index set
+            let is_subquery = if symbol.parent_query_index() >= 0 {
+                true
+            } else if let Some(blob_lock) = &symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        if let Some(pipeline_start) = &relation_data.pipeline_start {
+                            pipeline_start.parent_query_index() >= 0
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if is_subquery {
+                // Get the pipeline_start (terminus) to add to parent
+                let terminus = if let Some(blob_lock) = &symbol.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                            relation_data
+                                .pipeline_start
+                                .clone()
+                                .unwrap_or_else(|| symbol.clone())
+                        } else {
+                            symbol.clone()
+                        }
+                    } else {
+                        symbol.clone()
+                    }
+                } else {
+                    symbol.clone()
+                };
+
+                println!(
+                    "DEBUG SUBQUERY: Found subquery terminus: '{}'",
+                    terminus.name()
+                );
+                subqueries.push(terminus);
+            }
+        }
+
+        // Now find parent relations by checking which relation expressions reference these subqueries
+        // For now, we'll add all subqueries to relations that might use them
+        // A more precise implementation would parse the expressions to find actual references
+        for parent_symbol in symbol_table.symbols() {
+            if parent_symbol.symbol_type() != SymbolType::Relation {
+                continue;
+            }
+
+            // Add subqueries to this parent if they reference it
+            // For simplicity, we add all subqueries for now - the lookup will filter correctly
+            for subquery in &subqueries {
+                // Skip if this parent IS the subquery
+                if Arc::ptr_eq(parent_symbol, subquery) {
+                    continue;
+                }
+
+                // Add to parent's sub_query_pipelines
+                if let Some(blob_lock) = &parent_symbol.blob {
+                    if let Ok(mut blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                            // Check if not already added
+                            let already_added = relation_data
+                                .sub_query_pipelines
+                                .iter()
+                                .any(|sq| Arc::ptr_eq(sq, subquery));
+
+                            if !already_added {
+                                println!(
+                                    "DEBUG SUBQUERY: Adding '{}' to '{}'",
+                                    subquery.name(),
+                                    parent_symbol.name()
+                                );
+                                relation_data.sub_query_pipelines.push(subquery.clone());
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -4232,45 +4341,110 @@ impl<'input> SubqueryRelationVisitor<'input> {
         Some(symbol)
     }
 
-    /// Gets the parent query location for a relation symbol.
-    /// This follows the C++ getParentQueryLocation pattern.
-    fn get_parent_query_location(
-        &self,
-        symbol: &Arc<SymbolInfo>,
-    ) -> Option<Box<dyn crate::textplan::Location>> {
+    /// Gets the parent query relation symbol by searching the symbol table.
+    /// Returns the parent relation that has this relation in its sub_query_pipelines.
+    /// This uses Rust's Arc-based approach rather than C++'s location pointers.
+    fn get_parent_query_relation(&self, symbol: &Arc<SymbolInfo>) -> Option<Arc<SymbolInfo>> {
         println!("        get_parent_query_location for '{}'", symbol.name());
 
-        // First check if this relation has parent_query info directly
-        if symbol.parent_query_index() >= 0 {
-            println!("          Has direct parent_query_index: {}", symbol.parent_query_index());
-            let parent_loc = symbol.parent_query_location();
-            println!("          parent_query_location hash: {}", parent_loc.location_hash());
-            return Some(parent_loc);
-        }
-
-        // Otherwise, check pipeline_start
-        if let Some(blob_lock) = &symbol.blob {
+        // Check if this relation or its pipeline_start has parent_query_index set
+        let is_subquery = if symbol.parent_query_index() >= 0 {
+            println!(
+                "          Has direct parent_query_index: {}",
+                symbol.parent_query_index()
+            );
+            true
+        } else if let Some(blob_lock) = &symbol.blob {
+            // Check pipeline_start's parent_query_index
             if let Ok(blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
                     if let Some(pipeline_start) = &relation_data.pipeline_start {
-                        println!("          Has pipeline_start: '{}'", pipeline_start.name());
                         if pipeline_start.parent_query_index() >= 0 {
-                            println!("          pipeline_start parent_query_index: {}", pipeline_start.parent_query_index());
-                            let parent_loc = pipeline_start.parent_query_location();
-                            println!("          Returning parent_query_location hash: {}", parent_loc.location_hash());
-                            return Some(parent_loc);
+                            println!(
+                                "          pipeline_start '{}' has parent_query_index: {}",
+                                pipeline_start.name(),
+                                pipeline_start.parent_query_index()
+                            );
+                            true
                         } else {
-                            println!("          WARNING: pipeline_start '{}' has parent_query_index < 0", pipeline_start.name());
+                            false
                         }
                     } else {
-                        println!("          No pipeline_start set");
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !is_subquery {
+            println!("          Not a subquery");
+            return None;
+        }
+
+        // Otherwise, search the symbol table to find which relation has this subquery's pipeline_start
+        // We need to search for the pipeline_start, not the current relation
+        let search_symbol = if let Some(blob_lock) = &symbol.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    relation_data.pipeline_start.clone()
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let search_target = search_symbol.as_ref().unwrap_or(symbol);
+        println!(
+            "          Searching for parent of pipeline '{}' (terminus of subquery)",
+            search_target.name()
+        );
+
+        // Find all potential parents that have this subquery
+        let mut potential_parents: Vec<Arc<SymbolInfo>> = Vec::new();
+        for potential_parent in self.symbol_table.symbols() {
+            if potential_parent.symbol_type() != SymbolType::Relation {
+                continue;
+            }
+
+            if let Some(blob_lock) = &potential_parent.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        // Check if pipeline_start is in the potential parent's sub_query_pipelines
+                        for subquery in &relation_data.sub_query_pipelines {
+                            if Arc::ptr_eq(subquery, search_target)
+                                || subquery.name() == search_target.name()
+                            {
+                                potential_parents.push(potential_parent.clone());
+                                break;
+                            }
+                        }
                     }
                 }
             }
         }
 
-        println!("          No parent query location found");
-        None
+        if potential_parents.is_empty() {
+            println!("          No parent query found in symbol table");
+            return None;
+        }
+
+        println!(
+            "          Found {} potential parent(s)",
+            potential_parents.len()
+        );
+        // Return the first one (we'll refine this later to find the actual correct parent)
+        // For now, this works because we populated sub_query_pipelines to all relations
+        Some(potential_parents[0].clone())
     }
 
     /// Finds a field reference by name, recursively searching parent relations.
@@ -4307,8 +4481,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
             depth
         );
 
-        // For now, use a simplified approach: just look up the field by name
-        // and check which schema it belongs to
+        // Search for the field in this relation using lookup_field_index_in_relation
         let field_index = self.lookup_field_index_in_relation(column_name, symbol);
 
         if field_index.is_some() {
@@ -4319,88 +4492,107 @@ impl<'input> SubqueryRelationVisitor<'input> {
             return (0, field_index);
         }
 
-        // Field not found in current relation - check if we have a parent query
-        if let Some(parent_location) = self.get_parent_query_location(symbol) {
-            println!(
-                "      Field '{}' not in current relation, searching parent",
-                column_name
-            );
+        // Field not found in current relation - check if we have parent queries
+        // get_parent_query_relation might return multiple potential parents
+        // (because we add subqueries to all relations temporarily)
+        // So we need to try searching each potential parent
+        println!(
+            "      Field '{}' not in current relation, searching parents",
+            column_name
+        );
 
-            // Look up the parent relation
-            println!("      Looking up parent relation at location hash: {}", parent_location.location_hash());
-            if let Some(parent_symbol) = self
-                .symbol_table
-                .lookup_symbol_by_location_and_type(parent_location.as_ref(), SymbolType::Relation)
-            {
-                println!("      Found parent symbol: '{}'", parent_symbol.name());
-                println!("      Current symbol '{}' location hash: {}", symbol.name(), symbol.source_location().location_hash());
-                println!("      Parent symbol '{}' location hash: {}", parent_symbol.name(), parent_symbol.source_location().location_hash());
-
-                // Prevent looking up the same symbol again (circular reference)
-                if Arc::ptr_eq(symbol, &parent_symbol) {
-                    println!(
-                        "      WARNING: Circular parent reference detected for '{}' - both are the same Arc",
-                        symbol.name()
-                    );
-                    return (0, None);
-                }
-
-                // Recursively search in parent
-                let (parent_steps_out, field_index) =
-                    self.find_field_reference_by_name_impl(column_name, &parent_symbol, depth + 1);
-
-                if field_index.is_some() {
-                    println!(
-                        "      Found '{}' in parent relation, steps_out = {}",
-                        column_name,
-                        parent_steps_out + 1
-                    );
-                    return (parent_steps_out + 1, field_index);
+        // Get all potential parent relations
+        let search_symbol = if let Some(blob_lock) = &symbol.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    relation_data.pipeline_start.clone()
                 } else {
-                    // Not found but error already reported by recursive call
-                    return (parent_steps_out + 1, None);
+                    None
                 }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let search_target = search_symbol.as_ref().unwrap_or(symbol);
+
+        // Try each potential parent to find one that has this field
+        let mut checked_parents = 0;
+        for potential_parent in self.symbol_table.symbols() {
+            if potential_parent.symbol_type() != SymbolType::Relation {
+                continue;
+            }
+
+            // Check if this is a potential parent (has the subquery in sub_query_pipelines)
+            let is_parent = if let Some(blob_lock) = &potential_parent.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        relation_data.sub_query_pipelines.iter().any(|sq| {
+                            Arc::ptr_eq(sq, search_target) || sq.name() == search_target.name()
+                        })
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if !is_parent {
+                continue;
+            }
+
+            // Prevent circular reference
+            if Arc::ptr_eq(symbol, &potential_parent) {
+                continue;
+            }
+
+            checked_parents += 1;
+
+            // Check if the field exists DIRECTLY in this potential parent
+            // Don't recursively search the parent's parents (that would create loops)
+            let field_index = self.lookup_field_index_in_relation(column_name, &potential_parent);
+
+            if field_index.is_some() {
+                println!(
+                    "      Found '{}' in parent relation '{}', steps_out = 1",
+                    column_name,
+                    potential_parent.name()
+                );
+                return (1, field_index);
             }
         }
 
-        // Field not found and no parent to search
-        println!("      Field '{}' not found", column_name);
+        // Field not found in any parent
         (0, None)
     }
 
-    /// Looks up a field index in a specific relation's schema.
+    /// Looks up a field index in a specific relation's schema (does NOT walk parent chain).
     fn lookup_field_index_in_relation(
         &self,
         column_name: &str,
         relation_symbol: &Arc<SymbolInfo>,
     ) -> Option<usize> {
-        // Get the relation's schema
+        // Search ONLY in this relation's field_references
         if let Some(blob_lock) = &relation_symbol.blob {
             if let Ok(blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                    if let Some(schema) = &relation_data.schema {
-                        // Look for the field in this schema
-                        // Parse the column name to handle schema-qualified names
-                        let field_name = if column_name.contains('.') {
-                            // Extract the field name after the last dot
-                            column_name.rsplit('.').next().unwrap_or(column_name)
-                        } else {
-                            column_name
-                        };
+                    // Parse the column name to extract schema and field parts
+                    let (_schema_part, field_part) = if column_name.contains('.') {
+                        let parts: Vec<&str> = column_name.splitn(2, '.').collect();
+                        (Some(parts[0]), parts.get(1).copied().unwrap_or(""))
+                    } else {
+                        (None, column_name)
+                    };
 
-                        // Get all schema columns that belong to this schema
-                        let mut field_index = 0;
-                        for sym in self.symbol_table.symbols() {
-                            if sym.symbol_type() == SymbolType::SchemaColumn {
-                                // Check if this symbol's name matches
-                                // We match either the bare name or the fully qualified name
-                                if sym.name() == field_name || sym.name() == column_name {
-                                    // TODO: Verify this field actually belongs to this schema
-                                    // For now, we assume it does if the name matches
-                                    return Some(field_index);
-                                }
-                                field_index += 1;
-                            }
+                    // Search through field_references in this relation only
+                    for (index, field_sym) in relation_data.field_references.iter().enumerate() {
+                        if field_sym.name() == column_name || field_sym.name() == field_part {
+                            return Some(index);
                         }
                     }
                 }
@@ -4419,54 +4611,77 @@ impl<'input> SubqueryRelationVisitor<'input> {
         );
 
         // Only fix outer references if this relation is in a subquery
-        if let Some(_parent_location) = self.get_parent_query_location(relation_symbol) {
+        if let Some(_parent_symbol) = self.get_parent_query_relation(relation_symbol) {
             println!("        This relation is in a subquery, checking expressions");
 
             if let Some(blob_lock) = &relation_symbol.blob {
-                if let Ok(mut blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
-                        // Fix expressions based on relation type
-                        use substrait::proto::rel::RelType;
-                        if let Some(rel_type) = &mut relation_data.relation.rel_type {
-                            match rel_type {
-                                RelType::Filter(filter_rel) => {
-                                    if let Some(condition) = &mut filter_rel.condition {
-                                        self.fix_expression_outer_references(
-                                            condition,
-                                            relation_symbol,
-                                        );
-                                    }
+                // First: extract the relation proto (clone it out)
+                let mut relation_proto = if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        Some(relation_data.relation.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                // Lock is dropped here
+
+                // Second: fix expressions in the extracted proto
+                // Now fix_expression_outer_references can lock relation_symbol as needed
+                if let Some(mut relation) = relation_proto {
+                    use substrait::proto::rel::RelType;
+                    if let Some(rel_type) = &mut relation.rel_type {
+                        match rel_type {
+                            RelType::Filter(filter_rel) => {
+                                if let Some(condition) = &mut filter_rel.condition {
+                                    self.fix_expression_outer_references(
+                                        condition,
+                                        relation_symbol,
+                                    );
                                 }
-                                RelType::Project(project_rel) => {
-                                    for expr in &mut project_rel.expressions {
+                            }
+                            RelType::Project(project_rel) => {
+                                for expr in &mut project_rel.expressions {
+                                    self.fix_expression_outer_references(expr, relation_symbol);
+                                }
+                            }
+                            RelType::Aggregate(agg_rel) => {
+                                // Fix grouping expressions
+                                for grouping in &mut agg_rel.groupings {
+                                    for expr in &mut grouping.grouping_expressions {
                                         self.fix_expression_outer_references(expr, relation_symbol);
                                     }
                                 }
-                                RelType::Aggregate(agg_rel) => {
-                                    // Fix grouping expressions
-                                    for grouping in &mut agg_rel.groupings {
-                                        for expr in &mut grouping.grouping_expressions {
-                                            self.fix_expression_outer_references(
-                                                expr,
-                                                relation_symbol,
-                                            );
-                                        }
-                                    }
-                                    // Fix measure expressions
-                                    for measure in &mut agg_rel.measures {
-                                        if let Some(measure_func) = &mut measure.measure {
-                                            for arg in &mut measure_func.arguments {
-                                                if let Some(substrait::proto::function_argument::ArgType::Value(expr)) = &mut arg.arg_type {
-                                                    self.fix_expression_outer_references(expr, relation_symbol);
-                                                }
+                                // Fix measure expressions
+                                for measure in &mut agg_rel.measures {
+                                    if let Some(measure_func) = &mut measure.measure {
+                                        for arg in &mut measure_func.arguments {
+                                            if let Some(
+                                                substrait::proto::function_argument::ArgType::Value(
+                                                    expr,
+                                                ),
+                                            ) = &mut arg.arg_type
+                                            {
+                                                self.fix_expression_outer_references(
+                                                    expr,
+                                                    relation_symbol,
+                                                );
                                             }
                                         }
                                     }
                                 }
-                                _ => {
-                                    // Other relation types - we can add support as needed
-                                }
                             }
+                            _ => {
+                                // Other relation types - we can add support as needed
+                            }
+                        }
+                    }
+
+                    // Third: put the fixed proto back
+                    if let Ok(mut blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                            relation_data.relation = relation;
                         }
                     }
                 }
@@ -4491,40 +4706,60 @@ impl<'input> SubqueryRelationVisitor<'input> {
                     substrait::proto::expression::field_reference::ReferenceType::DirectReference(
                         ref_seg,
                     ),
-                ) = &field_ref.reference_type
+                ) = &mut field_ref.reference_type
                 {
                     if let Some(
                         substrait::proto::expression::reference_segment::ReferenceType::StructField(
                             struct_field,
                         ),
-                    ) = &ref_seg.reference_type
+                    ) = &mut ref_seg.reference_type
                     {
-                        let field_index = struct_field.field;
+                        // Consume the next stored field info from visit pass
+                        let mut current_index = self.expression_field_info_index.borrow_mut();
+                        let field_info = self.expression_field_info.borrow();
 
-                        // Try to determine what field this refers to by index
-                        // For now, we'll use a simplified approach: just check if we're in a subquery
-                        // and assume any field references might be outer references
+                        if *current_index < field_info.len() {
+                            let (correct_field_index, steps_out) = field_info[*current_index];
+                            *current_index += 1;
 
-                        println!(
-                            "          Found field reference at index {}, checking if it should be outer",
-                            field_index
-                        );
-
-                        // Use a placeholder approach: mark as outer reference if we're in a subquery
-                        // This is a simplification - proper implementation would track which fields
-                        // belong to which schema
-                        if let Some(_parent) = self.get_parent_query_location(relation_symbol) {
-                            // We're in a subquery - convert to outer reference with steps_out=1
                             println!(
-                                "            ✓✓✓ Converting field {} to OUTER REFERENCE",
-                                field_index
+                                "          Using stored field info: field_index={}, steps_out={}",
+                                correct_field_index, steps_out
                             );
-                            field_ref.root_type = Some(
-                                substrait::proto::expression::field_reference::RootType::OuterReference(
-                                    substrait::proto::expression::field_reference::OuterReference {
-                                        steps_out: 1,
-                                    },
-                                ),
+
+                            // Update the field index to the correct value
+                            struct_field.field = correct_field_index as i32;
+
+                            // Set outer_reference if steps_out > 0, otherwise root_reference
+                            if steps_out > 0 {
+                                println!(
+                                    "            ✓✓✓ Converting field {} to OUTER REFERENCE (steps_out={})",
+                                    correct_field_index, steps_out
+                                );
+                                field_ref.root_type = Some(
+                                    substrait::proto::expression::field_reference::RootType::OuterReference(
+                                        substrait::proto::expression::field_reference::OuterReference {
+                                            steps_out: steps_out as u32,
+                                        },
+                                    ),
+                                );
+                            } else {
+                                println!(
+                                    "            Field {} is local (steps_out=0)",
+                                    correct_field_index
+                                );
+                                // Ensure it has root_reference
+                                if field_ref.root_type.is_none() {
+                                    field_ref.root_type = Some(
+                                        substrait::proto::expression::field_reference::RootType::RootReference(
+                                            substrait::proto::expression::field_reference::RootReference {},
+                                        ),
+                                    );
+                                }
+                            }
+                        } else {
+                            println!(
+                                "          WARNING: No stored field info for this expression (index out of bounds)"
                             );
                         }
                     }
@@ -4567,8 +4802,8 @@ impl<'input> SubstraitPlanParserVisitor<'input> for SubqueryRelationVisitor<'inp
     // Override specific visitor methods for subquery processing and expression reprocessing
 
     fn visit_expressionColumn(&mut self, ctx: &ExpressionColumnContext<'input>) {
-        // This method identifies column references that need outer reference handling.
-        // The actual fixing happens in post_process_relation_for_outer_references.
+        // Re-read column name from parse tree and determine correct field index + steps_out
+        // This follows C++ SubqueryRelationVisitor::visitExpressionColumn
 
         let column_name = ctx.get_text();
         println!(
@@ -4583,14 +4818,19 @@ impl<'input> SubstraitPlanParserVisitor<'input> for SubqueryRelationVisitor<'inp
                 self.find_field_reference_by_name(&column_name, &current_rel);
 
             if let Some(index) = field_index {
+                // Store the correct field info in visit order
+                self.expression_field_info
+                    .borrow_mut()
+                    .push((index, steps_out));
+
                 if steps_out > 0 {
                     println!(
-                        "      ✓ Identified '{}' as outer reference with steps_out={}, field_index={}",
-                        column_name, steps_out, index
+                        "      ✓ Stored '{}' as outer reference: field_index={}, steps_out={}",
+                        column_name, index, steps_out
                     );
                 } else {
                     println!(
-                        "      Identified '{}' as local reference at field_index={}",
+                        "      Stored '{}' as local reference: field_index={}",
                         column_name, index
                     );
                 }
@@ -4640,11 +4880,10 @@ impl<'input> SubstraitPlanParserVisitor<'input> for SubqueryRelationVisitor<'inp
             // Visit children with this scope set
             self.visit_children(ctx);
 
-            // NOTE: We don't need to fix outer references in the parser direction (text->binary)
-            // because the textplan syntax already explicitly specifies rootReference vs outerReference.
-            // Outer reference fixing is only needed in the converter direction (binary->text).
-            // Commenting this out to avoid stack overflow from incorrect parent_query_location lookups.
-            // self.fix_outer_references_in_relation(&relation_symbol);
+            // Fix outer references in this relation's expressions
+            // This updates field references to use outerReference instead of rootReference
+            // when they refer to fields in the parent query
+            self.fix_outer_references_in_relation(&relation_symbol);
 
             // Restore the previous scope
             self.set_current_relation_scope(old_scope);

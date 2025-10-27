@@ -221,14 +221,14 @@ impl<'a> ExpressionPrinter<'a> {
     fn print_direct_reference(
         &self,
         direct_ref: &::substrait::proto::expression::ReferenceSegment,
-        _outer_ref: Option<&::substrait::proto::expression::field_reference::OuterReference>,
+        outer_ref: Option<&::substrait::proto::expression::field_reference::OuterReference>,
     ) -> Result<String, TextPlanError> {
         use ::substrait::proto::expression::reference_segment::ReferenceType;
 
         match &direct_ref.reference_type {
             Some(ReferenceType::StructField(struct_field)) => {
                 let field_index = struct_field.field as usize;
-                self.lookup_field_reference(field_index)
+                self.lookup_field_reference(field_index, outer_ref)
             }
             Some(ReferenceType::MapKey(_)) => {
                 Ok("MAP_KEY_REFERENCE_NOT_YET_IMPLEMENTED".to_string())
@@ -242,13 +242,91 @@ impl<'a> ExpressionPrinter<'a> {
         }
     }
 
-    /// Looks up a field reference in the current scope.
-    fn lookup_field_reference(&self, field_index: usize) -> Result<String, TextPlanError> {
-        let scope = self.current_scope.ok_or_else(|| {
-            TextPlanError::InvalidExpression(
-                "Field reference requested outside of a relation scope".to_string(),
-            )
-        })?;
+    /// Looks up a field reference in the current scope or outer scope.
+    fn lookup_field_reference(
+        &self,
+        field_index: usize,
+        outer_ref: Option<&::substrait::proto::expression::field_reference::OuterReference>,
+    ) -> Result<String, TextPlanError> {
+        // Handle outer references by looking up the parent scope
+        let parent_scope_arc: Option<Arc<SymbolInfo>>;
+        let scope: &Arc<SymbolInfo> = if let Some(outer) = outer_ref {
+            if outer.steps_out > 0 {
+                // Get the parent scope by looking up the parent query location
+                let current_scope = self.current_scope.ok_or_else(|| {
+                    TextPlanError::InvalidExpression(
+                        "Outer reference requested but no current scope".to_string(),
+                    )
+                })?;
+
+                // Check if current scope has parent info directly, or needs to use pipeline_start
+                let (parent_location, parent_index) = if current_scope.parent_query_index() >= 0 {
+                    // This relation has parent info directly (it's the terminus)
+                    (
+                        current_scope.parent_query_location(),
+                        current_scope.parent_query_index(),
+                    )
+                } else {
+                    // This relation might be in a subquery pipeline - check pipeline_start
+                    if let Some(blob_lock) = &current_scope.blob {
+                        if let Ok(blob_data) = blob_lock.lock() {
+                            if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                                if let Some(pipeline_start) = &relation_data.pipeline_start {
+                                    // Use the terminus's parent info
+                                    (pipeline_start.parent_query_location(), pipeline_start.parent_query_index())
+                                } else {
+                                    // Not in a subquery, use current scope
+                                    (current_scope.parent_query_location(), current_scope.parent_query_index())
+                                }
+                            } else {
+                                (current_scope.parent_query_location(), current_scope.parent_query_index())
+                            }
+                        } else {
+                            (
+                                current_scope.parent_query_location(),
+                                current_scope.parent_query_index(),
+                            )
+                        }
+                    } else {
+                        (
+                            current_scope.parent_query_location(),
+                            current_scope.parent_query_index(),
+                        )
+                    }
+                };
+
+                parent_scope_arc = if parent_index >= 0 {
+                    // Look up the parent relation symbol
+                    self.symbol_table.lookup_symbol_by_location_and_type(
+                        parent_location.as_ref(),
+                        SymbolType::Relation,
+                    )
+                } else {
+                    None
+                };
+
+                if let Some(ref parent) = parent_scope_arc {
+                    parent
+                } else {
+                    return Err(TextPlanError::InvalidExpression(format!(
+                        "Could not find parent scope for outer reference (steps_out={})",
+                        outer.steps_out
+                    )));
+                }
+            } else {
+                self.current_scope.ok_or_else(|| {
+                    TextPlanError::InvalidExpression(
+                        "Field reference requested outside of a relation scope".to_string(),
+                    )
+                })?
+            }
+        } else {
+            self.current_scope.ok_or_else(|| {
+                TextPlanError::InvalidExpression(
+                    "Field reference requested outside of a relation scope".to_string(),
+                )
+            })?
+        };
 
         // Get the relation data from the scope's blob
         if let Some(blob_lock) = &scope.blob {
@@ -470,7 +548,8 @@ impl<'a> ExpressionPrinter<'a> {
             0 => "AGGREGATION_PHASE_UNSPECIFIED",
             1 => "AGGREGATION_PHASE_INITIAL_TO_INTERMEDIATE",
             2 => "AGGREGATION_PHASE_INTERMEDIATE_TO_INTERMEDIATE",
-            3 => "AGGREGATION_PHASE_INTERMEDIATE_TO_RESULT",
+            3 => "AGGREGATION_PHASE_INITIAL_TO_RESULT",
+            4 => "AGGREGATION_PHASE_INTERMEDIATE_TO_RESULT",
             _ => "UNKNOWN_PHASE",
         };
         result.push_str(phase_name);
@@ -695,12 +774,8 @@ impl<'a> ExpressionPrinter<'a> {
             Some(SubqueryType::SetComparison(set_comp)) => {
                 self.print_set_comparison_subquery(set_comp)
             }
-            Some(SubqueryType::Scalar(scalar)) => {
-                self.print_scalar_subquery(scalar)
-            }
-            Some(SubqueryType::InPredicate(_)) => {
-                Ok("IN_PREDICATE_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
-            }
+            Some(SubqueryType::Scalar(scalar)) => self.print_scalar_subquery(scalar),
+            Some(SubqueryType::InPredicate(in_pred)) => self.print_in_predicate_subquery(in_pred),
             Some(SubqueryType::SetPredicate(_)) => {
                 Ok("SET_PREDICATE_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
             }
@@ -737,7 +812,10 @@ impl<'a> ExpressionPrinter<'a> {
                 self.current_scope_index += 1;
 
                 if let Some(sym) = symbol {
-                    println!("DEBUG PRINTER: Found scalar subquery relation: {}", sym.name());
+                    println!(
+                        "DEBUG PRINTER: Found scalar subquery relation: {}",
+                        sym.name()
+                    );
                     result.push_str(&sym.name());
                 } else {
                     return Err(TextPlanError::InvalidExpression(
@@ -752,6 +830,66 @@ impl<'a> ExpressionPrinter<'a> {
         } else {
             return Err(TextPlanError::InvalidExpression(
                 "Scalar subquery has no input relation".to_string(),
+            ));
+        }
+
+        Ok(result)
+    }
+
+    fn print_in_predicate_subquery(
+        &mut self,
+        in_pred: &::substrait::proto::expression::subquery::InPredicate,
+    ) -> Result<String, TextPlanError> {
+        let mut result = String::new();
+
+        // Print needle expressions (left-hand side)
+        // Grammar requires: expression_list IN SUBQUERY relation_ref
+        // where expression_list is: LEFTPAREN expression ( COMMA expression )* RIGHTPAREN
+        // So we always need parentheses, even for single expression
+        if in_pred.needles.is_empty() {
+            return Err(TextPlanError::InvalidExpression(
+                "InPredicate has no needle expressions".to_string(),
+            ));
+        }
+
+        result.push('(');
+        for (i, needle) in in_pred.needles.iter().enumerate() {
+            if i > 0 {
+                result.push_str(", ");
+            }
+            result.push_str(&self.print_expression(needle)?);
+        }
+        result.push(')');
+
+        // Print IN SUBQUERY
+        result.push_str(" IN SUBQUERY ");
+
+        // Find the haystack subquery relation symbol
+        if let Some(_haystack) = &in_pred.haystack {
+            // Look up the relation symbol for this subquery
+            if let Some(scope) = self.current_scope {
+                let symbol = self.symbol_table.lookup_symbol_by_parent_query_and_type(
+                    scope.source_location(),
+                    self.current_scope_index,
+                    crate::textplan::SymbolType::Relation,
+                );
+                self.current_scope_index += 1;
+
+                if let Some(sym) = symbol {
+                    result.push_str(&sym.name());
+                } else {
+                    return Err(TextPlanError::InvalidExpression(
+                        "Could not find IN predicate subquery relation symbol".to_string(),
+                    ));
+                }
+            } else {
+                return Err(TextPlanError::InvalidExpression(
+                    "No current scope for IN predicate subquery lookup".to_string(),
+                ));
+            }
+        } else {
+            return Err(TextPlanError::InvalidExpression(
+                "InPredicate has no haystack relation".to_string(),
             ));
         }
 

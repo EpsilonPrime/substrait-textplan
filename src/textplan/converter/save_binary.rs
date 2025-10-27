@@ -990,15 +990,24 @@ fn populate_subquery_relations(
     symbol_table: &SymbolTable,
 ) -> Result<(), TextPlanError> {
     println!("DEBUG: Populating subquery relations from symbol tree");
+    println!("DEBUG: Plan has {} relations", plan.relations.len());
 
     // Walk through all plan relations
-    for plan_rel in &mut plan.relations {
+    for (idx, plan_rel) in plan.relations.iter_mut().enumerate() {
+        println!("DEBUG: Processing plan relation {}", idx);
         if let Some(plan_rel::RelType::Root(root)) = &mut plan_rel.rel_type {
+            println!(
+                "DEBUG: Found Root relation, has input: {}",
+                root.input.is_some()
+            );
             if let Some(input) = &mut root.input {
                 populate_subquery_in_rel(input, symbol_table)?;
             }
         } else if let Some(plan_rel::RelType::Rel(rel)) = &mut plan_rel.rel_type {
+            println!("DEBUG: Found Rel relation");
             populate_subquery_in_rel(rel, symbol_table)?;
+        } else {
+            println!("DEBUG: Unknown plan_rel type");
         }
     }
 
@@ -1012,8 +1021,35 @@ fn populate_subquery_in_rel(
 ) -> Result<(), TextPlanError> {
     use substrait::proto::rel::RelType;
 
+    let rel_type_name = match &rel.rel_type {
+        Some(RelType::Filter(_)) => "Filter",
+        Some(RelType::Project(_)) => "Project",
+        Some(RelType::Join(_)) => "Join",
+        Some(RelType::Sort(_)) => "Sort",
+        Some(RelType::Cross(_)) => "Cross",
+        Some(RelType::Read(_)) => "Read",
+        Some(RelType::Aggregate(_)) => "Aggregate",
+        Some(RelType::Fetch(_)) => "Fetch",
+        None => "None",
+        Some(other) => {
+            eprintln!(
+                "WARNING: Encountered unhandled relation type in populate_subquery_in_rel: {:?}",
+                other
+            );
+            "Other"
+        }
+    };
+    println!(
+        "    DEBUG populate_subquery_in_rel: Processing {} relation",
+        rel_type_name
+    );
+
     match &mut rel.rel_type {
         Some(RelType::Filter(filter)) => {
+            println!(
+                "    DEBUG: Processing filter relation, has condition: {}",
+                filter.condition.is_some()
+            );
             if let Some(condition) = &mut filter.condition {
                 populate_subquery_in_expression(condition, symbol_table)?;
             }
@@ -1043,6 +1079,34 @@ fn populate_subquery_in_rel(
         Some(RelType::Read(_)) => {
             // Read has no inputs or expressions with subqueries
         }
+        Some(RelType::Sort(sort)) => {
+            // Sort has no expressions with subqueries, but recurse into input
+            if let Some(input) = &mut sort.input {
+                populate_subquery_in_rel(input, symbol_table)?;
+            }
+        }
+        Some(RelType::Cross(cross)) => {
+            // Cross has no condition, but recurse into left and right
+            if let Some(left) = &mut cross.left {
+                populate_subquery_in_rel(left, symbol_table)?;
+            }
+            if let Some(right) = &mut cross.right {
+                populate_subquery_in_rel(right, symbol_table)?;
+            }
+        }
+        Some(RelType::Aggregate(agg)) => {
+            // Aggregate can have expressions in measures, but no subqueries typically
+            // Recurse into input
+            if let Some(input) = &mut agg.input {
+                populate_subquery_in_rel(input, symbol_table)?;
+            }
+        }
+        Some(RelType::Fetch(fetch)) => {
+            // Fetch has no expressions, recurse into input
+            if let Some(input) = &mut fetch.input {
+                populate_subquery_in_rel(input, symbol_table)?;
+            }
+        }
         // Add other relation types as needed
         _ => {}
     }
@@ -1056,6 +1120,19 @@ fn populate_subquery_in_expression(
     symbol_table: &SymbolTable,
 ) -> Result<(), TextPlanError> {
     use substrait::proto::expression::{subquery::SubqueryType, RexType};
+
+    let rex_type_name = match &expr.rex_type {
+        Some(RexType::Subquery(_)) => "Subquery",
+        Some(RexType::ScalarFunction(_)) => "ScalarFunction",
+        Some(RexType::Cast(_)) => "Cast",
+        Some(RexType::Literal(_)) => "Literal",
+        Some(RexType::Selection(_)) => "Selection",
+        _ => "Other",
+    };
+    println!(
+        "      DEBUG populate_subquery_in_expression: expr rex_type = {}",
+        rex_type_name
+    );
 
     match &mut expr.rex_type {
         Some(RexType::Subquery(subquery)) => {
@@ -1091,6 +1168,12 @@ fn populate_subquery_in_expression(
                                                 &mut visited,
                                             )?;
 
+                                            // Also recurse to populate any nested subqueries
+                                            populate_subquery_in_rel(
+                                                &mut subquery_rel,
+                                                symbol_table,
+                                            )?;
+
                                             set_comp.right = Some(Box::new(subquery_rel));
                                             println!(
                                                 "        Successfully populated subquery relation"
@@ -1109,13 +1192,160 @@ fn populate_subquery_in_expression(
                     }
                 }
                 Some(SubqueryType::Scalar(scalar)) => {
-                    if scalar.input.is_none() {
-                        // TODO: Implement scalar subquery population
+                    // Always populate the scalar subquery's inputs from the pipeline
+                    if let Some(input_rel) = &mut scalar.input {
+                        println!(
+                            "      Found Scalar subquery with input, populating from pipeline..."
+                        );
+
+                        // Find the subquery relation symbol to get pipeline connections
+                        let mut found = false;
+                        println!("        Searching for subquery relation symbol...");
+                        for symbol in symbol_table.symbols() {
+                            if symbol.symbol_type() == SymbolType::Relation {
+                                println!(
+                                    "          Checking relation '{}' with parent_query_index={}",
+                                    symbol.name(),
+                                    symbol.parent_query_index()
+                                );
+                            }
+                            if symbol.symbol_type() == SymbolType::Relation
+                                && symbol.parent_query_index() >= 0
+                            {
+                                println!(
+                                    "        Populating inputs for scalar subquery relation '{}'",
+                                    symbol.name()
+                                );
+
+                                // Populate inputs from the pipeline (this sets input and common fields)
+                                let mut visited = HashSet::new();
+                                add_inputs_to_relation(
+                                    symbol_table,
+                                    &symbol,
+                                    input_rel,
+                                    &mut visited,
+                                )?;
+
+                                // Then recurse to populate any nested subqueries
+                                populate_subquery_in_rel(input_rel, symbol_table)?;
+                                println!("        Successfully populated scalar subquery inputs");
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            println!("        WARNING: Could not find subquery relation symbol for scalar subquery");
+                            // Still recurse to populate what we can
+                            populate_subquery_in_rel(input_rel, symbol_table)?;
+                        }
+                    } else {
+                        // Input is None - find and build the subquery relation
+                        println!(
+                            "      Found Scalar subquery with None input field, populating..."
+                        );
+
+                        for symbol in symbol_table.symbols() {
+                            if symbol.symbol_type() == SymbolType::Relation
+                                && symbol.parent_query_index() >= 0
+                            {
+                                println!(
+                                    "        Building scalar subquery relation '{}'",
+                                    symbol.name()
+                                );
+
+                                // Build the Rel from the symbol tree
+                                if let Some(blob_lock) = &symbol.blob {
+                                    if let Ok(blob_data) = blob_lock.lock() {
+                                        if let Some(relation_data) =
+                                            blob_data.downcast_ref::<RelationData>()
+                                        {
+                                            let mut subquery_rel = relation_data.relation.clone();
+                                            drop(blob_data); // Drop lock before recursing
+
+                                            // Populate inputs from symbol tree
+                                            let mut visited = HashSet::new();
+                                            add_inputs_to_relation(
+                                                symbol_table,
+                                                &symbol,
+                                                &mut subquery_rel,
+                                                &mut visited,
+                                            )?;
+
+                                            // Also recurse to populate any nested subqueries
+                                            populate_subquery_in_rel(
+                                                &mut subquery_rel,
+                                                symbol_table,
+                                            )?;
+
+                                            scalar.input = Some(Box::new(subquery_rel));
+                                            println!(
+                                                "        Successfully populated scalar subquery relation"
+                                            );
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Some(SubqueryType::InPredicate(in_pred)) => {
+                    println!(
+                        "      DEBUG: Checking InPredicate, haystack.is_none() = {}",
+                        in_pred.haystack.is_none()
+                    );
                     if in_pred.haystack.is_none() {
-                        // TODO: Implement IN predicate subquery population
+                        // Find the subquery relation (it should have parent_query_index >= 0)
+                        println!("      Found InPredicate subquery with None haystack field, populating...");
+
+                        for symbol in symbol_table.symbols() {
+                            if symbol.symbol_type() == SymbolType::Relation
+                                && symbol.parent_query_index() >= 0
+                            {
+                                println!(
+                                    "        Building IN predicate subquery relation '{}'",
+                                    symbol.name()
+                                );
+
+                                // Build the Rel from the symbol tree
+                                if let Some(blob_lock) = &symbol.blob {
+                                    if let Ok(blob_data) = blob_lock.lock() {
+                                        if let Some(relation_data) =
+                                            blob_data.downcast_ref::<RelationData>()
+                                        {
+                                            let mut subquery_rel = relation_data.relation.clone();
+                                            drop(blob_data); // Drop lock before recursing
+
+                                            // Populate inputs from symbol tree
+                                            let mut visited = HashSet::new();
+                                            add_inputs_to_relation(
+                                                symbol_table,
+                                                &symbol,
+                                                &mut subquery_rel,
+                                                &mut visited,
+                                            )?;
+
+                                            // Also recurse to populate any nested subqueries
+                                            populate_subquery_in_rel(
+                                                &mut subquery_rel,
+                                                symbol_table,
+                                            )?;
+
+                                            in_pred.haystack = Some(Box::new(subquery_rel));
+                                            println!(
+                                                "        Successfully populated IN predicate subquery relation"
+                                            );
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Recursively handle needle expressions
+                    for needle in &mut in_pred.needles {
+                        populate_subquery_in_expression(needle, symbol_table)?;
                     }
                 }
                 Some(SubqueryType::SetPredicate(set_pred)) => {
@@ -1134,6 +1364,12 @@ fn populate_subquery_in_expression(
                 {
                     populate_subquery_in_expression(inner_expr, symbol_table)?;
                 }
+            }
+        }
+        Some(RexType::Cast(cast)) => {
+            // Recurse into the cast input expression
+            if let Some(input) = &mut cast.input {
+                populate_subquery_in_expression(input, symbol_table)?;
             }
         }
         _ => {}

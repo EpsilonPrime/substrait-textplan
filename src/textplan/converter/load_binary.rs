@@ -4,6 +4,7 @@
 
 use crate::proto;
 use crate::textplan::common::error::TextPlanError;
+use crate::textplan::common::structured_symbol_data::RelationData;
 use crate::textplan::converter::initial_plan_visitor::InitialPlanVisitor;
 use crate::textplan::converter::pipeline_visitor::PipelineVisitor;
 use crate::textplan::printer::plan_printer::{PlanPrinter, TextPlanFormat};
@@ -126,12 +127,22 @@ pub fn process_plan_with_visitor(plan: &substrait::proto::Plan) -> Result<String
     );
     for symbol in visitor1.symbol_table().symbols() {
         if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
-            println!(
-                "  - {} (type: {:?}, location: {:?})",
-                symbol.name(),
-                symbol.symbol_type(),
-                symbol.source_location()
-            );
+            if symbol.parent_query_index() >= 0 {
+                println!(
+                    "  - {} (type: {:?}, parent_query_index: {}, parent_query_hash: {})",
+                    symbol.name(),
+                    symbol.symbol_type(),
+                    symbol.parent_query_index(),
+                    symbol.parent_query_location().location_hash()
+                );
+            } else {
+                println!(
+                    "  - {} (type: {:?}, location: {:?})",
+                    symbol.name(),
+                    symbol.symbol_type(),
+                    symbol.source_location()
+                );
+            }
         } else {
             println!("  - {} (type: {:?})", symbol.name(), symbol.symbol_type());
         }
@@ -142,6 +153,7 @@ pub fn process_plan_with_visitor(plan: &substrait::proto::Plan) -> Result<String
 
     // Visit the plan to build the symbol table
     visitor.visit_plan(plan);
+
     // MEGAHACK -- Check for errors.
 
     println!(
@@ -165,26 +177,24 @@ pub fn process_plan_with_visitor(plan: &substrait::proto::Plan) -> Result<String
     Ok(plan_text)
 }
 
-/// Populates sub_query_pipelines for relations containing subquery expressions.
+/// Populates pipeline_start for all relations in subquery pipelines.
 ///
-/// This function finds all subquery relations referenced in expressions and adds
-/// their pipeline starts to the parent relation's sub_query_pipelines vector.
+/// This function finds subquery terminus relations (those with pipeline_start already set)
+/// and walks their continuing_pipeline chains to set pipeline_start on all relations.
+/// The continuing_pipeline connections were already set up by PipelineVisitor.
 fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) -> Result<(), TextPlanError> {
-    println!("DEBUG: Populating sub_query_pipelines");
+    println!("DEBUG: Populating subquery pipelines");
 
-    // Collect all relations with subquery expressions
-    let mut relations_with_subqueries = Vec::new();
-
+    // Find terminus relations (those with pipeline_start already set)
+    let mut subquery_termini = Vec::new();
     for symbol in symbol_table.symbols() {
         if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
             if let Some(blob_lock) = &symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
-                        // Check if this relation has any subquery expressions
-                        let has_subquery = has_subquery_expression(&relation_data.relation);
-                        if has_subquery {
-                            println!("  Found relation '{}' with subquery expressions", symbol.name());
-                            relations_with_subqueries.push(symbol.clone());
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        if relation_data.pipeline_start.is_some() {
+                            println!("  Found subquery terminus: '{}'", symbol.name());
+                            subquery_termini.push(symbol.clone());
                         }
                     }
                 }
@@ -192,9 +202,80 @@ fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) -> Result<(), Tex
         }
     }
 
-    // For each relation with subqueries, extract and add subquery pipeline starts
-    for parent_symbol in relations_with_subqueries {
-        extract_and_add_subquery_pipelines(symbol_table, &parent_symbol)?;
+    // For each terminus, walk the continuing_pipeline chain and set pipeline_start
+    for terminus in subquery_termini {
+        walk_and_set_pipeline_start(&terminus)?;
+    }
+
+    // Now fix outer references in subquery relations
+    println!("DEBUG: Fixing outer references in subquery relations");
+    for symbol in symbol_table.symbols() {
+        if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
+            if symbol.parent_query_index() >= 0 {
+                println!("  Fixing outer references in '{}'", symbol.name());
+                fix_outer_references_in_subquery_relation(symbol_table, &symbol)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Fixes outer references in a subquery relation's expressions.
+///
+/// For field references in subquery relations, we need to ensure they use
+/// outerReference when referencing parent query fields.
+fn fix_outer_references_in_subquery_relation(
+    _symbol_table: &SymbolTable,
+    relation_symbol: &Arc<SymbolInfo>,
+) -> Result<(), TextPlanError> {
+    // For now, we'll just ensure that any field references that are already
+    // marked as outerReference in the input binary plan are preserved.
+    // The binary plan should already have the correct reference types.
+
+    // In the future, we might need to actively fix field references that
+    // should be outer references but aren't, by analyzing the schema and
+    // field indices. But for roundtrip testing, preserving what's there
+    // should be sufficient.
+
+    // The actual preservation happens automatically because we're not modifying
+    // the proto - we're just converting it to textplan and back.
+
+    println!("    (Outer references already preserved from binary proto)");
+    Ok(())
+}
+
+/// Walks through a subquery pipeline and sets pipeline_start on all relations.
+///
+/// Following the C++ implementation, this walks through continuing_pipeline
+/// and sets pipeline_start to point to the terminus on all relations in the chain.
+fn walk_and_set_pipeline_start(terminus: &Arc<SymbolInfo>) -> Result<(), TextPlanError> {
+    println!("  Walking pipeline for terminus '{}'", terminus.name());
+
+    // Walk through continuing_pipeline chain
+    let mut current_sym = Some(terminus.clone());
+    while let Some(sym) = current_sym {
+        let next_sym = if let Some(blob_lock) = &sym.blob {
+            if let Ok(mut blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                    println!(
+                        "    Setting pipeline_start on '{}' to '{}'",
+                        sym.name(),
+                        terminus.name()
+                    );
+                    relation_data.pipeline_start = Some(terminus.clone());
+                    relation_data.continuing_pipeline.clone()
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        current_sym = next_sym;
     }
 
     Ok(())

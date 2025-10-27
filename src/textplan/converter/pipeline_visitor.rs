@@ -24,8 +24,12 @@ pub struct PipelineVisitor {
     symbol_table: crate::textplan::symbol_table::SymbolTable,
     /// Current relation context for scope resolution
     current_relation_scope: Option<Arc<crate::textplan::SymbolInfo>>,
+    /// Previous relation scope (saved for restoration)
+    previous_relation_scope: Option<Arc<crate::textplan::SymbolInfo>>,
     /// Current location in the protocol buffer structure
     current_location: ProtoLocation,
+    /// Flag to prevent infinite recursion when traversing subquery relations
+    in_subquery_traversal: bool,
 }
 
 impl PipelineVisitor {
@@ -34,7 +38,9 @@ impl PipelineVisitor {
         Self {
             symbol_table,
             current_relation_scope: None,
+            previous_relation_scope: None,
             current_location: ProtoLocation::default(),
+            in_subquery_traversal: false,
         }
     }
 
@@ -55,6 +61,187 @@ impl PipelineVisitor {
     pub fn visit_plan(&mut self, obj: &substrait::Plan) {
         obj.traverse(self);
     }
+
+    /// Helper to traverse expressions looking for subqueries
+    /// This avoids stack overflow by not using the full traverse mechanism
+    fn traverse_expression_for_subqueries(&mut self, expr: &substrait::Expression) {
+        use substrait::expression::RexType;
+
+        // Process this expression
+        self.post_process_expression(expr);
+
+        // Recursively check nested expressions
+        if let Some(rex_type) = &expr.rex_type {
+            match rex_type {
+                RexType::Subquery(subquery) => {
+                    // Prevent infinite recursion - don't traverse nested subqueries
+                    if self.in_subquery_traversal {
+                        return;
+                    }
+
+                    // For subquery expressions, we need to traverse the relation tree inside
+                    use substrait::expression::subquery::SubqueryType;
+
+                    let (rel_opt, field_path) = match &subquery.subquery_type {
+                        Some(SubqueryType::Scalar(scalar)) => {
+                            (scalar.input.as_ref(), "subquery.scalar.input")
+                        }
+                        Some(SubqueryType::InPredicate(in_pred)) => {
+                            (in_pred.haystack.as_ref(), "subquery.in_predicate.haystack")
+                        }
+                        Some(SubqueryType::SetPredicate(set_pred)) => {
+                            (set_pred.tuples.as_ref(), "subquery.set_predicate.tuples")
+                        }
+                        Some(SubqueryType::SetComparison(set_comp)) => {
+                            (set_comp.right.as_ref(), "subquery.set_comparison.right")
+                        }
+                        None => (None, ""),
+                    };
+
+                    if let Some(rel) = rel_opt {
+                        // Traverse the subquery relation tree
+                        let prev_loc = self.current_location().clone();
+                        let mut subquery_loc = self.current_location().clone();
+                        for field_name in field_path.split('.') {
+                            subquery_loc = subquery_loc.field(field_name);
+                        }
+                        self.set_location(subquery_loc);
+
+                        // Set flag to prevent recursive subquery traversal
+                        self.in_subquery_traversal = true;
+                        self.traverse_subquery_relation(rel);
+                        self.in_subquery_traversal = false;
+
+                        self.set_location(prev_loc);
+                    }
+                }
+                RexType::ScalarFunction(func) => {
+                    for (i, arg) in func.arguments.iter().enumerate() {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(
+                            self.current_location()
+                                .field("scalar_function")
+                                .indexed_field("arguments", i),
+                        );
+                        self.post_process_function_argument(arg);
+                        self.set_location(prev_loc);
+                    }
+                }
+                RexType::Cast(cast) => {
+                    if let Some(input) = &cast.input {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(self.current_location().field("cast").field("input"));
+                        self.traverse_expression_for_subqueries(input);
+                        self.set_location(prev_loc);
+                    }
+                }
+                // Add other expression types that can contain nested expressions as needed
+                _ => {}
+            }
+        }
+    }
+
+    /// Helper to traverse a subquery relation tree and set up pipeline connections
+    fn traverse_subquery_relation(&mut self, rel: &substrait::Rel) {
+        // Set up continuing_pipeline for this relation by looking at its input
+        let symbol = self
+            .symbol_table()
+            .lookup_symbol_by_location_and_type(self.current_location(), SymbolType::Relation);
+
+        if let Some(symbol_ref) = &symbol {
+            symbol_ref.with_blob::<RelationData, _, _>(|relation_data| {
+                use substrait::rel::RelType;
+                match &rel.rel_type {
+                    Some(RelType::Aggregate(_)) => {
+                        let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                            &self.current_location().field("aggregate").field("input"),
+                            SymbolType::Relation,
+                        );
+                        relation_data.continuing_pipeline = rel_symbol;
+                    }
+                    Some(RelType::Filter(_)) => {
+                        let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                            &self.current_location().field("filter").field("input"),
+                            SymbolType::Relation,
+                        );
+                        relation_data.continuing_pipeline = rel_symbol;
+                    }
+                    Some(RelType::Project(_)) => {
+                        let rel_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                            &self.current_location().field("project").field("input"),
+                            SymbolType::Relation,
+                        );
+                        relation_data.continuing_pipeline = rel_symbol;
+                    }
+                    Some(RelType::Cross(_)) => {
+                        let left_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                            &self.current_location().field("cross").field("left"),
+                            SymbolType::Relation,
+                        );
+                        let right_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                            &self.current_location().field("cross").field("right"),
+                            SymbolType::Relation,
+                        );
+                        if let Some(left) = left_symbol {
+                            relation_data.new_pipelines.push(left);
+                        }
+                        if let Some(right) = right_symbol {
+                            relation_data.new_pipelines.push(right);
+                        }
+                    }
+                    _ => {}
+                }
+            });
+        }
+
+        // Then recursively traverse inputs
+        use substrait::rel::RelType;
+        if let Some(rel_type) = &rel.rel_type {
+            match rel_type {
+                RelType::Aggregate(agg) => {
+                    if let Some(input) = &agg.input {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(
+                            self.current_location().field("aggregate").field("input"),
+                        );
+                        self.traverse_subquery_relation(input);
+                        self.set_location(prev_loc);
+                    }
+                }
+                RelType::Filter(filter) => {
+                    if let Some(input) = &filter.input {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(self.current_location().field("filter").field("input"));
+                        self.traverse_subquery_relation(input);
+                        self.set_location(prev_loc);
+                    }
+                }
+                RelType::Project(project) => {
+                    if let Some(input) = &project.input {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(self.current_location().field("project").field("input"));
+                        self.traverse_subquery_relation(input);
+                        self.set_location(prev_loc);
+                    }
+                }
+                RelType::Cross(cross) => {
+                    if let Some(left) = &cross.left {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(self.current_location().field("cross").field("left"));
+                        self.traverse_subquery_relation(left);
+                        self.set_location(prev_loc);
+                    }
+                    if let Some(right) = &cross.right {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(self.current_location().field("cross").field("right"));
+                        self.traverse_subquery_relation(right);
+                        self.set_location(prev_loc);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 impl PlanProtoVisitor for PipelineVisitor {
@@ -66,13 +253,22 @@ impl PlanProtoVisitor for PipelineVisitor {
         self.current_location = location;
     }
 
-    fn post_process_rel(&mut self, rel: &substrait::Rel) {
+    fn pre_process_rel(&mut self, _rel: &substrait::Rel) {
+        // Set current_relation_scope before visiting children so expressions can access it
+        // Save the previous scope for restoration in post_process_rel
+        self.previous_relation_scope = self.current_relation_scope.clone();
+
         let symbol = self
             .symbol_table()
             .lookup_symbol_by_location_and_type(self.current_location(), SymbolType::Relation);
 
-        let previous_relation_scope = self.current_relation_scope.clone();
         self.current_relation_scope = symbol.clone();
+    }
+
+    fn post_process_rel(&mut self, rel: &substrait::Rel) {
+        let symbol = self
+            .symbol_table()
+            .lookup_symbol_by_location_and_type(self.current_location(), SymbolType::Relation);
 
         // TODO -- Consider using rel_type_case to simplify this block.
         // Process the relation data before changing the scope back
@@ -264,7 +460,7 @@ impl PlanProtoVisitor for PipelineVisitor {
         }
 
         // Restore the previous scope
-        self.current_relation_scope = previous_relation_scope;
+        self.current_relation_scope = self.previous_relation_scope.clone();
     }
 
     fn post_process_plan_rel(&mut self, relation: &substrait::PlanRel) {
@@ -291,54 +487,93 @@ impl PlanProtoVisitor for PipelineVisitor {
         });
     }
 
+    fn post_process_function_argument(&mut self, arg: &substrait::FunctionArgument) {
+        // Workaround: The generated visitor doesn't traverse FunctionArgument.arg_type
+        // We need to manually traverse expressions inside function arguments to find subqueries
+        if let Some(arg_type) = &arg.arg_type {
+            match arg_type {
+                substrait::function_argument::ArgType::Value(expr) => {
+                    // Save current location and update for the value field
+                    let prev_location = self.current_location().clone();
+                    self.set_location(self.current_location().field("value"));
+
+                    // Manually traverse this specific expression and its children
+                    // This is safe because the generated visitor doesn't do this traversal
+                    self.traverse_expression_for_subqueries(expr);
+
+                    self.set_location(prev_location);
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn post_process_expression(&mut self, expression: &substrait::Expression) {
+        println!(
+            "DEBUG PIPELINE: post_process_expression called at {}",
+            self.current_location().path_string()
+        );
         if let Some(rex_type) = &expression.rex_type {
+            println!("DEBUG PIPELINE: rex_type is Some");
             match rex_type {
-                substrait::expression::RexType::Subquery(_) => {
-                    /*
-                    auto result = visitSubquery(expression.subquery());
+                substrait::expression::RexType::Subquery(subquery) => {
+                    println!("DEBUG PIPELINE: Found Subquery expression!");
+                    use substrait::expression::subquery::SubqueryType;
 
-                    const ::substrait::proto::Rel* subqueryRelation;
-                    switch (expression.subquery().subquery_type_case()) {
-                        case ::substrait::proto::Expression_Subquery::kScalar:
-                            subqueryRelation = &expression.subquery().scalar().input();
-                        break;
-                        case ::substrait::proto::Expression_Subquery::kInPredicate:
-                            subqueryRelation = &expression.subquery().in_predicate().haystack();
-                        break;
-                        case ::substrait::proto::Expression_Subquery::kSetPredicate:
-                            subqueryRelation = &expression.subquery().set_predicate().tuples();
-                        break;
-                        case ::substrait::proto::Expression_Subquery::kSetComparison:
-                            subqueryRelation = &expression.subquery().set_comparison().right();
-                        break;
-                        case ::substrait::proto::Expression_Subquery::SUBQUERY_TYPE_NOT_SET:
-                        // No need to raise as this would have been exposed earlier.
-                        return result;
-                    }
-                    if (subqueryRelation == nullptr) {
-                        // No need to raise as this would have been caught earlier.
-                        return result;
+                    // Determine the subquery relation location based on subquery type
+                    let subquery_rel_path = match &subquery.subquery_type {
+                        Some(SubqueryType::Scalar(_)) => "subquery.scalar.input",
+                        Some(SubqueryType::InPredicate(_)) => "subquery.in_predicate.haystack",
+                        Some(SubqueryType::SetPredicate(_)) => "subquery.set_predicate.tuples",
+                        Some(SubqueryType::SetComparison(_)) => "subquery.set_comparison.right",
+                        None => return, // No subquery type set
+                    };
+
+                    // Build the location for the subquery relation
+                    let mut subquery_location = self.current_location().clone();
+                    for field_name in subquery_rel_path.split('.') {
+                        subquery_location = subquery_location.field(field_name);
                     }
 
-                    auto subquerySymbol = symbolTable_->lookupSymbolByLocationAndType(
-                        PROTO_LOCATION(*subqueryRelation), SymbolType::kRelation);
-                    auto currentRelationData =
-                        ANY_CAST(std::shared_ptr<RelationData>, currentRelationScope_->blob);
-                    currentRelationData->subQueryPipelines.push_back(subquerySymbol);
+                    // Look up the subquery relation symbol (the terminus)
+                    let subquery_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
+                        &subquery_location,
+                        SymbolType::Relation,
+                    );
 
-                    // Populate the start of the pipeline for easy later access.
-                    const SymbolInfo* current;
-                    auto thisRelationData =
-                        ANY_CAST(std::shared_ptr<RelationData>, subquerySymbol->blob);
-                    thisRelationData->pipelineStart = subquerySymbol;
-                    while (thisRelationData->continuingPipeline != nullptr) {
-                        current = thisRelationData->continuingPipeline;
-                        thisRelationData = ANY_CAST(std::shared_ptr<RelationData>, current->blob);
-                        thisRelationData->pipelineStart = subquerySymbol;
+                    if let Some(subquery_sym) = subquery_symbol {
+                        // Add the subquery to the current relation's sub_query_pipelines
+                        if let Some(current_rel) = &self.current_relation_scope {
+                            current_rel.with_blob::<RelationData, _, _>(|relation_data| {
+                                println!(
+                                    "DEBUG PIPELINE: Adding subquery '{}' to relation '{}'",
+                                    subquery_sym.name(),
+                                    current_rel.name()
+                                );
+                                relation_data.sub_query_pipelines.push(subquery_sym.clone());
+                            });
+
+                            // Set parent query index to mark this as a subquery
+                            // We use index 0 as a marker that this is a subquery (C++ uses actual index)
+                            println!(
+                                "DEBUG PIPELINE: Setting parent_query_index for '{}' (parent: '{}')",
+                                subquery_sym.name(),
+                                current_rel.name()
+                            );
+                            self.symbol_table.set_parent_query_index(&subquery_sym, 0);
+                        }
+
+                        // Set pipeline_start on the terminus (subquery relation itself)
+                        // The rest of the pipeline will be populated by populate_subquery_pipelines()
+                        // after all relations have been visited and continuing_pipeline is set up
+                        subquery_sym.with_blob::<RelationData, _, _>(|relation_data| {
+                            println!(
+                                "DEBUG PIPELINE: Setting pipeline_start on terminus '{}' to itself",
+                                subquery_sym.name()
+                            );
+                            relation_data.pipeline_start = Some(subquery_sym.clone());
+                        });
                     }
-                    return result;
-                    */
                 }
                 _ => {}
             }

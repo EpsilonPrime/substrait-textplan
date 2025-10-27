@@ -155,6 +155,7 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
         symbol_table,
         error_listener.clone(),
     );
+
     crate::textplan::parser::antlr_visitor::visit_plan(&mut relation_visitor, plan_result.as_ref());
     symbol_table = relation_visitor.symbol_table();
 

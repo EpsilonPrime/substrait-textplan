@@ -74,6 +74,8 @@ impl PlanPrinter {
     pub fn print_plan(&mut self, symbol_table: &SymbolTable) -> Result<String, TextPlanError> {
         let mut result = String::new();
 
+        println!("DEBUG PRINTER: Starting print_plan");
+
         // First, clear any cached data from previous runs
         self.relation_text_cache.clear();
 
@@ -86,6 +88,7 @@ impl PlanPrinter {
             ));
         }
 
+        println!("DEBUG PRINTER: About to output pipelines section");
         // Output pipelines section first
         let pipelines_text = self.output_pipelines_section(symbol_table)?;
         if !pipelines_text.is_empty() {
@@ -94,9 +97,11 @@ impl PlanPrinter {
             result.push('\n');
         }
 
+        println!("DEBUG PRINTER: About to process root relations");
         // Print ROOT relations with output names
         self.process_root_relations(symbol_table, &mut result)?;
 
+        println!("DEBUG PRINTER: About to process relations");
         // Process all other relations
         self.process_relations(symbol_table, &mut result)?;
 
@@ -731,25 +736,72 @@ impl PlanPrinter {
     ///
     /// Vector of relation names in the pipeline
     fn pipeline_to_path(&self, symbol_table: &SymbolTable, info: &Arc<SymbolInfo>) -> Vec<String> {
+        let mut visited = std::collections::HashSet::new();
+        self.pipeline_to_path_impl(symbol_table, info, &mut visited)
+    }
+
+    fn pipeline_to_path_impl(
+        &self,
+        symbol_table: &SymbolTable,
+        info: &Arc<SymbolInfo>,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> Vec<String> {
         use crate::textplan::common::structured_symbol_data::RelationData;
 
         let mut pipeline = Vec::new();
 
+        // Cycle detection: check if we've already visited this relation
+        let relation_name = info.name().to_string();
+        println!(
+            "DEBUG PRINTER: pipeline_to_path_impl processing '{}'",
+            relation_name
+        );
+
+        if visited.contains(&relation_name) {
+            println!(
+                "DEBUG PRINTER: Cycle detected in pipeline_to_path for '{}'",
+                relation_name
+            );
+            return pipeline;
+        }
+        visited.insert(relation_name.clone());
+
         // Get the relation data
+        println!("DEBUG PRINTER: About to lock blob for '{}'", relation_name);
         if let Some(relation_data_lock) = &info.blob {
             if let Ok(relation_data) = relation_data_lock.lock() {
+                println!("DEBUG PRINTER: Lock acquired for '{}'", relation_name);
                 if let Some(relation_data) = relation_data.downcast_ref::<RelationData>() {
                     pipeline.push(info.name().to_string());
 
                     // Follow the continuing pipeline
                     if let Some(continuing) = &relation_data.continuing_pipeline {
-                        let tail_pipe = self.pipeline_to_path(symbol_table, continuing);
+                        println!(
+                            "DEBUG PRINTER: Found continuing pipeline for '{}' -> '{}'",
+                            relation_name,
+                            continuing.name()
+                        );
+                        let tail_pipe =
+                            self.pipeline_to_path_impl(symbol_table, continuing, visited);
                         pipeline.extend(tail_pipe);
+                    } else {
+                        println!(
+                            "DEBUG PRINTER: No continuing pipeline for '{}'",
+                            relation_name
+                        );
                     }
                 }
+            } else {
+                println!("DEBUG PRINTER: Failed to lock blob for '{}'", relation_name);
             }
+        } else {
+            println!("DEBUG PRINTER: No blob for '{}'", relation_name);
         }
 
+        println!(
+            "DEBUG PRINTER: Finished pipeline_to_path_impl for '{}'",
+            relation_name
+        );
         pipeline
     }
 
@@ -851,44 +903,59 @@ impl PlanPrinter {
                 continue;
             }
 
-            // Get the relation data
-            if let Some(relation_data_lock) = &info.blob {
-                if let Ok(relation_data) = relation_data_lock.lock() {
-                    if let Some(relation_data) = relation_data.downcast_ref::<RelationData>() {
-                        // Process new pipelines
-                        for pipeline_start in &relation_data.new_pipelines {
-                            let mut pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
-                            pipeline.insert(0, info.name().to_string());
-
-                            // Output in reverse order (from leaf to root)
-                            text.push_str("  ");
-                            for (i, pipe_name) in pipeline.iter().rev().enumerate() {
-                                if i > 0 {
-                                    text.push_str(" -> ");
-                                }
-                                text.push_str(pipe_name);
-                            }
-                            text.push_str(";\n");
-                            has_previous_text = true;
+            // Collect pipeline starts without holding the lock
+            let (relation_name, new_pipeline_starts, subquery_pipeline_starts) = {
+                if let Some(relation_data_lock) = &info.blob {
+                    if let Ok(relation_data) = relation_data_lock.lock() {
+                        if let Some(relation_data) = relation_data.downcast_ref::<RelationData>() {
+                            (
+                                info.name().to_string(),
+                                relation_data.new_pipelines.clone(),
+                                relation_data.sub_query_pipelines.clone(),
+                            )
+                        } else {
+                            continue;
                         }
-
-                        // Process subquery pipelines
-                        for pipeline_start in &relation_data.sub_query_pipelines {
-                            let pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
-
-                            // Output in reverse order
-                            text.push_str("  ");
-                            for (i, pipe_name) in pipeline.iter().rev().enumerate() {
-                                if i > 0 {
-                                    text.push_str(" -> ");
-                                }
-                                text.push_str(pipe_name);
-                            }
-                            text.push_str(";\n");
-                            has_previous_text = true;
-                        }
+                    } else {
+                        continue;
                     }
+                } else {
+                    continue;
                 }
+            }; // Lock is released here
+
+            // Now process pipelines without holding the lock
+            // Process new pipelines
+            for pipeline_start in &new_pipeline_starts {
+                let mut pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
+                pipeline.insert(0, relation_name.clone());
+
+                // Output in reverse order (from leaf to root)
+                text.push_str("  ");
+                for (i, pipe_name) in pipeline.iter().rev().enumerate() {
+                    if i > 0 {
+                        text.push_str(" -> ");
+                    }
+                    text.push_str(pipe_name);
+                }
+                text.push_str(";\n");
+                has_previous_text = true;
+            }
+
+            // Process subquery pipelines
+            for pipeline_start in &subquery_pipeline_starts {
+                let pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
+
+                // Output in reverse order
+                text.push_str("  ");
+                for (i, pipe_name) in pipeline.iter().rev().enumerate() {
+                    if i > 0 {
+                        text.push_str(" -> ");
+                    }
+                    text.push_str(pipe_name);
+                }
+                text.push_str(";\n");
+                has_previous_text = true;
             }
         }
 
