@@ -3159,9 +3159,31 @@ impl<'input> RelationVisitor<'input> {
         println!("      -> function reference: {}", function_reference);
 
         // Recursively build arguments
+        // Check if an expression is actually an enum argument (ends with _enum)
         let mut arguments = Vec::new();
-        for expr in ctx.expression_all() {
-            let arg_expr = self.build_expression(&expr);
+        for expr_ctx in ctx.expression_all() {
+            use crate::textplan::parser::antlr::substraitplanparser::ExpressionContextAll;
+
+            // Check if this is a column reference ending in _enum
+            if let ExpressionContextAll::ExpressionColumnContext(column_expr_ctx) = expr_ctx.as_ref() {
+                if let Some(column_ctx) = column_expr_ctx.column_name() {
+                    let column_text = column_ctx.get_text();
+                    if column_text.ends_with("_enum") {
+                        // This is an enum argument, not an expression
+                        let enum_value = column_text.strip_suffix("_enum").unwrap().to_string();
+                        println!("      Enum argument: {}", enum_value);
+                        arguments.push(::substrait::proto::FunctionArgument {
+                            arg_type: Some(::substrait::proto::function_argument::ArgType::Enum(
+                                enum_value,
+                            )),
+                        });
+                        continue;
+                    }
+                }
+            }
+
+            // Not an enum, build as expression
+            let arg_expr = self.build_expression(&expr_ctx);
             arguments.push(::substrait::proto::FunctionArgument {
                 arg_type: Some(::substrait::proto::function_argument::ArgType::Value(
                     arg_expr,
