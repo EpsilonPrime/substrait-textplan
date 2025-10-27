@@ -3478,81 +3478,75 @@ impl<'input> RelationVisitor<'input> {
             Some(LiteralType::Null(::substrait::proto::Type::default()))
         } else if let Some(struct_ctx) = constant_ctx.struct_literal() {
             // Handle struct literals - check if it has an interval type suffix
-            if let Some(type_ctx) = constant_ctx.literal_basic_type() {
-                if let Some(id_ctx) = type_ctx.id() {
-                    let type_name = id_ctx.get_text().to_lowercase();
+            // NOTE: struct_literal uses literal_complex_type, not literal_basic_type (per grammar line 108)
+            if let Some(type_ctx) = constant_ctx.literal_complex_type() {
+                // Extract the type name from the complex type
+                let type_text = type_ctx.get_text();
+                let type_name = type_text.to_lowercase();
 
-                    // Parse the constants inside the struct
-                    let constants = struct_ctx.constant_all();
+                // Parse the constants inside the struct
+                let constants = struct_ctx.constant_all();
 
-                    match type_name.as_str() {
-                        "interval_day_second" => {
-                            // Expect {days, seconds, microseconds}_interval_day_second (deprecated format)
-                            // Use deprecated PrecisionMode::Microseconds to store the microseconds value
-                            if constants.len() >= 3 {
-                                let days = Self::extract_number_from_constant(&constants[0]);
-                                let seconds = Self::extract_number_from_constant(&constants[1]);
-                                let microseconds = if let Some(number_token) = constants[2].NUMBER()
-                                {
-                                    number_token.get_text().parse::<i32>().unwrap_or(0)
-                                } else {
-                                    0i32
-                                };
+                match type_name.as_str() {
+                    "interval_day_second" => {
+                        // Expect {days, seconds, microseconds}_interval_day_second (deprecated format)
+                        // IMPORTANT: Use PrecisionMode::Microseconds with microseconds field for compatibility
+                        // The proto has both old (microseconds) and new (precision+subseconds) forms
+                        if constants.len() >= 3 {
+                            let days = Self::extract_number_from_constant(&constants[0]);
+                            let seconds = Self::extract_number_from_constant(&constants[1]);
+                            let microseconds = Self::extract_number_from_constant(&constants[2]);
 
-                                use ::substrait::proto::expression::literal::interval_day_to_second::PrecisionMode;
-                                Some(LiteralType::IntervalDayToSecond(
-                                    ::substrait::proto::expression::literal::IntervalDayToSecond {
-                                        days,
-                                        seconds,
-                                        subseconds: 0, // Not used in deprecated format
-                                        precision_mode: Some(PrecisionMode::Microseconds(
-                                            microseconds,
-                                        )),
-                                    },
-                                ))
-                            } else {
-                                // Not enough components
-                                use ::substrait::proto::expression::literal::interval_day_to_second::PrecisionMode;
-                                Some(LiteralType::IntervalDayToSecond(
-                                    ::substrait::proto::expression::literal::IntervalDayToSecond {
-                                        days: 0,
-                                        seconds: 0,
-                                        subseconds: 0,
-                                        precision_mode: Some(PrecisionMode::Microseconds(0)),
-                                    },
-                                ))
-                            }
-                        }
-                        "interval_year_month" => {
-                            // Expect {years, months}
-                            if constants.len() >= 2 {
-                                let years = Self::extract_number_from_constant(&constants[0]);
-                                let months = Self::extract_number_from_constant(&constants[1]);
-
-                                Some(LiteralType::IntervalYearToMonth(
-                                    ::substrait::proto::expression::literal::IntervalYearToMonth {
-                                        years,
-                                        months,
-                                    },
-                                ))
-                            } else {
-                                // Not enough components
-                                Some(LiteralType::IntervalYearToMonth(
-                                    ::substrait::proto::expression::literal::IntervalYearToMonth {
-                                        years: 0,
-                                        months: 0,
-                                    },
-                                ))
-                            }
-                        }
-                        _ => {
-                            // Unknown struct literal type
-                            Some(LiteralType::I64(0))
+                            use ::substrait::proto::expression::literal::interval_day_to_second::PrecisionMode;
+                            Some(LiteralType::IntervalDayToSecond(
+                                ::substrait::proto::expression::literal::IntervalDayToSecond {
+                                    days,
+                                    seconds,
+                                    subseconds: 0, // Must be 0 when using microseconds
+                                    precision_mode: Some(PrecisionMode::Microseconds(
+                                        microseconds,
+                                    )),
+                                },
+                            ))
+                        } else {
+                            // Not enough components - create zero interval
+                            use ::substrait::proto::expression::literal::interval_day_to_second::PrecisionMode;
+                            Some(LiteralType::IntervalDayToSecond(
+                                ::substrait::proto::expression::literal::IntervalDayToSecond {
+                                    days: 0,
+                                    seconds: 0,
+                                    subseconds: 0,
+                                    precision_mode: Some(PrecisionMode::Microseconds(0)),
+                                },
+                            ))
                         }
                     }
-                } else {
-                    // Struct without type suffix
-                    Some(LiteralType::I64(0))
+                    "interval_year_month" => {
+                        // Expect {years, months}
+                        if constants.len() >= 2 {
+                            let years = Self::extract_number_from_constant(&constants[0]);
+                            let months = Self::extract_number_from_constant(&constants[1]);
+
+                            Some(LiteralType::IntervalYearToMonth(
+                                ::substrait::proto::expression::literal::IntervalYearToMonth {
+                                    years,
+                                    months,
+                                },
+                            ))
+                        } else {
+                            // Not enough components
+                            Some(LiteralType::IntervalYearToMonth(
+                                ::substrait::proto::expression::literal::IntervalYearToMonth {
+                                    years: 0,
+                                    months: 0,
+                                },
+                            ))
+                        }
+                    }
+                    _ => {
+                        // Unknown struct literal type
+                        Some(LiteralType::I64(0))
+                    }
                 }
             } else {
                 // Struct without type suffix
