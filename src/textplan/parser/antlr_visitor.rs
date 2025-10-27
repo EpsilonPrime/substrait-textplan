@@ -939,11 +939,22 @@ impl<'input> MainPlanVisitor<'input> {
                                 if let Some(cont_relation_data) =
                                     cont_blob_data.downcast_ref::<RelationData>()
                                 {
+                                    println!("      Upstream '{}': output_field_refs={}, field_refs={}, generated={}",
+                                        continuing_pipeline.name(),
+                                        cont_relation_data.output_field_references.len(),
+                                        cont_relation_data.field_references.len(),
+                                        cont_relation_data.generated_field_references.len());
+
                                     if !cont_relation_data.output_field_references.is_empty() {
+                                        println!("        Using output_field_references ({} fields)",
+                                            cont_relation_data.output_field_references.len());
                                         for field in &cont_relation_data.output_field_references {
                                             relation_data.field_references.push(field.clone());
                                         }
                                     } else {
+                                        println!("        Using field_references + generated ({} + {} fields)",
+                                            cont_relation_data.field_references.len(),
+                                            cont_relation_data.generated_field_references.len());
                                         for field in &cont_relation_data.field_references {
                                             relation_data.field_references.push(field.clone());
                                         }
@@ -2257,11 +2268,17 @@ impl<'input> RelationVisitor<'input> {
         };
 
         // Phase 2: Create symbols without holding any locks
+        // Note: Only complex expressions are added to generated_field_references
+        // Field selections are pass-throughs and don't create new fields
         let mut generated_symbols = Vec::new();
         for (expr_num, info) in expr_infos.into_iter().enumerate() {
             match info {
                 ExprInfo::FieldSelection(field_sym) => {
-                    generated_symbols.push(field_sym);
+                    // Field selections don't create new fields, skip
+                    println!(
+                        "        Expr {}: field selection '{}' -> skipping (not a generated field)",
+                        expr_num, field_sym.name()
+                    );
                 }
                 ExprInfo::ComplexExpression(alias) => {
                     // Get unique name and create symbol
@@ -4163,12 +4180,76 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                         filter: None,
                     };
 
-                    // Add to the AggregateRel
-                    if let Some(blob_lock) = &relation_symbol.blob {
+                    // Extract NAMED alias if present (grammar: NAMED id)
+                    // Check for NAMED keyword followed by an id
+                    let measure_alias = if measure_detail_ctx.NAMED().is_some() {
+                        // Get all id() contexts - the last one after NAMED is the alias
+                        let ids = measure_detail_ctx.id_all();
+                        // The grammar is: ... (ATSIGN id)? (NAMED id)?
+                        // So if we have NAMED, the last id is the alias
+                        if !ids.is_empty() {
+                            Some(ids.last().unwrap().get_text())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    // Add to the AggregateRel and track the measure index
+                    let measure_index = if let Some(blob_lock) = &relation_symbol.blob {
                         if let Ok(mut blob_data) = blob_lock.lock() {
                             if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                                 if let Some(::substrait::proto::rel::RelType::Aggregate(ref mut agg_rel)) = relation_data.relation.rel_type {
+                                    let idx = agg_rel.measures.len();
                                     agg_rel.measures.push(measure);
+                                    Some(idx)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    // If there's a NAMED alias, add it to generated_field_references
+                    if let (Some(alias), Some(measure_idx)) = (measure_alias, measure_index) {
+                        if let Some(blob_lock) = &relation_symbol.blob {
+                            if let Ok(mut blob_data) = blob_lock.lock() {
+                                if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                                    // Calculate the field index for this measure
+                                    // Aggregate outputs: grouping_fields + measures
+                                    // Field index = number_of_grouping_fields + measure_index
+                                    if let Some(::substrait::proto::rel::RelType::Aggregate(ref agg_rel)) = relation_data.relation.rel_type {
+                                        let num_grouping_fields = agg_rel.groupings.first()
+                                            .map(|g| g.grouping_expressions.len())
+                                            .unwrap_or(0);
+                                        let field_index = num_grouping_fields + measure_idx;
+
+                                        // Create a symbol for this measure alias
+                                        let location = TextLocation::new(0, 0);
+                                        let measure_symbol = self.symbol_table_mut().define_symbol(
+                                            alias.clone(),
+                                            location,
+                                            SymbolType::Field,
+                                            None,
+                                            None,
+                                        );
+
+                                        // Add to generated_field_references
+                                        // Note: The field index is implicit based on position
+                                        // For aggregates: grouping_fields come first, then measures
+                                        relation_data.generated_field_references.push(measure_symbol);
+                                        println!(
+                                            "  Added measure alias '{}' as generated field at index {}",
+                                            alias, field_index
+                                        );
+                                    }
                                 }
                             }
                         }
