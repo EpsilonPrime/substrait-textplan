@@ -854,7 +854,7 @@ impl<'input> MainPlanVisitor<'input> {
     /// Add input fields from continuing pipeline and new pipelines to the current relation's field_references.
     /// For READ relations, populates from the schema. For other relations, populates from input pipelines.
     /// This recursively populates upstream relations first to ensure fields are available.
-    fn add_input_fields_to_schema(&self, relation_symbol: &Arc<SymbolInfo>) {
+    fn add_input_fields_to_schema(&mut self, relation_symbol: &Arc<SymbolInfo>) {
         println!(
             "    add_input_fields_to_schema called for '{}'",
             relation_symbol.name()
@@ -1941,7 +1941,7 @@ impl<'input> RelationVisitor<'input> {
 
     /// Populates field_references for a relation from its input pipelines.
     /// This is called lazily when lookup_field_index needs field information.
-    fn add_input_fields_to_schema(&self, relation_symbol: &Arc<SymbolInfo>) {
+    fn add_input_fields_to_schema(&mut self, relation_symbol: &Arc<SymbolInfo>) {
         use std::cell::RefCell;
         use std::collections::HashSet;
 
@@ -1965,15 +1965,31 @@ impl<'input> RelationVisitor<'input> {
         );
 
         // Check if already populated (early return to avoid unnecessary work)
+        // But first ensure upstream generated fields are populated
         if let Some(blob_lock) = &relation_symbol.blob {
             if let Ok(blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
                     if !relation_data.field_references.is_empty() {
                         println!(
-                            "      '{}' already has {} field_references, skipping",
+                            "      '{}' already has {} field_references",
                             relation_symbol.name(),
                             relation_data.field_references.len()
                         );
+
+                        // Before returning, ensure upstream generated fields are populated
+                        // (This is needed because upstream may not have generated its fields yet)
+                        let continuing = relation_data.continuing_pipeline.clone();
+                        let new_pipes = relation_data.new_pipelines.clone();
+                        drop(blob_data);
+                        drop(blob_lock);
+
+                        if let Some(cont) = continuing {
+                            self.add_expressions_to_schema(&cont);
+                        }
+                        for pipe in &new_pipes {
+                            self.add_expressions_to_schema(pipe);
+                        }
+
                         return; // Already populated
                     }
                 }
@@ -2064,6 +2080,10 @@ impl<'input> RelationVisitor<'input> {
 
             // Now process pipelines without holding our lock
             if let Some(continuing_pipeline) = continuing_pipeline {
+                // Ensure the upstream relation's generated_field_references are populated first
+                // This must be done before we copy its fields
+                self.add_expressions_to_schema(&continuing_pipeline);
+
                 if let Some(cont_blob_lock) = &continuing_pipeline.blob {
                     if let Ok(cont_blob_data) = cont_blob_lock.lock() {
                         if let Some(cont_relation_data) =
@@ -2084,6 +2104,9 @@ impl<'input> RelationVisitor<'input> {
             }
 
             for pipeline in &new_pipelines {
+                // Ensure the upstream relation's generated_field_references are populated first
+                self.add_expressions_to_schema(pipeline);
+
                 if let Some(pipe_blob_lock) = &pipeline.blob {
                     if let Ok(pipe_blob_data) = pipe_blob_lock.lock() {
                         if let Some(pipe_relation_data) =
@@ -2120,6 +2143,167 @@ impl<'input> RelationVisitor<'input> {
             "    Finished populating field_references for '{}'",
             relation_symbol.name()
         );
+    }
+
+    /// Populates generated_field_references for a relation from its proto expressions.
+    /// This is called after the relation details (expressions, measures, etc.) have been visited.
+    /// Follows the C++ SubstraitPlanRelationVisitor::addExpressionsToSchema pattern.
+    fn add_expressions_to_schema(&mut self, relation_symbol: &Arc<SymbolInfo>) {
+        use substrait::proto::rel::RelType;
+
+        println!(
+            "    add_expressions_to_schema called for '{}'",
+            relation_symbol.name()
+        );
+
+        // Phase 1: Collect expression information while holding the lock
+        enum ExprInfo {
+            FieldSelection(Arc<SymbolInfo>),
+            ComplexExpression(Option<String>), // alias if exists
+        }
+
+        let expr_infos: Vec<ExprInfo> = if let Some(blob_lock) = &relation_symbol.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    // Skip if already populated (idempotent)
+                    if !relation_data.generated_field_references.is_empty() {
+                        println!(
+                            "      Already has {} generated_field_references, skipping",
+                            relation_data.generated_field_references.len()
+                        );
+                        return;
+                    }
+
+                    // Process based on relation type
+                    if let Some(rel_type) = &relation_data.relation.rel_type {
+                        match rel_type {
+                            RelType::Project(project_rel) => {
+                                println!(
+                                    "      Processing {} project expressions for '{}'",
+                                    project_rel.expressions.len(),
+                                    relation_symbol.name()
+                                );
+
+                                let mut infos = Vec::new();
+                                for (expression_number, expr) in project_rel.expressions.iter().enumerate() {
+                                    // Check if this is a simple field selection
+                                    if let Some(substrait::proto::expression::RexType::Selection(
+                                        field_ref,
+                                    )) = &expr.rex_type
+                                    {
+                                        if let Some(
+                                            substrait::proto::expression::field_reference::ReferenceType::DirectReference(
+                                                ref_segment,
+                                            ),
+                                        ) = &field_ref.reference_type
+                                        {
+                                            if let Some(
+                                                substrait::proto::expression::reference_segment::ReferenceType::StructField(
+                                                    struct_field,
+                                                ),
+                                            ) = &ref_segment.reference_type
+                                            {
+                                                // Simple field selection
+                                                let field_index = struct_field.field as usize;
+                                                if field_index < relation_data.field_references.len() {
+                                                    let field_symbol = relation_data.field_references
+                                                        [field_index]
+                                                        .clone();
+                                                    println!(
+                                                        "        Expr {}: field selection -> will add '{}'",
+                                                        expression_number, field_symbol.name()
+                                                    );
+                                                    infos.push(ExprInfo::FieldSelection(field_symbol));
+                                                } else {
+                                                    println!(
+                                                        "        Expr {}: field index {} out of range",
+                                                        expression_number, field_index
+                                                    );
+                                                }
+                                                continue;
+                                            }
+                                        }
+                                    }
+
+                                    // Not a simple field selection - complex expression
+                                    let alias = relation_data
+                                        .generated_field_reference_aliases
+                                        .get(&expression_number)
+                                        .cloned();
+                                    infos.push(ExprInfo::ComplexExpression(alias));
+                                }
+
+                                infos
+                            }
+                            _ => {
+                                println!(
+                                    "      Relation '{}' is not a project, skipping",
+                                    relation_symbol.name()
+                                );
+                                Vec::new()
+                            }
+                        }
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        // Phase 2: Create symbols without holding any locks
+        let mut generated_symbols = Vec::new();
+        for (expr_num, info) in expr_infos.into_iter().enumerate() {
+            match info {
+                ExprInfo::FieldSelection(field_sym) => {
+                    generated_symbols.push(field_sym);
+                }
+                ExprInfo::ComplexExpression(alias) => {
+                    // Get unique name and create symbol
+                    let unique_name = if let Some(alias_name) = alias {
+                        alias_name
+                    } else {
+                        self.symbol_table_mut().get_unique_name("intermediate")
+                    };
+
+                    println!(
+                        "        Expr {}: complex expression -> creating '{}'",
+                        expr_num, unique_name
+                    );
+
+                    let new_symbol = self.symbol_table_mut().define_symbol(
+                        unique_name,
+                        relation_symbol.source_location().box_clone(),
+                        SymbolType::Unknown,
+                        None,
+                        None,
+                    );
+
+                    generated_symbols.push(new_symbol);
+                }
+            }
+        }
+
+        // Phase 3: Add symbols to generated_field_references
+        if !generated_symbols.is_empty() {
+            if let Some(blob_lock) = &relation_symbol.blob {
+                if let Ok(mut blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                        relation_data.generated_field_references = generated_symbols;
+                        println!(
+                            "      Finished: {} generated_field_references for '{}'",
+                            relation_data.generated_field_references.len(),
+                            relation_symbol.name()
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// Process a relation type and update the relation symbol.
@@ -2537,7 +2721,7 @@ impl<'input> RelationVisitor<'input> {
     /// Look up a field with scope information, returning (field_index, steps_out).
     /// If the field is found in the current relation, steps_out = 0.
     /// If the field is found in a parent relation, steps_out = number of levels up.
-    fn lookup_field_with_scope(&self, column_name: &str) -> (usize, usize) {
+    fn lookup_field_with_scope(&mut self, column_name: &str) -> (usize, usize) {
         // First determine if this is an outer reference by checking if the schema belongs to a parent
         let steps_out = self.calculate_steps_out(column_name);
 
@@ -2558,7 +2742,7 @@ impl<'input> RelationVisitor<'input> {
 
     /// Look up a field index in the parent relation.
     /// This is used for outer references.
-    fn lookup_field_index_in_parent_relation(&self, column_name: &str) -> usize {
+    fn lookup_field_index_in_parent_relation(&mut self, column_name: &str) -> usize {
         if let Some(current_rel) = self.current_relation_scope() {
             // Find the parent relation by checking parent_query_location
             let parent_loc = current_rel.parent_query_location();
@@ -2785,7 +2969,7 @@ impl<'input> RelationVisitor<'input> {
         false
     }
 
-    fn lookup_field_index(&self, column_name: &str) -> usize {
+    fn lookup_field_index(&mut self, column_name: &str) -> usize {
         // Parse column name - can be "field" or "schema.field"
         let (schema_name, field_name) = if let Some(dot_pos) = column_name.rfind('.') {
             (&column_name[..dot_pos], &column_name[dot_pos + 1..])
@@ -2796,7 +2980,7 @@ impl<'input> RelationVisitor<'input> {
 
         // Try to look up from current relation's field references
         // Search order (like C++): generated_field_references first, then field_references
-        if let Some(relation_symbol) = self.current_relation_scope() {
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
             // Lazily populate field_references if empty (ensures all schemas are linked first)
             if let Some(blob_lock) = &relation_symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
@@ -2809,6 +2993,29 @@ impl<'input> RelationVisitor<'input> {
                     }
                 }
             }
+
+            // Ensure generated field references from upstream are available
+            // This must be done even if field_references is already populated
+            if let Some(blob_lock) = &relation_symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                        // Get upstream relations to populate their generated fields
+                        let continuing = relation_data.continuing_pipeline.clone();
+                        let new_pipes = relation_data.new_pipelines.clone();
+                        drop(blob_data);
+                        drop(blob_lock);
+
+                        // Ensure upstream relations have their generated fields populated
+                        if let Some(cont) = continuing {
+                            self.add_expressions_to_schema(&cont);
+                        }
+                        for pipe in &new_pipes {
+                            self.add_expressions_to_schema(pipe);
+                        }
+                    }
+                }
+            }
+
 
             if let Some(blob_lock) = &relation_symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
@@ -3677,12 +3884,39 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
         };
 
         // Set as current scope if found
-        if let Some(relation_symbol) = symbol {
+        if let Some(relation_symbol) = symbol.clone() {
             self.set_current_relation_scope(Some(relation_symbol.clone()));
+
+            // IMPORTANT: Populate upstream generated fields BEFORE visiting children
+            // This ensures that when expressions/measures are built, upstream generated
+            // fields are already available for lookup
+            if let Some(blob_lock) = &relation_symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        let continuing = relation_data.continuing_pipeline.clone();
+                        let new_pipes = relation_data.new_pipelines.clone();
+                        drop(blob_data);
+                        drop(blob_lock);
+
+                        if let Some(cont) = continuing {
+                            self.add_expressions_to_schema(&cont);
+                        }
+                        for pipe in &new_pipes {
+                            self.add_expressions_to_schema(pipe);
+                        }
+                    }
+                }
+            }
         }
 
         // Continue visiting children to process relation details
         self.visit_children(ctx);
+
+        // Add generated field references from expressions (after visiting relation details)
+        // This matches the C++ addExpressionsToSchema pattern
+        if let Some(relation_symbol) = symbol {
+            self.add_expressions_to_schema(&relation_symbol);
+        }
 
         // Clear scope when done
         self.set_current_relation_scope(None);
@@ -4061,6 +4295,12 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     }
 
     fn visit_relationEmit(&mut self, ctx: &RelationEmitContext<'input>) {
+        // CRITICAL: Populate generated_field_references BEFORE processing emit
+        // Emit indices reference generated fields, so they must exist first
+        if let Some(relation_symbol) = self.current_relation_scope().cloned() {
+            self.add_expressions_to_schema(&relation_symbol);
+        }
+
         // Handle EMIT column_name SEMICOLON
         // Emit specifies which fields from the input should be output
         if let Some(relation_symbol) = self.current_relation_scope().cloned() {
