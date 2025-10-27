@@ -2538,13 +2538,94 @@ impl<'input> RelationVisitor<'input> {
     /// If the field is found in the current relation, steps_out = 0.
     /// If the field is found in a parent relation, steps_out = number of levels up.
     fn lookup_field_with_scope(&self, column_name: &str) -> (usize, usize) {
-        // Use the standard field lookup
-        let field_index = self.lookup_field_index(column_name);
-
-        // Now determine if this is an outer reference by checking if the schema belongs to a parent
+        // First determine if this is an outer reference by checking if the schema belongs to a parent
         let steps_out = self.calculate_steps_out(column_name);
 
+        // If it's an outer reference, look up the field index in the parent relation
+        let field_index = if steps_out > 0 {
+            println!(
+                "      DEBUG: Outer reference detected, looking up '{}' in parent relation",
+                column_name
+            );
+            self.lookup_field_index_in_parent_relation(column_name)
+        } else {
+            // Look up in current relation
+            self.lookup_field_index(column_name)
+        };
+
         (field_index, steps_out)
+    }
+
+    /// Look up a field index in the parent relation.
+    /// This is used for outer references.
+    fn lookup_field_index_in_parent_relation(&self, column_name: &str) -> usize {
+        if let Some(current_rel) = self.current_relation_scope() {
+            // Find the parent relation by checking parent_query_location
+            let parent_loc = current_rel.parent_query_location();
+
+            if let Some(parent) = self
+                .symbol_table()
+                .lookup_symbol_by_location_and_type(parent_loc.as_ref(), SymbolType::Relation)
+            {
+                println!(
+                    "      DEBUG: Looking up '{}' in parent '{}'",
+                    column_name,
+                    parent.name()
+                );
+
+                // Ensure parent's field_references are populated
+                if let Some(blob_lock) = &parent.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                            if relation_data.field_references.is_empty() {
+                                drop(blob_data);
+                                drop(blob_lock);
+                                self.add_input_fields_to_schema(&parent);
+                            }
+                        }
+                    }
+                }
+
+                // Now look up the field in the parent using the same logic as lookup_field_index
+                // Parse column name - can be "field" or "schema.field"
+                let (schema_name, field_name) = if let Some(dot_pos) = column_name.rfind('.') {
+                    (&column_name[..dot_pos], &column_name[dot_pos + 1..])
+                } else {
+                    ("", column_name)
+                };
+
+                if let Some(blob_lock) = &parent.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
+                            // Search through field_references
+                            for (index, field_sym) in relation_data.field_references.iter().enumerate() {
+                                if self.field_matches(field_sym, field_name, schema_name, column_name) {
+                                    println!("      DEBUG: Found '{}' at index {} in parent '{}'", column_name, index, parent.name());
+                                    return index;
+                                }
+                            }
+
+                            // Also check generated_field_references
+                            let field_ref_size = relation_data.field_references.len();
+                            for (index, field_sym) in relation_data.generated_field_references.iter().enumerate() {
+                                if self.field_matches(field_sym, field_name, schema_name, column_name) {
+                                    let actual_index = field_ref_size + index;
+                                    println!("      DEBUG: Found '{}' at index {} in parent '{}' (generated)", column_name, actual_index, parent.name());
+                                    return actual_index;
+                                }
+                            }
+
+                            println!("      WARNING: Field '{}' not found in parent '{}', defaulting to 0", column_name, parent.name());
+                        }
+                    }
+                }
+            } else {
+                println!("      WARNING: Could not find parent relation for outer reference '{}', defaulting to 0", column_name);
+            }
+        }
+
+        // Default to 0 if not found
+        0
     }
 
     /// Calculate steps_out for a field reference to determine if it's an outer reference.
@@ -4492,82 +4573,65 @@ impl<'input> SubqueryRelationVisitor<'input> {
             return (0, field_index);
         }
 
-        // Field not found in current relation - check if we have parent queries
-        // get_parent_query_relation might return multiple potential parents
-        // (because we add subqueries to all relations temporarily)
-        // So we need to try searching each potential parent
+        // Field not found in current relation - check parent query
         println!(
-            "      Field '{}' not in current relation, searching parents",
+            "      Field '{}' not in current relation, searching parent",
             column_name
         );
 
-        // Get all potential parent relations
-        let search_symbol = if let Some(blob_lock) = &symbol.blob {
-            if let Ok(blob_data) = blob_lock.lock() {
-                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                    relation_data.pipeline_start.clone()
+        // Get the parent query location (following C++ getParentQueryLocation pattern)
+        let parent_location = if !symbol.parent_query_location().is_unknown() {
+            Some(symbol.parent_query_location())
+        } else {
+            // Try pipelineStart
+            if let Some(blob_lock) = &symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        if let Some(pipeline_start) = &relation_data.pipeline_start {
+                            if !pipeline_start.parent_query_location().is_unknown() {
+                                Some(pipeline_start.parent_query_location())
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
             } else {
                 None
             }
-        } else {
-            None
         };
 
-        let search_target = search_symbol.as_ref().unwrap_or(symbol);
+        // Look up the specific parent symbol by location
+        if let Some(parent_loc) = parent_location {
+            if let Some(parent_symbol) = self
+                .symbol_table
+                .lookup_symbol_by_location_and_type(parent_loc.as_ref(), SymbolType::Relation)
+            {
+                println!("      Found parent relation '{}'", parent_symbol.name());
 
-        // Try each potential parent to find one that has this field
-        let mut checked_parents = 0;
-        for potential_parent in self.symbol_table.symbols() {
-            if potential_parent.symbol_type() != SymbolType::Relation {
-                continue;
-            }
+                // Recursively search in parent (don't hold any locks during recursive call)
+                let (parent_steps_out, field_index) =
+                    self.find_field_reference_by_name(column_name, &parent_symbol);
 
-            // Check if this is a potential parent (has the subquery in sub_query_pipelines)
-            let is_parent = if let Some(blob_lock) = &potential_parent.blob {
-                if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                        relation_data.sub_query_pipelines.iter().any(|sq| {
-                            Arc::ptr_eq(sq, search_target) || sq.name() == search_target.name()
-                        })
-                    } else {
-                        false
-                    }
-                } else {
-                    false
+                if field_index.is_some() {
+                    println!(
+                        "      Found '{}' in parent relation '{}', steps_out = {}",
+                        column_name,
+                        parent_symbol.name(),
+                        parent_steps_out + 1
+                    );
+                    return (parent_steps_out + 1, field_index);
                 }
-            } else {
-                false
-            };
-
-            if !is_parent {
-                continue;
-            }
-
-            // Prevent circular reference
-            if Arc::ptr_eq(symbol, &potential_parent) {
-                continue;
-            }
-
-            checked_parents += 1;
-
-            // Check if the field exists DIRECTLY in this potential parent
-            // Don't recursively search the parent's parents (that would create loops)
-            let field_index = self.lookup_field_index_in_relation(column_name, &potential_parent);
-
-            if field_index.is_some() {
-                println!(
-                    "      Found '{}' in parent relation '{}', steps_out = 1",
-                    column_name,
-                    potential_parent.name()
-                );
-                return (1, field_index);
             }
         }
 
-        // Field not found in any parent
+        // Field not found in parent
         (0, None)
     }
 
@@ -4577,22 +4641,46 @@ impl<'input> SubqueryRelationVisitor<'input> {
         column_name: &str,
         relation_symbol: &Arc<SymbolInfo>,
     ) -> Option<usize> {
+        // Parse column name - can be "field" or "schema.field"
+        let (_schema_name, field_name) = if let Some(dot_pos) = column_name.rfind('.') {
+            (&column_name[..dot_pos], &column_name[dot_pos + 1..])
+        } else {
+            // No schema prefix
+            ("", column_name)
+        };
+
         // Search ONLY in this relation's field_references
         if let Some(blob_lock) = &relation_symbol.blob {
             if let Ok(blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                    // Parse the column name to extract schema and field parts
-                    let (_schema_part, field_part) = if column_name.contains('.') {
-                        let parts: Vec<&str> = column_name.splitn(2, '.').collect();
-                        (Some(parts[0]), parts.get(1).copied().unwrap_or(""))
-                    } else {
-                        (None, column_name)
-                    };
-
                     // Search through field_references in this relation only
+                    // Try matching against full column_name first, then just field_name
                     for (index, field_sym) in relation_data.field_references.iter().enumerate() {
-                        if field_sym.name() == column_name || field_sym.name() == field_part {
+                        if field_sym.name() == column_name || field_sym.name() == field_name {
                             return Some(index);
+                        }
+                        // Also try matching with schema prefix
+                        if let Some(schema) = field_sym.schema() {
+                            let qualified_name = format!("{}.{}", schema.name(), field_sym.name());
+                            if qualified_name == column_name {
+                                return Some(index);
+                            }
+                        }
+                    }
+
+                    // Also check generated_field_references
+                    let field_ref_size = relation_data.field_references.len();
+                    for (index, field_sym) in
+                        relation_data.generated_field_references.iter().enumerate()
+                    {
+                        if field_sym.name() == column_name || field_sym.name() == field_name {
+                            return Some(field_ref_size + index);
+                        }
+                        if let Some(schema) = field_sym.schema() {
+                            let qualified_name = format!("{}.{}", schema.name(), field_sym.name());
+                            if qualified_name == column_name {
+                                return Some(field_ref_size + index);
+                            }
                         }
                     }
                 }
