@@ -1166,18 +1166,55 @@ fn populate_subquery_in_rel_impl(
 }
 
 /// Helper to find the next unused subquery symbol in parent_query_index order.
+/// Excludes symbols that share a pipeline_start with any used symbol.
 fn find_next_unused_subquery(
     symbol_table: &SymbolTable,
     used_subqueries: &HashSet<String>,
 ) -> Option<Arc<SymbolInfo>> {
+    // Build set of pipeline_start names for used subqueries
+    let mut used_pipeline_starts = HashSet::new();
+    for used_name in used_subqueries {
+        if let Some(used_sym) = symbol_table.lookup_symbol_by_name(used_name) {
+            // Get the pipeline_start for this used symbol
+            if let Some(blob_lock) = &used_sym.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        if let Some(pipeline_start) = &relation_data.pipeline_start {
+                            used_pipeline_starts.insert(pipeline_start.name().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Collect all subquery symbols (relations with parent_query_index >= 0)
+    // Exclude symbols that share pipeline_start with used symbols
     let mut subquery_symbols: Vec<Arc<SymbolInfo>> = symbol_table
         .symbols()
         .iter()
         .filter(|symbol| {
-            symbol.symbol_type() == SymbolType::Relation
-                && symbol.parent_query_index() >= 0
-                && !used_subqueries.contains(symbol.name())
+            if symbol.symbol_type() != SymbolType::Relation
+                || symbol.parent_query_index() < 0
+                || used_subqueries.contains(symbol.name())
+            {
+                return false;
+            }
+
+            // Check if this symbol shares a pipeline_start with any used symbol
+            if let Some(blob_lock) = &symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        if let Some(pipeline_start) = &relation_data.pipeline_start {
+                            if used_pipeline_starts.contains(pipeline_start.name()) {
+                                return false; // Exclude - same pipeline as a used symbol
+                            }
+                        }
+                    }
+                }
+            }
+
+            true
         })
         .cloned()
         .collect();

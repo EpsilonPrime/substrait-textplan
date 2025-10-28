@@ -2736,10 +2736,11 @@ impl<'input> RelationVisitor<'input> {
 
     /// Sets pipeline_start on all relations in a subquery pipeline.
     /// This follows the C++ PipelineVisitor pattern.
-    fn set_pipeline_start_for_subquery(&self, subquery_root: &Arc<SymbolInfo>) {
+    fn set_pipeline_start_for_subquery(&self, subquery_root: &Arc<SymbolInfo>, subquery_index: i32) {
         println!(
-            "      Setting pipeline_start for subquery rooted at '{}'",
-            subquery_root.name()
+            "      Setting pipeline_start for subquery rooted at '{}' with index {}",
+            subquery_root.name(),
+            subquery_index
         );
 
         // Walk the pipeline backward via continuing_pipeline and set both pipeline_start
@@ -2753,11 +2754,11 @@ impl<'input> RelationVisitor<'input> {
                     // Walk the continuing_pipeline chain
                     let mut current = relation_data.continuing_pipeline.clone();
                     while let Some(current_rel) = current {
-                        println!("        Setting pipeline_start and parent_query_index on '{}'", current_rel.name());
+                        println!("        Setting pipeline_start and parent_query_index={} on '{}'", subquery_index, current_rel.name());
 
                         // Set parent_query_index to mark this relation as part of the subquery
-                        // This must match substrait-cpp behavior
-                        current_rel.set_parent_query_index(0);
+                        // All members of the pipeline should have the same index
+                        current_rel.set_parent_query_index(subquery_index);
 
                         if let Some(curr_blob_lock) = &current_rel.blob {
                             if let Ok(mut curr_blob_data) = curr_blob_lock.lock() {
@@ -3811,7 +3812,7 @@ impl<'input> RelationVisitor<'input> {
 
                     // Set pipeline_start on all relations in the subquery pipeline
                     // (following C++ PipelineVisitor pattern)
-                    self.set_pipeline_start_for_subquery(&relation_symbol);
+                    self.set_pipeline_start_for_subquery(&relation_symbol, subquery_index);
                 }
 
                 // Get the relation proto from the relation data
