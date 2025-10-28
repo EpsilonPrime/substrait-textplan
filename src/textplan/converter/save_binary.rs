@@ -415,12 +415,18 @@ fn populate_project_emit(
 
                     for output_field in &relation_data.output_field_references {
                         // First search in generated_field_references
-                        if let Some(gen_index) = relation_data.generated_field_references.iter()
-                            .position(|f| Arc::ptr_eq(f, output_field)) {
+                        if let Some(gen_index) = relation_data
+                            .generated_field_references
+                            .iter()
+                            .position(|f| Arc::ptr_eq(f, output_field))
+                        {
                             // Found in generated fields - use offset index
                             output_mapping.push((field_refs_len + gen_index) as i32);
-                        } else if let Some(field_index) = relation_data.field_references.iter()
-                            .position(|f| Arc::ptr_eq(f, output_field)) {
+                        } else if let Some(field_index) = relation_data
+                            .field_references
+                            .iter()
+                            .position(|f| Arc::ptr_eq(f, output_field))
+                        {
                             // Found in field references
                             output_mapping.push(field_index as i32);
                         } else {
@@ -1257,7 +1263,9 @@ fn populate_subquery_in_expression(
                         println!("      Found SetComparison subquery with None right field, populating...");
 
                         // Find the next unused subquery symbol in parent_query_index order
-                        if let Some(symbol) = find_next_unused_subquery(symbol_table, used_subqueries) {
+                        if let Some(symbol) =
+                            find_next_unused_subquery(symbol_table, used_subqueries)
+                        {
                             println!("        Building subquery relation '{}'", symbol.name());
 
                             // Build the Rel from the symbol tree
@@ -1371,7 +1379,11 @@ fn populate_subquery_in_expression(
                                 )?;
 
                                 // Then recurse to populate any nested subqueries
-                                populate_subquery_in_rel_impl(input_rel, symbol_table, used_subqueries)?;
+                                populate_subquery_in_rel_impl(
+                                    input_rel,
+                                    symbol_table,
+                                    used_subqueries,
+                                )?;
                                 println!("        Successfully populated scalar subquery inputs");
                                 used_subqueries.insert(symbol.name().to_string());
                                 found = true;
@@ -1381,7 +1393,11 @@ fn populate_subquery_in_expression(
                         if !found {
                             println!("        WARNING: Could not find subquery relation symbol for scalar subquery");
                             // Still recurse to populate what we can
-                            populate_subquery_in_rel_impl(input_rel, symbol_table, used_subqueries)?;
+                            populate_subquery_in_rel_impl(
+                                input_rel,
+                                symbol_table,
+                                used_subqueries,
+                            )?;
                         }
                     } else {
                         // Input is None - find and build the subquery relation
@@ -1486,7 +1502,9 @@ fn populate_subquery_in_expression(
                         println!("      Found InPredicate subquery with None haystack field, populating...");
 
                         // Find the next unused subquery symbol in parent_query_index order
-                        if let Some(symbol) = find_next_unused_subquery(symbol_table, used_subqueries) {
+                        if let Some(symbol) =
+                            find_next_unused_subquery(symbol_table, used_subqueries)
+                        {
                             println!(
                                 "        Building IN predicate subquery relation '{}'",
                                 symbol.name()
@@ -1538,7 +1556,9 @@ fn populate_subquery_in_expression(
                         // Find the subquery relation in the symbol table by looking for relations
                         // that have parent_query_index >= 0
                         // Find the next unused subquery symbol in parent_query_index order
-                        if let Some(symbol) = find_next_unused_subquery(symbol_table, used_subqueries) {
+                        if let Some(symbol) =
+                            find_next_unused_subquery(symbol_table, used_subqueries)
+                        {
                             println!(
                                 "        Building SET predicate subquery relation '{}'",
                                 symbol.name()

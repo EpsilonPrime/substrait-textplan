@@ -212,7 +212,9 @@ impl PipelineVisitor {
                     // Traverse the filter condition to find nested subqueries
                     if let Some(condition) = &filter.condition {
                         let prev_loc = self.current_location().clone();
-                        self.set_location(self.current_location().field("filter").field("condition"));
+                        self.set_location(
+                            self.current_location().field("filter").field("condition"),
+                        );
                         self.traverse_expression_for_subqueries(condition);
                         self.set_location(prev_loc);
                     }

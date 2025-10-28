@@ -1110,29 +1110,37 @@ impl<'input> MainPlanVisitor<'input> {
                 "hash_join" => (
                     RelationType::HashJoin,
                     Rel {
-                        rel_type: Some(RelType::HashJoin(Box::new(::substrait::proto::HashJoinRel {
-                            common: Some(::substrait::proto::RelCommon {
-                                emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
-                                    ::substrait::proto::rel_common::Direct {},
-                                )),
+                        rel_type: Some(RelType::HashJoin(Box::new(
+                            ::substrait::proto::HashJoinRel {
+                                common: Some(::substrait::proto::RelCommon {
+                                    emit_kind: Some(
+                                        ::substrait::proto::rel_common::EmitKind::Direct(
+                                            ::substrait::proto::rel_common::Direct {},
+                                        ),
+                                    ),
+                                    ..Default::default()
+                                }),
                                 ..Default::default()
-                            }),
-                            ..Default::default()
-                        }))),
+                            },
+                        ))),
                     },
                 ),
                 "merge_join" => (
                     RelationType::MergeJoin,
                     Rel {
-                        rel_type: Some(RelType::MergeJoin(Box::new(::substrait::proto::MergeJoinRel {
-                            common: Some(::substrait::proto::RelCommon {
-                                emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
-                                    ::substrait::proto::rel_common::Direct {},
-                                )),
+                        rel_type: Some(RelType::MergeJoin(Box::new(
+                            ::substrait::proto::MergeJoinRel {
+                                common: Some(::substrait::proto::RelCommon {
+                                    emit_kind: Some(
+                                        ::substrait::proto::rel_common::EmitKind::Direct(
+                                            ::substrait::proto::rel_common::Direct {},
+                                        ),
+                                    ),
+                                    ..Default::default()
+                                }),
                                 ..Default::default()
-                            }),
-                            ..Default::default()
-                        }))),
+                            },
+                        ))),
                     },
                 ),
                 "exchange" => (
@@ -1941,7 +1949,10 @@ impl<'input> RelationVisitor<'input> {
 
     /// Gets and increments the next subquery index for a given parent relation.
     fn get_next_subquery_index(&mut self, parent_name: &str) -> i32 {
-        let counter = self.subquery_index_counters.entry(parent_name.to_string()).or_insert(0);
+        let counter = self
+            .subquery_index_counters
+            .entry(parent_name.to_string())
+            .or_insert(0);
         let index = *counter;
         *counter += 1;
         index
@@ -2736,7 +2747,11 @@ impl<'input> RelationVisitor<'input> {
 
     /// Sets pipeline_start on all relations in a subquery pipeline.
     /// This follows the C++ PipelineVisitor pattern.
-    fn set_pipeline_start_for_subquery(&self, subquery_root: &Arc<SymbolInfo>, subquery_index: i32) {
+    fn set_pipeline_start_for_subquery(
+        &self,
+        subquery_root: &Arc<SymbolInfo>,
+        subquery_index: i32,
+    ) {
         println!(
             "      Setting pipeline_start for subquery rooted at '{}' with index {}",
             subquery_root.name(),
@@ -3110,20 +3125,20 @@ impl<'input> RelationVisitor<'input> {
                         }
 
                         // Not found in either list
-                        if field_ref_size > 0 || !relation_data.generated_field_references.is_empty() {
-                            println!(
-                                "      WARNING: Field '{}' not found (field_refs={}, generated={}), defaulting to index 0",
-                                column_name, field_ref_size, relation_data.generated_field_references.len()
-                            );
-                            return 0;
-                        }
-                        // Fall through to schema-based lookup
+                        // Like substrait-cpp, when field_references are populated but field not found,
+                        // just return a default value rather than doing global schema lookup
+                        println!(
+                            "      WARNING: Field '{}' not found in current relation (field_refs={}, generated={}), returning index 0",
+                            column_name, field_ref_size, relation_data.generated_field_references.len()
+                        );
+                        return 0;
                     }
                 }
             }
         }
 
-        // Fallback: Look up from schema (for parser, before field_references is populated)
+        // If we reach here, field_references is not populated yet.
+        // Only in this case, fall back to schema-based lookup (for initial parsing phase)
         if !schema_name.is_empty() {
             if let Some(schema_symbol) = self.symbol_table().lookup_symbol_by_name(schema_name) {
                 if let Some(field_index) =
@@ -3150,7 +3165,7 @@ impl<'input> RelationVisitor<'input> {
         }
 
         println!(
-            "      WARNING: Field '{}' not found, defaulting to index 0",
+            "      WARNING: Field '{}' not found anywhere, defaulting to index 0",
             column_name
         );
         // Default to 0 if not found
@@ -3794,9 +3809,7 @@ impl<'input> RelationVisitor<'input> {
                 let subquery_index = self.get_next_subquery_index(&parent_name);
                 println!(
                     "      Marking '{}' as subquery of '{}' with index {}",
-                    relation_name,
-                    parent_name,
-                    subquery_index
+                    relation_name, parent_name, subquery_index
                 );
                 rel_symbol.set_parent_query_location(parent_location);
                 rel_symbol.set_parent_query_index(subquery_index);
@@ -3942,9 +3955,7 @@ impl<'input> RelationVisitor<'input> {
                 let subquery_index = self.get_next_subquery_index(&parent_name);
                 println!(
                     "      Marking '{}' as IN predicate subquery of '{}' with index {}",
-                    relation_name,
-                    parent_name,
-                    subquery_index
+                    relation_name, parent_name, subquery_index
                 );
                 rel_symbol.set_parent_query_location(parent_location);
                 rel_symbol.set_parent_query_index(subquery_index);
@@ -4011,9 +4022,7 @@ impl<'input> RelationVisitor<'input> {
                 let subquery_index = self.get_next_subquery_index(&parent_name);
                 println!(
                     "      Marking '{}' as SET predicate subquery of '{}' with index {}",
-                    relation_name,
-                    parent_name,
-                    subquery_index
+                    relation_name, parent_name, subquery_index
                 );
                 rel_symbol.set_parent_query_location(parent_location);
                 rel_symbol.set_parent_query_index(subquery_index);
@@ -4546,19 +4555,19 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
 
             // Map the join type string to the protobuf enum value
             let join_type_enum = match join_type_str.as_str() {
-                "INNER" => 1,           // JOIN_TYPE_INNER
-                "OUTER" => 2,           // JOIN_TYPE_OUTER
-                "LEFT" => 3,            // JOIN_TYPE_LEFT
-                "RIGHT" => 4,           // JOIN_TYPE_RIGHT
-                "LEFT_SEMI" => 5,       // JOIN_TYPE_LEFT_SEMI
-                "RIGHT_SEMI" => 6,      // JOIN_TYPE_RIGHT_SEMI
-                "LEFT_ANTI" => 7,       // JOIN_TYPE_LEFT_ANTI
-                "RIGHT_ANTI" => 8,      // JOIN_TYPE_RIGHT_ANTI
-                "LEFT_SINGLE" => 9,     // JOIN_TYPE_LEFT_SINGLE
-                "RIGHT_SINGLE" => 10,   // JOIN_TYPE_RIGHT_SINGLE
-                "LEFT_MARK" => 11,      // JOIN_TYPE_LEFT_MARK
-                "RIGHT_MARK" => 12,     // JOIN_TYPE_RIGHT_MARK
-                _ => 0,                 // JOIN_TYPE_UNSPECIFIED
+                "INNER" => 1,         // JOIN_TYPE_INNER
+                "OUTER" => 2,         // JOIN_TYPE_OUTER
+                "LEFT" => 3,          // JOIN_TYPE_LEFT
+                "RIGHT" => 4,         // JOIN_TYPE_RIGHT
+                "LEFT_SEMI" => 5,     // JOIN_TYPE_LEFT_SEMI
+                "RIGHT_SEMI" => 6,    // JOIN_TYPE_RIGHT_SEMI
+                "LEFT_ANTI" => 7,     // JOIN_TYPE_LEFT_ANTI
+                "RIGHT_ANTI" => 8,    // JOIN_TYPE_RIGHT_ANTI
+                "LEFT_SINGLE" => 9,   // JOIN_TYPE_LEFT_SINGLE
+                "RIGHT_SINGLE" => 10, // JOIN_TYPE_RIGHT_SINGLE
+                "LEFT_MARK" => 11,    // JOIN_TYPE_LEFT_MARK
+                "RIGHT_MARK" => 12,   // JOIN_TYPE_RIGHT_MARK
+                _ => 0,               // JOIN_TYPE_UNSPECIFIED
             };
 
             // Set the join type on the current relation (should be a join relation)
@@ -4570,15 +4579,24 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                             match &mut relation_data.relation.rel_type {
                                 Some(RelType::Join(join_rel)) => {
                                     join_rel.r#type = join_type_enum;
-                                    println!("  Set join type to {} ({})", join_type_str, join_type_enum);
+                                    println!(
+                                        "  Set join type to {} ({})",
+                                        join_type_str, join_type_enum
+                                    );
                                 }
                                 Some(RelType::HashJoin(join_rel)) => {
                                     join_rel.r#type = join_type_enum;
-                                    println!("  Set hash join type to {} ({})", join_type_str, join_type_enum);
+                                    println!(
+                                        "  Set hash join type to {} ({})",
+                                        join_type_str, join_type_enum
+                                    );
                                 }
                                 Some(RelType::MergeJoin(join_rel)) => {
                                     join_rel.r#type = join_type_enum;
-                                    println!("  Set merge join type to {} ({})", join_type_str, join_type_enum);
+                                    println!(
+                                        "  Set merge join type to {} ({})",
+                                        join_type_str, join_type_enum
+                                    );
                                 }
                                 _ => {
                                     eprintln!("  Warning: TYPE property used on non-join relation");
@@ -5471,6 +5489,12 @@ impl<'input> SubqueryRelationVisitor<'input> {
                     }
                 }
             }
+            Some(RexType::Cast(cast)) => {
+                // Recursively fix the input expression
+                if let Some(inner_expr) = &mut cast.input {
+                    self.fix_expression_outer_references(inner_expr, relation_symbol);
+                }
+            }
             _ => {
                 // Other expression types - we can add support as needed
             }
@@ -5514,20 +5538,27 @@ impl<'input> SubstraitPlanParserVisitor<'input> for SubqueryRelationVisitor<'inp
                 self.find_field_reference_by_name(&column_name, &current_rel);
 
             if let Some(index) = field_index {
-                // Store field info for ALL field references (both local and outer)
-                // This ensures the index stays in sync when consuming in fix_expression_outer_references
-                self.expression_field_info
-                    .borrow_mut()
-                    .push((index, steps_out));
-                if steps_out > 0 {
-                    println!(
-                        "      ✓ Stored '{}' as outer reference: field_index={}, steps_out={}",
-                        column_name, index, steps_out
-                    );
+                // Only store field info for relations that are in subqueries
+                // This ensures we don't accumulate entries for non-subquery relations
+                if self.get_parent_query_relation(&current_rel).is_some() {
+                    self.expression_field_info
+                        .borrow_mut()
+                        .push((index, steps_out));
+                    if steps_out > 0 {
+                        println!(
+                            "      ✓ Stored '{}' as outer reference: field_index={}, steps_out={}",
+                            column_name, index, steps_out
+                        );
+                    } else {
+                        println!(
+                            "      ✓ Stored '{}' as local reference: field_index={}, steps_out=0",
+                            column_name, index
+                        );
+                    }
                 } else {
                     println!(
-                        "      ✓ Stored '{}' as local reference: field_index={}, steps_out=0",
-                        column_name, index
+                        "      ✗ Skipped storing '{}' (not in subquery): field_index={}, steps_out={}",
+                        column_name, index, steps_out
                     );
                 }
             } else {

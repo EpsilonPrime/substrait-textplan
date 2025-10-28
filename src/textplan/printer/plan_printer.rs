@@ -495,11 +495,16 @@ impl PlanPrinter {
             if let Ok(blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
                     if let Some(RelType::Project(project_rel)) = &relation_data.relation.rel_type {
-                        let field_names: Vec<String> = relation_data.generated_field_references
+                        let field_names: Vec<String> = relation_data
+                            .generated_field_references
                             .iter()
                             .map(|f| f.name().to_string())
                             .collect();
-                        (project_rel.expressions.clone(), project_rel.common.clone(), field_names)
+                        (
+                            project_rel.expressions.clone(),
+                            project_rel.common.clone(),
+                            field_names,
+                        )
                     } else {
                         (Vec::new(), None, Vec::new())
                     }
@@ -520,7 +525,10 @@ impl PlanPrinter {
 
             // Add NAMED clause if this expression has a corresponding generated field name
             if i < generated_field_names.len() {
-                result.push_str(&format!("{}expression {} NAMED {};\n", indent, expr_text, generated_field_names[i]));
+                result.push_str(&format!(
+                    "{}expression {} NAMED {};\n",
+                    indent, expr_text, generated_field_names[i]
+                ));
             } else {
                 result.push_str(&format!("{}expression {};\n", indent, expr_text));
             }
@@ -1022,7 +1030,12 @@ impl PlanPrinter {
                 pipeline.insert(0, relation_name.clone());
 
                 // Create a pipeline ID from the entire path
-                let pipeline_id = pipeline.iter().rev().cloned().collect::<Vec<_>>().join(" -> ");
+                let pipeline_id = pipeline
+                    .iter()
+                    .rev()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
 
                 // Skip if we've already printed this pipeline
                 if printed_pipelines.contains(&pipeline_id) {
@@ -1048,7 +1061,12 @@ impl PlanPrinter {
                 let pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
 
                 // Create a pipeline ID from the entire path
-                let pipeline_id = pipeline.iter().rev().cloned().collect::<Vec<_>>().join(" -> ");
+                let pipeline_id = pipeline
+                    .iter()
+                    .rev()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
 
                 // Skip if we've already printed this pipeline
                 if printed_pipelines.contains(&pipeline_id) {

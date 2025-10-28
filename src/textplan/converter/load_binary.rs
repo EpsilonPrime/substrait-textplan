@@ -353,7 +353,8 @@ fn extract_and_add_subquery_pipelines(
         })?;
 
     // Extract subquery pipeline starts
-    let subquery_starts = extract_subquery_starts(symbol_table, parent_symbol, &relation_data.relation)?;
+    let subquery_starts =
+        extract_subquery_starts(symbol_table, parent_symbol, &relation_data.relation)?;
 
     println!(
         "    Found {} subquery pipeline starts for '{}'",
@@ -389,12 +390,20 @@ fn extract_subquery_starts(
         }
         Some(RelType::Project(project_rel)) => {
             for expr in &project_rel.expressions {
-                starts.extend(extract_subquery_starts_from_expression(symbol_table, parent_symbol, expr)?);
+                starts.extend(extract_subquery_starts_from_expression(
+                    symbol_table,
+                    parent_symbol,
+                    expr,
+                )?);
             }
         }
         Some(RelType::Join(join_rel)) => {
             if let Some(expr) = &join_rel.expression {
-                starts.extend(extract_subquery_starts_from_expression(symbol_table, parent_symbol, expr)?);
+                starts.extend(extract_subquery_starts_from_expression(
+                    symbol_table,
+                    parent_symbol,
+                    expr,
+                )?);
             }
         }
         _ => {}
