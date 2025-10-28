@@ -2292,18 +2292,21 @@ impl<'input> RelationVisitor<'input> {
         };
 
         // Phase 2: Create symbols without holding any locks
-        // Note: Only complex expressions are added to generated_field_references
-        // Field selections are pass-throughs and don't create new fields
+        // IMPORTANT: Both field selections AND complex expressions are added to generated_field_references.
+        // Field selections reuse existing symbols but still occupy positions in the generated list.
+        // This matches substrait-cpp behavior (SubstraitPlanRelationVisitor.cpp:1983).
         let mut generated_symbols = Vec::new();
         for (expr_num, info) in expr_infos.into_iter().enumerate() {
             match info {
                 ExprInfo::FieldSelection(field_sym) => {
-                    // Field selections don't create new fields, skip
+                    // Field selections reuse existing field symbols but add them to generated_field_references
+                    // This is critical for emit to find the correct indices!
                     println!(
-                        "        Expr {}: field selection '{}' -> skipping (not a generated field)",
+                        "        Expr {}: field selection '{}' -> adding to generated_field_references",
                         expr_num,
                         field_sym.name()
                     );
+                    generated_symbols.push(field_sym);
                 }
                 ExprInfo::ComplexExpression(alias) => {
                     // Get unique name and create symbol

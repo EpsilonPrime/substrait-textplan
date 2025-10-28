@@ -406,27 +406,39 @@ fn populate_project_emit(
                 let emit_count = relation_data.output_field_references.len();
 
                 if emit_count > 0 {
-                    // Calculate input field count
-                    // The input field count comes from the input relation's output schema
-                    let input_field_count = if let Some(input_rel) = &project_rel.input {
-                        // TODO: Calculate actual input field count from input relation's schema
-                        // For now, we'll use a placeholder calculation
-                        // This needs to walk the input relation and count its output fields
-                        count_relation_output_fields(input_rel)
-                    } else {
-                        0
-                    };
+                    // Build output mapping by finding where each output_field_reference appears
+                    // IMPORTANT: Must search generated_field_references FIRST (like substrait-cpp),
+                    // because field selections create entries in BOTH field_references AND
+                    // generated_field_references (same Arc pointer), and we need the generated index.
+                    let field_refs_len = relation_data.field_references.len();
+                    let mut output_mapping = Vec::new();
 
-                    // Build output mapping: indices of the expressions that were emitted
-                    // The expressions start after the input fields
-                    let output_mapping: Vec<i32> = (0..emit_count)
-                        .map(|i| (input_field_count + i) as i32)
-                        .collect();
+                    for output_field in &relation_data.output_field_references {
+                        // First search in generated_field_references
+                        if let Some(gen_index) = relation_data.generated_field_references.iter()
+                            .position(|f| Arc::ptr_eq(f, output_field)) {
+                            // Found in generated fields - use offset index
+                            output_mapping.push((field_refs_len + gen_index) as i32);
+                        } else if let Some(field_index) = relation_data.field_references.iter()
+                            .position(|f| Arc::ptr_eq(f, output_field)) {
+                            // Found in field references
+                            output_mapping.push(field_index as i32);
+                        } else {
+                            // Symbol not found - this shouldn't happen, but use a fallback
+                            println!(
+                                "  WARNING: Output field '{}' not found in field space for '{}'",
+                                output_field.name(),
+                                symbol.name()
+                            );
+                            output_mapping.push(0);
+                        }
+                    }
 
                     println!(
-                        "  Building emit for project '{}': input_fields={}, emits={}, mapping={:?}",
+                        "  Building emit for project '{}': field_refs={}, generated={}, emits={}, mapping={:?}",
                         symbol.name(),
-                        input_field_count,
+                        relation_data.field_references.len(),
+                        relation_data.generated_field_references.len(),
                         emit_count,
                         output_mapping
                     );
