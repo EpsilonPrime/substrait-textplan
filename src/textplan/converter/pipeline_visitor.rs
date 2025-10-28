@@ -554,13 +554,22 @@ impl PlanProtoVisitor for PipelineVisitor {
                             });
 
                             // Set parent query index to mark this as a subquery
-                            // We use index 0 as a marker that this is a subquery (C++ uses actual index)
-                            println!(
-                                "DEBUG PIPELINE: Setting parent_query_index for '{}' (parent: '{}')",
-                                subquery_sym.name(),
-                                current_rel.name()
-                            );
-                            self.symbol_table.set_parent_query_index(&subquery_sym, 0);
+                            // Only set if not already set (InitialPlanVisitor sets the proper index)
+                            if subquery_sym.parent_query_index() < 0 {
+                                println!(
+                                    "DEBUG PIPELINE: Setting parent_query_index for '{}' (parent: '{}') to 0",
+                                    subquery_sym.name(),
+                                    current_rel.name()
+                                );
+                                self.symbol_table.set_parent_query_index(&subquery_sym, 0);
+                            } else {
+                                println!(
+                                    "DEBUG PIPELINE: parent_query_index for '{}' (parent: '{}') already set to {}",
+                                    subquery_sym.name(),
+                                    current_rel.name(),
+                                    subquery_sym.parent_query_index()
+                                );
+                            }
                         }
 
                         // Set pipeline_start on the terminus (subquery relation itself)

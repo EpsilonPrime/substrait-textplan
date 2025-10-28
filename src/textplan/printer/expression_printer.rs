@@ -924,6 +924,12 @@ impl<'a> ExpressionPrinter<'a> {
         if let Some(_tuples) = &set_pred.tuples {
             // Look up the relation symbol for this subquery
             if let Some(scope) = self.current_scope {
+                println!(
+                    "DEBUG PRINTER: Looking for SET predicate subquery with parent location hash: {}, index: {}",
+                    scope.source_location().location_hash(),
+                    self.current_scope_index
+                );
+
                 let symbol = self.symbol_table.lookup_symbol_by_parent_query_and_type(
                     scope.source_location(),
                     self.current_scope_index,
@@ -932,8 +938,17 @@ impl<'a> ExpressionPrinter<'a> {
                 self.current_scope_index += 1;
 
                 if let Some(sym) = symbol {
+                    println!(
+                        "DEBUG PRINTER: Found SET predicate subquery relation: {}",
+                        sym.name()
+                    );
                     result.push_str(&sym.name());
                 } else {
+                    println!(
+                        "DEBUG PRINTER: Could NOT find SET predicate subquery with parent hash: {}, index: {}",
+                        scope.source_location().location_hash(),
+                        self.current_scope_index - 1
+                    );
                     return Err(TextPlanError::InvalidExpression(
                         "Could not find SET predicate subquery relation symbol".to_string(),
                     ));

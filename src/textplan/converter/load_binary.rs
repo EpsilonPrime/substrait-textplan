@@ -417,23 +417,29 @@ fn extract_subquery_starts_from_expression(
     let mut starts = Vec::new();
 
     match &expr.rex_type {
-        Some(RexType::Subquery(_subquery)) => {
-            // The subquery relation should already have parent_query_location set by InitialPlanVisitor
-            // We can find it by looking for relations with matching parent_query info
-            // However, for now, let's just find all relations that are part of a subquery
-            // by checking which relations have parent_query_index >= 0
+        Some(RexType::Subquery(subquery)) => {
+            // Extract the subquery relation based on its type
+            let subquery_rel: Option<&substrait::proto::Rel> = match &subquery.subquery_type {
+                Some(SubqueryType::Scalar(scalar)) => scalar.input.as_deref(),
+                Some(SubqueryType::InPredicate(in_pred)) => in_pred.haystack.as_deref(),
+                Some(SubqueryType::SetPredicate(set_pred)) => set_pred.tuples.as_deref(),
+                Some(SubqueryType::SetComparison(set_comp)) => set_comp.right.as_deref(),
+                None => {
+                    println!("      WARNING: Subquery has no type set");
+                    None
+                }
+            };
 
-            // For each relation in the symbol table, check if it's a subquery relation
-            for symbol in symbol_table.symbols() {
-                if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
-                    // Check if this relation has parent_query info (indicates it's a subquery)
-                    if symbol.parent_query_index() >= 0 {
-                        // Find the pipeline start for this relation
-                        if let Some(start) = find_pipeline_start(symbol_table, &symbol)? {
-                            println!("      Found subquery pipeline start: '{}'", start.name());
-                            if !starts.iter().any(|s| Arc::ptr_eq(s, &start)) {
-                                starts.push(start);
-                            }
+            if let Some(rel) = subquery_rel {
+                // Find the relation symbol for this subquery by traversing the relation tree
+                // and finding relations with parent_query_index >= 0
+                let subquery_symbols = find_subquery_relations_in_rel(symbol_table, rel)?;
+
+                for symbol in subquery_symbols {
+                    if let Some(start) = find_pipeline_start(symbol_table, &symbol)? {
+                        println!("      Found subquery pipeline start: '{}'", start.name());
+                        if !starts.iter().any(|s| Arc::ptr_eq(s, &start)) {
+                            starts.push(start);
                         }
                     }
                 }
@@ -456,6 +462,27 @@ fn extract_subquery_starts_from_expression(
     }
 
     Ok(starts)
+}
+
+/// Finds all relation symbols in the symbol table that are part of a subquery
+/// by checking if they have parent_query_index >= 0 and match the given Rel.
+fn find_subquery_relations_in_rel(
+    symbol_table: &SymbolTable,
+    _rel: &substrait::proto::Rel,
+) -> Result<Vec<Arc<SymbolInfo>>, TextPlanError> {
+    // Find all relations with parent_query_index >= 0
+    // These are relations that are part of a subquery
+    let mut subquery_rels = Vec::new();
+
+    for symbol in symbol_table.symbols() {
+        if symbol.symbol_type() == crate::textplan::SymbolType::Relation
+            && symbol.parent_query_index() >= 0
+        {
+            subquery_rels.push(symbol.clone());
+        }
+    }
+
+    Ok(subquery_rels)
 }
 
 /// Finds the pipeline start for a given relation by following continuing_pipeline backwards.
