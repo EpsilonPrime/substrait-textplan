@@ -974,7 +974,7 @@ impl PlanPrinter {
 
         let mut text = String::new();
         let mut has_previous_text = false;
-        let mut printed_subquery_pipelines = HashSet::new();
+        let mut printed_pipelines = HashSet::new();
 
         for info in symbol_table.symbols() {
             // Only process PlanRelation and Relation symbols
@@ -1006,10 +1006,20 @@ impl PlanPrinter {
             }; // Lock is released here
 
             // Now process pipelines without holding the lock
-            // Process new pipelines
+            // Process new pipelines (avoid duplicates)
             for pipeline_start in &new_pipeline_starts {
                 let mut pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
                 pipeline.insert(0, relation_name.clone());
+
+                // Create a pipeline ID from the entire path
+                let pipeline_id = pipeline.iter().rev().cloned().collect::<Vec<_>>().join(" -> ");
+
+                // Skip if we've already printed this pipeline
+                if printed_pipelines.contains(&pipeline_id) {
+                    continue;
+                }
+
+                printed_pipelines.insert(pipeline_id);
 
                 // Output in reverse order (from leaf to root)
                 text.push_str("  ");
@@ -1025,16 +1035,17 @@ impl PlanPrinter {
 
             // Process subquery pipelines (avoid duplicates)
             for pipeline_start in &subquery_pipeline_starts {
-                // Use the pipeline start's name as a unique identifier
-                let pipeline_id = pipeline_start.name().to_string();
+                let pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
 
-                // Skip if we've already printed this subquery pipeline
-                if printed_subquery_pipelines.contains(&pipeline_id) {
+                // Create a pipeline ID from the entire path
+                let pipeline_id = pipeline.iter().rev().cloned().collect::<Vec<_>>().join(" -> ");
+
+                // Skip if we've already printed this pipeline
+                if printed_pipelines.contains(&pipeline_id) {
                     continue;
                 }
 
-                printed_subquery_pipelines.insert(pipeline_id);
-                let pipeline = self.pipeline_to_path(symbol_table, pipeline_start);
+                printed_pipelines.insert(pipeline_id);
 
                 // Output in reverse order
                 text.push_str("  ");
