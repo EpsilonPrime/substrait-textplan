@@ -1890,6 +1890,7 @@ pub struct RelationVisitor<'input> {
     current_relation_scope: Option<Arc<SymbolInfo>>,
     prescan_mode: bool,
     processing_emit: bool, // Track if we're currently processing an emit clause
+    subquery_index_counters: std::collections::HashMap<String, i32>, // Track subquery indices per parent
     _phantom: std::marker::PhantomData<&'input ()>,
 }
 
@@ -1928,6 +1929,7 @@ impl<'input> RelationVisitor<'input> {
             current_relation_scope: None,
             prescan_mode: false,
             processing_emit: false,
+            subquery_index_counters: std::collections::HashMap::new(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -1935,6 +1937,14 @@ impl<'input> RelationVisitor<'input> {
     /// Sets prescan mode - when true, only marks subqueries without building expressions.
     pub fn set_prescan_mode(&mut self, prescan: bool) {
         self.prescan_mode = prescan;
+    }
+
+    /// Gets and increments the next subquery index for a given parent relation.
+    fn get_next_subquery_index(&mut self, parent_name: &str) -> i32 {
+        let counter = self.subquery_index_counters.entry(parent_name.to_string()).or_insert(0);
+        let index = *counter;
+        *counter += 1;
+        index
     }
 
     /// Gets the symbol table.
@@ -3729,13 +3739,17 @@ impl<'input> RelationVisitor<'input> {
             // Mark this relation as a subquery by setting its parent query info
             // This will prevent it from being output as a top-level PlanRel in save_binary
             if let Some(parent_rel) = self.current_relation_scope() {
+                let parent_name = parent_rel.name().to_string();
+                let parent_location = parent_rel.source_location().box_clone();
+                let subquery_index = self.get_next_subquery_index(&parent_name);
                 println!(
-                    "      Marking '{}' as subquery of '{}'",
+                    "      Marking '{}' as subquery of '{}' with index {}",
                     relation_name,
-                    parent_rel.name()
+                    parent_name,
+                    subquery_index
                 );
-                rel_symbol.set_parent_query_location(parent_rel.source_location().box_clone());
-                rel_symbol.set_parent_query_index(0);
+                rel_symbol.set_parent_query_location(parent_location);
+                rel_symbol.set_parent_query_index(subquery_index);
             }
         } else {
             println!(
@@ -3781,15 +3795,19 @@ impl<'input> RelationVisitor<'input> {
             if let Some(relation_symbol) = self.symbol_table.lookup_symbol_by_name(&relation_name) {
                 // Mark this relation as a subquery by setting its parent query info
                 if let Some(parent_rel) = self.current_relation_scope() {
-                    let parent_loc = parent_rel.source_location();
+                    let parent_name = parent_rel.name().to_string();
+                    let parent_loc = parent_rel.source_location().box_clone();
+                    let parent_loc_hash = parent_rel.source_location().location_hash();
+                    let subquery_index = self.get_next_subquery_index(&parent_name);
                     println!(
-                        "      Marking '{}' as scalar subquery of '{}' (location hash: {})",
+                        "      Marking '{}' as scalar subquery of '{}' with index {} (location hash: {})",
                         relation_name,
-                        parent_rel.name(),
-                        parent_loc.location_hash()
+                        parent_name,
+                        subquery_index,
+                        parent_loc_hash
                     );
-                    relation_symbol.set_parent_query_location(parent_loc.box_clone());
-                    relation_symbol.set_parent_query_index(0);
+                    relation_symbol.set_parent_query_location(parent_loc);
+                    relation_symbol.set_parent_query_index(subquery_index);
 
                     // Set pipeline_start on all relations in the subquery pipeline
                     // (following C++ PipelineVisitor pattern)
@@ -3869,13 +3887,17 @@ impl<'input> RelationVisitor<'input> {
         if let Some(rel_symbol) = self.symbol_table().lookup_symbol_by_name(&relation_name) {
             // Mark this relation as a subquery by setting its parent query info
             if let Some(parent_rel) = self.current_relation_scope() {
+                let parent_name = parent_rel.name().to_string();
+                let parent_location = parent_rel.source_location().box_clone();
+                let subquery_index = self.get_next_subquery_index(&parent_name);
                 println!(
-                    "      Marking '{}' as IN predicate subquery of '{}'",
+                    "      Marking '{}' as IN predicate subquery of '{}' with index {}",
                     relation_name,
-                    parent_rel.name()
+                    parent_name,
+                    subquery_index
                 );
-                rel_symbol.set_parent_query_location(parent_rel.source_location().box_clone());
-                rel_symbol.set_parent_query_index(0);
+                rel_symbol.set_parent_query_location(parent_location);
+                rel_symbol.set_parent_query_index(subquery_index);
             }
         } else {
             println!(
@@ -3934,13 +3956,17 @@ impl<'input> RelationVisitor<'input> {
         if let Some(rel_symbol) = self.symbol_table().lookup_symbol_by_name(&relation_name) {
             // Mark this relation as a subquery by setting its parent query info
             if let Some(parent_rel) = self.current_relation_scope() {
+                let parent_name = parent_rel.name().to_string();
+                let parent_location = parent_rel.source_location().box_clone();
+                let subquery_index = self.get_next_subquery_index(&parent_name);
                 println!(
-                    "      Marking '{}' as SET predicate subquery of '{}'",
+                    "      Marking '{}' as SET predicate subquery of '{}' with index {}",
                     relation_name,
-                    parent_rel.name()
+                    parent_name,
+                    subquery_index
                 );
-                rel_symbol.set_parent_query_location(parent_rel.source_location().box_clone());
-                rel_symbol.set_parent_query_index(0);
+                rel_symbol.set_parent_query_location(parent_location);
+                rel_symbol.set_parent_query_index(subquery_index);
             }
         } else {
             println!(
