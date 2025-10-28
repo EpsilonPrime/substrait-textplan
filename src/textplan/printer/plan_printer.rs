@@ -344,6 +344,9 @@ impl PlanPrinter {
             RelationType::Fetch => {
                 self.add_fetch_relation_properties(relation, symbol_table, &indent, &mut result)?;
             }
+            RelationType::Join => {
+                self.add_join_relation_properties(relation, symbol_table, &indent, &mut result)?;
+            }
             // Add cases for other relation types as needed
             _ => {
                 // Default case: add a comment for unimplemented relation types
@@ -586,7 +589,7 @@ impl PlanPrinter {
         }
 
         // Print measures
-        for measure in &measures {
+        for (measure_idx, measure) in measures.iter().enumerate() {
             result.push_str(&format!("{}measure {{\n", indent));
             let measure_indent = format!("{}  ", indent);
 
@@ -594,14 +597,34 @@ impl PlanPrinter {
                 let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
                 let agg_text = expr_printer.print_aggregate_function(agg_func)?;
 
-                // Look up measure symbol name
-                let measure_name = self.lookup_measure_name(symbol_table, measure);
+                // Look up measure symbol name by index
+                let measure_name =
+                    self.lookup_measure_name_by_index(symbol_table, relation, measure_idx);
 
                 result.push_str(&format!("{}measure {}", measure_indent, agg_text));
                 if let Some(name) = measure_name {
                     result.push_str(&format!(" NAMED {}", name));
                 }
                 result.push_str(";\n");
+
+                // Add invocation if not unspecified (following C++ pattern)
+                // Only print invocation when it's explicitly set (not the default)
+                if agg_func.invocation
+                    != ::substrait::proto::aggregate_function::AggregationInvocation::Unspecified
+                        as i32
+                {
+                    let invocation_str = match agg_func.invocation {
+                        x if x == ::substrait::proto::aggregate_function::AggregationInvocation::All as i32 => "all",
+                        x if x == ::substrait::proto::aggregate_function::AggregationInvocation::Distinct as i32 => {
+                            "distinct"
+                        }
+                        _ => "unspecified",
+                    };
+                    result.push_str(&format!(
+                        "{}invocation {};\n",
+                        measure_indent, invocation_str
+                    ));
+                }
             }
 
             result.push_str(&format!("{}}}\n", indent));
@@ -721,6 +744,62 @@ impl PlanPrinter {
 
         // Always print count
         result.push_str(&format!("{}count {};\n", indent, count));
+
+        Ok(())
+    }
+
+    fn add_join_relation_properties(
+        &self,
+        relation: &Arc<SymbolInfo>,
+        symbol_table: &SymbolTable,
+        indent: &str,
+        result: &mut String,
+    ) -> Result<(), TextPlanError> {
+        use ::substrait::proto::rel::RelType;
+
+        // Extract join properties (clone to avoid holding the lock)
+        let (join_type, join_expression) = if let Some(blob_lock) = &relation.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    if let Some(RelType::Join(join_rel)) = &relation_data.relation.rel_type {
+                        (join_rel.r#type, join_rel.expression.clone())
+                    } else {
+                        (0, None)
+                    }
+                } else {
+                    (0, None)
+                }
+            } else {
+                (0, None)
+            }
+        } else {
+            (0, None)
+        };
+
+        // Print join type
+        let type_str = match join_type {
+            1 => "INNER",
+            2 => "OUTER",
+            3 => "LEFT",
+            4 => "RIGHT",
+            5 => "LEFT_SEMI",
+            6 => "RIGHT_SEMI",
+            7 => "LEFT_ANTI",
+            8 => "RIGHT_ANTI",
+            9 => "LEFT_SINGLE",
+            10 => "RIGHT_SINGLE",
+            11 => "LEFT_MARK",
+            12 => "RIGHT_MARK",
+            _ => "UNSPECIFIED",
+        };
+        result.push_str(&format!("{}type {};\n", indent, type_str));
+
+        // Print join expression if present
+        if let Some(expr) = join_expression {
+            let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
+            let expr_text = expr_printer.print_expression(&expr)?;
+            result.push_str(&format!("{}expression {};\n", indent, expr_text));
+        }
 
         Ok(())
     }
@@ -1303,6 +1382,47 @@ impl PlanPrinter {
         for symbol in symbol_table.symbols() {
             if symbol.symbol_type() == SymbolType::Measure {
                 return Some(symbol.name().to_string());
+            }
+        }
+        None
+    }
+
+    fn lookup_measure_name_by_index(
+        &self,
+        symbol_table: &SymbolTable,
+        relation: &Arc<SymbolInfo>,
+        measure_index: usize,
+    ) -> Option<String> {
+        // Get the relation's generated_field_references and find the measure at the given index
+        if let Some(blob_lock) = &relation.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    // For aggregates, measures are in generated_field_references after grouping fields
+                    // First, determine how many grouping fields there are
+                    let num_grouping_fields =
+                        if let Some(::substrait::proto::rel::RelType::Aggregate(ref agg_rel)) =
+                            relation_data.relation.rel_type
+                        {
+                            agg_rel
+                                .groupings
+                                .first()
+                                .map(|g| g.grouping_expressions.len())
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        };
+
+                    // The measure at measure_index is at generated_field_references[num_grouping_fields + measure_index]
+                    let field_ref_index = num_grouping_fields + measure_index;
+                    if field_ref_index < relation_data.generated_field_references.len() {
+                        let field_symbol =
+                            &relation_data.generated_field_references[field_ref_index];
+                        // Only return the name if it's a Measure symbol
+                        if field_symbol.symbol_type() == SymbolType::Measure {
+                            return Some(field_symbol.name().to_string());
+                        }
+                    }
+                }
             }
         }
         None

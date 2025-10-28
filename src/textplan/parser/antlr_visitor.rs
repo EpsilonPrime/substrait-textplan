@@ -946,8 +946,10 @@ impl<'input> MainPlanVisitor<'input> {
                                         cont_relation_data.generated_field_references.len());
 
                                     if !cont_relation_data.output_field_references.is_empty() {
-                                        println!("        Using output_field_references ({} fields)",
-                                            cont_relation_data.output_field_references.len());
+                                        println!(
+                                            "        Using output_field_references ({} fields)",
+                                            cont_relation_data.output_field_references.len()
+                                        );
                                         for field in &cont_relation_data.output_field_references {
                                             relation_data.field_references.push(field.clone());
                                         }
@@ -1031,9 +1033,15 @@ impl<'input> MainPlanVisitor<'input> {
                 "join" => (
                     RelationType::Join,
                     Rel {
-                        rel_type: Some(RelType::Join(Box::new(
-                            ::substrait::proto::JoinRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Join(Box::new(::substrait::proto::JoinRel {
+                            common: Some(::substrait::proto::RelCommon {
+                                emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
+                                    ::substrait::proto::rel_common::Direct {},
+                                )),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }))),
                     },
                 ),
                 "cross" => (
@@ -1102,17 +1110,29 @@ impl<'input> MainPlanVisitor<'input> {
                 "hash_join" => (
                     RelationType::HashJoin,
                     Rel {
-                        rel_type: Some(RelType::HashJoin(Box::new(
-                            ::substrait::proto::HashJoinRel::default(),
-                        ))),
+                        rel_type: Some(RelType::HashJoin(Box::new(::substrait::proto::HashJoinRel {
+                            common: Some(::substrait::proto::RelCommon {
+                                emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
+                                    ::substrait::proto::rel_common::Direct {},
+                                )),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }))),
                     },
                 ),
                 "merge_join" => (
                     RelationType::MergeJoin,
                     Rel {
-                        rel_type: Some(RelType::MergeJoin(Box::new(
-                            ::substrait::proto::MergeJoinRel::default(),
-                        ))),
+                        rel_type: Some(RelType::MergeJoin(Box::new(::substrait::proto::MergeJoinRel {
+                            common: Some(::substrait::proto::RelCommon {
+                                emit_kind: Some(::substrait::proto::rel_common::EmitKind::Direct(
+                                    ::substrait::proto::rel_common::Direct {},
+                                )),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }))),
                     },
                 ),
                 "exchange" => (
@@ -1869,7 +1889,7 @@ pub struct RelationVisitor<'input> {
     error_listener: Arc<ErrorListener>,
     current_relation_scope: Option<Arc<SymbolInfo>>,
     prescan_mode: bool,
-    processing_emit: bool,  // Track if we're currently processing an emit clause
+    processing_emit: bool, // Track if we're currently processing an emit clause
     _phantom: std::marker::PhantomData<&'input ()>,
 }
 
@@ -2198,7 +2218,9 @@ impl<'input> RelationVisitor<'input> {
                                 );
 
                                 let mut infos = Vec::new();
-                                for (expression_number, expr) in project_rel.expressions.iter().enumerate() {
+                                for (expression_number, expr) in
+                                    project_rel.expressions.iter().enumerate()
+                                {
                                     // Check if this is a simple field selection
                                     if let Some(substrait::proto::expression::RexType::Selection(
                                         field_ref,
@@ -2279,7 +2301,8 @@ impl<'input> RelationVisitor<'input> {
                     // Field selections don't create new fields, skip
                     println!(
                         "        Expr {}: field selection '{}' -> skipping (not a generated field)",
-                        expr_num, field_sym.name()
+                        expr_num,
+                        field_sym.name()
                     );
                 }
                 ExprInfo::ComplexExpression(alias) => {
@@ -2706,7 +2729,8 @@ impl<'input> RelationVisitor<'input> {
             subquery_root.name()
         );
 
-        // Walk the pipeline backward via continuing_pipeline and set pipeline_start
+        // Walk the pipeline backward via continuing_pipeline and set both pipeline_start
+        // AND parent_query_index on all relations in the subquery (following substrait-cpp)
         if let Some(blob_lock) = &subquery_root.blob {
             if let Ok(mut blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
@@ -2716,7 +2740,12 @@ impl<'input> RelationVisitor<'input> {
                     // Walk the continuing_pipeline chain
                     let mut current = relation_data.continuing_pipeline.clone();
                     while let Some(current_rel) = current {
-                        println!("        Setting pipeline_start on '{}'", current_rel.name());
+                        println!("        Setting pipeline_start and parent_query_index on '{}'", current_rel.name());
+
+                        // Set parent_query_index to mark this relation as part of the subquery
+                        // This must match substrait-cpp behavior
+                        current_rel.set_parent_query_index(0);
+
                         if let Some(curr_blob_lock) = &current_rel.blob {
                             if let Ok(mut curr_blob_data) = curr_blob_lock.lock() {
                                 if let Some(curr_relation_data) = curr_blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
@@ -3035,7 +3064,6 @@ impl<'input> RelationVisitor<'input> {
                 }
             }
 
-
             if let Some(blob_lock) = &relation_symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
                     if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
@@ -3165,7 +3193,9 @@ impl<'input> RelationVisitor<'input> {
             use crate::textplan::parser::antlr::substraitplanparser::ExpressionContextAll;
 
             // Check if this is a column reference ending in _enum
-            if let ExpressionContextAll::ExpressionColumnContext(column_expr_ctx) = expr_ctx.as_ref() {
+            if let ExpressionContextAll::ExpressionColumnContext(column_expr_ctx) =
+                expr_ctx.as_ref()
+            {
                 if let Some(column_ctx) = column_expr_ctx.column_name() {
                     let column_text = column_ctx.get_text();
                     if column_text.ends_with("_enum") {
@@ -3552,9 +3582,7 @@ impl<'input> RelationVisitor<'input> {
                                     days,
                                     seconds,
                                     subseconds: 0, // Must be 0 when using microseconds
-                                    precision_mode: Some(PrecisionMode::Microseconds(
-                                        microseconds,
-                                    )),
+                                    precision_mode: Some(PrecisionMode::Microseconds(microseconds)),
                                 },
                             ))
                         } else {
@@ -3877,20 +3905,65 @@ impl<'input> RelationVisitor<'input> {
     /// Build a set predicate subquery expression (e.g., EXISTS IN SUBQUERY relation)
     fn build_set_predicate_subquery(
         &mut self,
-        _ctx: &ExpressionSetPredicateSubqueryContext<'input>,
+        ctx: &ExpressionSetPredicateSubqueryContext<'input>,
     ) -> ::substrait::proto::Expression {
-        println!("    Set predicate subquery: TODO - not implemented");
-        // TODO: Implement set predicate subquery
+        // Determine predicate operator (EXISTS or UNIQUE)
+        let predicate_op = if ctx.EXISTS().is_some() {
+            ::substrait::proto::expression::subquery::set_predicate::PredicateOp::Exists as i32
+        } else if ctx.UNIQUE().is_some() {
+            ::substrait::proto::expression::subquery::set_predicate::PredicateOp::Unique as i32
+        } else {
+            ::substrait::proto::expression::subquery::set_predicate::PredicateOp::Unspecified as i32
+        };
+
+        // Extract subquery relation reference
+        let relation_name = ctx
+            .relation_ref()
+            .map(|r| r.get_text())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        println!(
+            "    SET predicate subquery: op={}, relation={}",
+            predicate_op, relation_name
+        );
+
+        // Look up the subquery relation in the symbol table and mark it as a subquery
+        if let Some(rel_symbol) = self.symbol_table().lookup_symbol_by_name(&relation_name) {
+            // Mark this relation as a subquery by setting its parent query info
+            if let Some(parent_rel) = self.current_relation_scope() {
+                println!(
+                    "      Marking '{}' as SET predicate subquery of '{}'",
+                    relation_name,
+                    parent_rel.name()
+                );
+                rel_symbol.set_parent_query_location(parent_rel.source_location().box_clone());
+                rel_symbol.set_parent_query_index(0);
+            }
+        } else {
+            println!(
+                "      WARNING: SET predicate subquery relation '{}' not found",
+                relation_name
+            );
+        }
+
+        // NOTE: Following the pattern from InPredicate, we do NOT copy the Rel protobuf here.
+        // Instead, we leave `tuples` as None. Later, save_binary will build the Rel from the
+        // symbol tree using add_inputs_to_relation, ensuring inputs come from pipeline connections.
+        let tuples_rel = None;
+
         ::substrait::proto::Expression {
-            rex_type: Some(::substrait::proto::expression::RexType::Literal(
-                ::substrait::proto::expression::Literal {
-                    literal_type: Some(::substrait::proto::expression::literal::LiteralType::I64(
-                        0,
-                    )),
-                    nullable: false,
-                    type_variation_reference: 0,
+            rex_type: Some(::substrait::proto::expression::RexType::Subquery(Box::new(
+                ::substrait::proto::expression::Subquery {
+                    subquery_type: Some(
+                        ::substrait::proto::expression::subquery::SubqueryType::SetPredicate(
+                            Box::new(::substrait::proto::expression::subquery::SetPredicate {
+                                predicate_op,
+                                tuples: tuples_rel,
+                            }),
+                        ),
+                    ),
                 },
-            )),
+            ))),
         }
     }
 }
@@ -3965,7 +4038,10 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
             if let Some(blob_lock) = &relation_symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
                     if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                        let is_aggregate = matches!(&relation_data.relation.rel_type, Some(::substrait::proto::rel::RelType::Aggregate(_)));
+                        let is_aggregate = matches!(
+                            &relation_data.relation.rel_type,
+                            Some(::substrait::proto::rel::RelType::Aggregate(_))
+                        );
                         if is_aggregate {
                             let generated_refs = relation_data.generated_field_references.clone();
                             drop(blob_data);
@@ -3974,8 +4050,12 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                             // Now update outputFieldReferences
                             if let Some(blob_lock) = &relation_symbol.blob {
                                 if let Ok(mut blob_data) = blob_lock.lock() {
-                                    if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
-                                        relation_data.output_field_references.extend(generated_refs);
+                                    if let Some(relation_data) =
+                                        blob_data.downcast_mut::<RelationData>()
+                                    {
+                                        relation_data
+                                            .output_field_references
+                                            .extend(generated_refs);
                                         println!("  Aggregate '{}': copied {} generated fields to output_field_references",
                                             relation_symbol.name(),
                                             relation_data.output_field_references.len());
@@ -4045,7 +4125,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     }
 
     fn visit_relationExpression(&mut self, ctx: &RelationExpressionContext<'input>) {
-        // Add expression to the current relation (should be a Project)
+        // Add expression to the current relation (Project or Join)
         // Grammar: EXPRESSION expression SEMICOLON
         if let Some(relation_symbol) = self.current_relation_scope().cloned() {
             // Try to build actual expression from AST
@@ -4066,14 +4146,34 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                 }
             };
 
-            // Add the expression to the ProjectRel.expressions vector
+            // Add the expression to the appropriate relation type
             if let Some(blob_lock) = &relation_symbol.blob {
                 if let Ok(mut blob_data) = blob_lock.lock() {
                     if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                         // Get mutable access to the Rel
-                        if let Some(::substrait::proto::rel::RelType::Project(ref mut project_rel)) = relation_data.relation.rel_type {
-                            project_rel.expressions.push(expression);
-                            println!("  Added expression to project relation '{}'", relation_symbol.name());
+                        use ::substrait::proto::rel::RelType;
+                        match &mut relation_data.relation.rel_type {
+                            Some(RelType::Project(ref mut project_rel)) => {
+                                project_rel.expressions.push(expression);
+                                println!("  Added expression to project relation '{}'", relation_symbol.name());
+                            }
+                            Some(RelType::Join(ref mut join_rel)) => {
+                                join_rel.expression = Some(Box::new(expression));
+                                println!("  Set join expression on join relation '{}'", relation_symbol.name());
+                            }
+                            Some(RelType::HashJoin(ref mut join_rel)) => {
+                                // HashJoinRel uses post_join_filter, not expression
+                                join_rel.post_join_filter = Some(Box::new(expression));
+                                println!("  Set post-join filter on hash join relation '{}'", relation_symbol.name());
+                            }
+                            Some(RelType::MergeJoin(ref mut join_rel)) => {
+                                // MergeJoinRel uses post_join_filter, not expression
+                                join_rel.post_join_filter = Some(Box::new(expression));
+                                println!("  Set post-join filter on merge join relation '{}'", relation_symbol.name());
+                            }
+                            _ => {
+                                eprintln!("  Warning: EXPRESSION property used on unsupported relation type");
+                            }
                         }
                     }
                 }
@@ -4187,7 +4287,24 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
         // Add measures to the current relation (should be an Aggregate)
         // Grammar: MEASURE LEFTBRACE measure_detail* RIGHTBRACE
         if let Some(relation_symbol) = self.current_relation_scope().cloned() {
-            // Process each measure_detail to build actual measures
+            // First pass: collect invocation if specified
+            let mut invocation =
+                ::substrait::proto::aggregate_function::AggregationInvocation::Unspecified;
+            for measure_detail_ctx in ctx.measure_detail_all() {
+                if measure_detail_ctx.INVOCATION().is_some() {
+                    // Get the invocation value (id after INVOCATION keyword)
+                    if let Some(id_ctx) = measure_detail_ctx.id(0) {
+                        let invocation_str = id_ctx.get_text().to_lowercase();
+                        invocation = match invocation_str.as_str() {
+                            "all" => ::substrait::proto::aggregate_function::AggregationInvocation::All,
+                            "distinct" => ::substrait::proto::aggregate_function::AggregationInvocation::Distinct,
+                            _ => ::substrait::proto::aggregate_function::AggregationInvocation::Unspecified,
+                        };
+                    }
+                }
+            }
+
+            // Second pass: process each measure_detail to build actual measures
             for measure_detail_ctx in ctx.measure_detail_all() {
                 // Check if this is a MEASURE expression detail (not FILTER, INVOCATION, or sort)
                 if let Some(expr_ctx) = measure_detail_ctx.expression() {
@@ -4247,9 +4364,7 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                         arguments,
                         output_type,
                         phase: ::substrait::proto::AggregationPhase::InitialToResult.into(),
-                        invocation:
-                            ::substrait::proto::aggregate_function::AggregationInvocation::All
-                                .into(),
+                        invocation: invocation.into(),
                         ..Default::default()
                     };
 
@@ -4311,11 +4426,14 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                                         let field_index = num_grouping_fields + measure_idx;
 
                                         // Create a symbol for this measure alias
+                                        // Use get_unique_name to ensure uniqueness (matching converter behavior)
+                                        // Use SymbolType::Measure to match converter behavior
                                         let location = TextLocation::new(0, 0);
+                                        let unique_alias = self.symbol_table().get_unique_name(&alias);
                                         let measure_symbol = self.symbol_table_mut().define_symbol(
-                                            alias.clone(),
+                                            unique_alias.clone(),
                                             location,
-                                            SymbolType::Field,
+                                            SymbolType::Measure,
                                             None,
                                             None,
                                         );
@@ -4325,8 +4443,8 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                                         // For aggregates: grouping_fields come first, then measures
                                         relation_data.generated_field_references.push(measure_symbol);
                                         println!(
-                                            "  Added measure alias '{}' as generated field at index {}",
-                                            alias, field_index
+                                            "  Added measure alias '{}' (unique: '{}') as generated field at index {}",
+                                            alias, unique_alias, field_index
                                         );
                                     }
                                 }
@@ -4342,23 +4460,59 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     }
 
     fn visit_relationJoinType(&mut self, ctx: &RelationJoinTypeContext<'input>) {
-        // Process the join relation
-        if let Some(join_symbol) = self.process_join_relation(ctx) {
-            // Save the current relation scope
-            let old_scope = self.current_relation_scope().cloned();
+        // This handles the "TYPE <join_type>;" property inside a join relation definition.
+        // Extract the join type (e.g., "LEFT", "INNER", "RIGHT", etc.)
+        if let Some(id_node) = ctx.id() {
+            let join_type_str = id_node.get_text().to_uppercase();
 
-            // Set the join relation as the current scope
-            self.set_current_relation_scope(Some(join_symbol));
+            // Map the join type string to the protobuf enum value
+            let join_type_enum = match join_type_str.as_str() {
+                "INNER" => 1,           // JOIN_TYPE_INNER
+                "OUTER" => 2,           // JOIN_TYPE_OUTER
+                "LEFT" => 3,            // JOIN_TYPE_LEFT
+                "RIGHT" => 4,           // JOIN_TYPE_RIGHT
+                "LEFT_SEMI" => 5,       // JOIN_TYPE_LEFT_SEMI
+                "RIGHT_SEMI" => 6,      // JOIN_TYPE_RIGHT_SEMI
+                "LEFT_ANTI" => 7,       // JOIN_TYPE_LEFT_ANTI
+                "RIGHT_ANTI" => 8,      // JOIN_TYPE_RIGHT_ANTI
+                "LEFT_SINGLE" => 9,     // JOIN_TYPE_LEFT_SINGLE
+                "RIGHT_SINGLE" => 10,   // JOIN_TYPE_RIGHT_SINGLE
+                "LEFT_MARK" => 11,      // JOIN_TYPE_LEFT_MARK
+                "RIGHT_MARK" => 12,     // JOIN_TYPE_RIGHT_MARK
+                _ => 0,                 // JOIN_TYPE_UNSPECIFIED
+            };
 
-            // Visit children
-            self.visit_children(ctx);
-
-            // Restore the old scope
-            self.set_current_relation_scope(old_scope);
-        } else {
-            // Just visit children
-            self.visit_children(ctx);
+            // Set the join type on the current relation (should be a join relation)
+            if let Some(relation_symbol) = self.current_relation_scope() {
+                if let Some(blob_lock) = &relation_symbol.blob {
+                    if let Ok(mut blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                            use ::substrait::proto::rel::RelType;
+                            match &mut relation_data.relation.rel_type {
+                                Some(RelType::Join(join_rel)) => {
+                                    join_rel.r#type = join_type_enum;
+                                    println!("  Set join type to {} ({})", join_type_str, join_type_enum);
+                                }
+                                Some(RelType::HashJoin(join_rel)) => {
+                                    join_rel.r#type = join_type_enum;
+                                    println!("  Set hash join type to {} ({})", join_type_str, join_type_enum);
+                                }
+                                Some(RelType::MergeJoin(join_rel)) => {
+                                    join_rel.r#type = join_type_enum;
+                                    println!("  Set merge join type to {} ({})", join_type_str, join_type_enum);
+                                }
+                                _ => {
+                                    eprintln!("  Warning: TYPE property used on non-join relation");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+
+        // Visit children
+        self.visit_children(ctx);
     }
 
     fn visit_expressionConstant(&mut self, ctx: &ExpressionConstantContext<'input>) {
@@ -4829,45 +4983,19 @@ impl<'input> SubqueryRelationVisitor<'input> {
     fn get_parent_query_relation(&self, symbol: &Arc<SymbolInfo>) -> Option<Arc<SymbolInfo>> {
         println!("        get_parent_query_location for '{}'", symbol.name());
 
-        // Check if this relation or its pipeline_start has parent_query_index set
-        let is_subquery = if symbol.parent_query_index() >= 0 {
-            println!(
-                "          Has direct parent_query_index: {}",
-                symbol.parent_query_index()
-            );
-            true
-        } else if let Some(blob_lock) = &symbol.blob {
-            // Check pipeline_start's parent_query_index
-            if let Ok(blob_data) = blob_lock.lock() {
-                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                    if let Some(pipeline_start) = &relation_data.pipeline_start {
-                        if pipeline_start.parent_query_index() >= 0 {
-                            println!(
-                                "          pipeline_start '{}' has parent_query_index: {}",
-                                pipeline_start.name(),
-                                pipeline_start.parent_query_index()
-                            );
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        if !is_subquery {
-            println!("          Not a subquery");
+        // Check if THIS relation itself has parent_query_index set (meaning it's IN a subquery)
+        // Relations that are part of a subquery will have parent_query_index set either:
+        // 1. Directly when marked as a subquery root, OR
+        // 2. By set_pipeline_start_for_subquery() when walking the continuing_pipeline chain
+        if symbol.parent_query_index() < 0 {
+            println!("          Not a subquery (parent_query_index < 0)");
             return None;
         }
+
+        println!(
+            "          Has parent_query_index: {}",
+            symbol.parent_query_index()
+        );
 
         // Otherwise, search the symbol table to find which relation has this subquery's pipeline_start
         // We need to search for the pipeline_start, not the current relation
@@ -5307,19 +5435,19 @@ impl<'input> SubstraitPlanParserVisitor<'input> for SubqueryRelationVisitor<'inp
                 self.find_field_reference_by_name(&column_name, &current_rel);
 
             if let Some(index) = field_index {
-                // Store the correct field info in visit order
-                self.expression_field_info
-                    .borrow_mut()
-                    .push((index, steps_out));
-
+                // ONLY store field info for outer references (steps_out > 0)
+                // Local references (steps_out=0) don't need fixing
                 if steps_out > 0 {
+                    self.expression_field_info
+                        .borrow_mut()
+                        .push((index, steps_out));
                     println!(
                         "      ✓ Stored '{}' as outer reference: field_index={}, steps_out={}",
                         column_name, index, steps_out
                     );
                 } else {
                     println!(
-                        "      Stored '{}' as local reference: field_index={}",
+                        "      Skipped '{}' (local reference, field_index={})",
                         column_name, index
                     );
                 }

@@ -776,8 +776,8 @@ impl<'a> ExpressionPrinter<'a> {
             }
             Some(SubqueryType::Scalar(scalar)) => self.print_scalar_subquery(scalar),
             Some(SubqueryType::InPredicate(in_pred)) => self.print_in_predicate_subquery(in_pred),
-            Some(SubqueryType::SetPredicate(_)) => {
-                Ok("SET_PREDICATE_SUBQUERY_NOT_YET_IMPLEMENTED".to_string())
+            Some(SubqueryType::SetPredicate(set_pred)) => {
+                self.print_set_predicate_subquery(set_pred)
             }
             None => Err(TextPlanError::InvalidExpression(
                 "Subquery has no subquery_type".to_string(),
@@ -890,6 +890,62 @@ impl<'a> ExpressionPrinter<'a> {
         } else {
             return Err(TextPlanError::InvalidExpression(
                 "InPredicate has no haystack relation".to_string(),
+            ));
+        }
+
+        Ok(result)
+    }
+
+    fn print_set_predicate_subquery(
+        &mut self,
+        set_pred: &::substrait::proto::expression::subquery::SetPredicate,
+    ) -> Result<String, TextPlanError> {
+        use ::substrait::proto::expression::subquery::set_predicate::PredicateOp;
+
+        let mut result = String::new();
+
+        // Print predicate operator (EXISTS or UNIQUE)
+        let predicate_op = PredicateOp::try_from(set_pred.predicate_op).map_err(|_| {
+            TextPlanError::InvalidExpression(format!(
+                "Invalid predicate_op: {}",
+                set_pred.predicate_op
+            ))
+        })?;
+        match predicate_op {
+            PredicateOp::Exists => result.push_str("EXISTS IN "),
+            PredicateOp::Unique => result.push_str("UNIQUE IN "),
+            PredicateOp::Unspecified => result.push_str("UNSPECIFIED IN "),
+        }
+
+        // Print SUBQUERY keyword
+        result.push_str("SUBQUERY ");
+
+        // Find the subquery relation symbol
+        if let Some(_tuples) = &set_pred.tuples {
+            // Look up the relation symbol for this subquery
+            if let Some(scope) = self.current_scope {
+                let symbol = self.symbol_table.lookup_symbol_by_parent_query_and_type(
+                    scope.source_location(),
+                    self.current_scope_index,
+                    crate::textplan::SymbolType::Relation,
+                );
+                self.current_scope_index += 1;
+
+                if let Some(sym) = symbol {
+                    result.push_str(&sym.name());
+                } else {
+                    return Err(TextPlanError::InvalidExpression(
+                        "Could not find SET predicate subquery relation symbol".to_string(),
+                    ));
+                }
+            } else {
+                return Err(TextPlanError::InvalidExpression(
+                    "No current scope for SET predicate subquery lookup".to_string(),
+                ));
+            }
+        } else {
+            return Err(TextPlanError::InvalidExpression(
+                "SetPredicate has no tuples relation".to_string(),
             ));
         }
 

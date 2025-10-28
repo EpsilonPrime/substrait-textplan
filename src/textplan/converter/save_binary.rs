@@ -723,6 +723,35 @@ fn add_inputs_to_relation(
                 populate_project_emit(symbol, project_rel)?;
             }
             rel::RelType::Aggregate(agg_rel) => {
+                println!(
+                    "    '{}' is Aggregate with {} measures",
+                    symbol.name(),
+                    agg_rel.measures.len()
+                );
+
+                // Debug: print field indices in measures
+                for (i, measure) in agg_rel.measures.iter().enumerate() {
+                    if let Some(agg_func) = &measure.measure {
+                        for (j, arg) in agg_func.arguments.iter().enumerate() {
+                            if let Some(::substrait::proto::function_argument::ArgType::Value(
+                                expr,
+                            )) = &arg.arg_type
+                            {
+                                if let Some(::substrait::proto::expression::RexType::Selection(
+                                    sel,
+                                )) = &expr.rex_type
+                                {
+                                    if let Some(::substrait::proto::expression::field_reference::ReferenceType::DirectReference(dir_ref)) = &sel.reference_type {
+                                        if let Some(::substrait::proto::expression::reference_segment::ReferenceType::StructField(struct_field)) = &dir_ref.reference_type {
+                                            println!("      Measure {} arg {} field index: {}", i, j, struct_field.field);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Set common to direct emission (aggregates pass through grouping fields)
                 if agg_rel.common.is_none() {
                     agg_rel.common = Some(::substrait::proto::RelCommon {
@@ -1212,8 +1241,40 @@ fn populate_subquery_in_expression(
                             if symbol.symbol_type() == SymbolType::Relation
                                 && symbol.parent_query_index() >= 0
                             {
+                                // Check if this is the terminus (pipeline_start points to itself)
+                                let is_terminus = if let Some(blob_lock) = &symbol.blob {
+                                    if let Ok(blob_data) = blob_lock.lock() {
+                                        if let Some(relation_data) =
+                                            blob_data.downcast_ref::<RelationData>()
+                                        {
+                                            if let Some(pipeline_start) =
+                                                &relation_data.pipeline_start
+                                            {
+                                                Arc::ptr_eq(pipeline_start, &symbol)
+                                                    || pipeline_start.name() == symbol.name()
+                                            } else {
+                                                true // No pipeline_start means it's standalone
+                                            }
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                };
+
+                                if !is_terminus {
+                                    println!(
+                                        "          Skipping non-terminus relation '{}'",
+                                        symbol.name()
+                                    );
+                                    continue;
+                                }
+
                                 println!(
-                                    "        Populating inputs for scalar subquery relation '{}'",
+                                    "        Populating inputs for scalar subquery relation '{}' (terminus)",
                                     symbol.name()
                                 );
 
@@ -1248,8 +1309,36 @@ fn populate_subquery_in_expression(
                             if symbol.symbol_type() == SymbolType::Relation
                                 && symbol.parent_query_index() >= 0
                             {
+                                // Check if this is the terminus (pipeline_start points to itself)
+                                let is_terminus = if let Some(blob_lock) = &symbol.blob {
+                                    if let Ok(blob_data) = blob_lock.lock() {
+                                        if let Some(relation_data) =
+                                            blob_data.downcast_ref::<RelationData>()
+                                        {
+                                            if let Some(pipeline_start) =
+                                                &relation_data.pipeline_start
+                                            {
+                                                Arc::ptr_eq(pipeline_start, &symbol)
+                                                    || pipeline_start.name() == symbol.name()
+                                            } else {
+                                                true // No pipeline_start means it's standalone
+                                            }
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                };
+
+                                if !is_terminus {
+                                    continue; // Skip non-terminus relations
+                                }
+
                                 println!(
-                                    "        Building scalar subquery relation '{}'",
+                                    "        Building scalar subquery relation '{}' (terminus)",
                                     symbol.name()
                                 );
 
@@ -1350,7 +1439,51 @@ fn populate_subquery_in_expression(
                 }
                 Some(SubqueryType::SetPredicate(set_pred)) => {
                     if set_pred.tuples.is_none() {
-                        // TODO: Implement set predicate subquery population
+                        // Find the subquery relation in the symbol table by looking for relations
+                        // that have parent_query_index >= 0
+                        for symbol in symbol_table.symbols() {
+                            if symbol.symbol_type() == SymbolType::Relation
+                                && symbol.parent_query_index() >= 0
+                            {
+                                println!(
+                                    "        Building SET predicate subquery relation '{}'",
+                                    symbol.name()
+                                );
+
+                                // Build the Rel from the symbol tree
+                                if let Some(blob_lock) = &symbol.blob {
+                                    if let Ok(blob_data) = blob_lock.lock() {
+                                        if let Some(relation_data) =
+                                            blob_data.downcast_ref::<RelationData>()
+                                        {
+                                            let mut subquery_rel = relation_data.relation.clone();
+                                            drop(blob_data); // Drop lock before recursing
+
+                                            // Populate inputs from symbol tree
+                                            let mut visited = HashSet::new();
+                                            add_inputs_to_relation(
+                                                symbol_table,
+                                                &symbol,
+                                                &mut subquery_rel,
+                                                &mut visited,
+                                            )?;
+
+                                            // Also recurse to populate any nested subqueries
+                                            populate_subquery_in_rel(
+                                                &mut subquery_rel,
+                                                symbol_table,
+                                            )?;
+
+                                            set_pred.tuples = Some(Box::new(subquery_rel));
+                                            println!(
+                                                "        Successfully populated SET predicate subquery relation"
+                                            );
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 None => {}
