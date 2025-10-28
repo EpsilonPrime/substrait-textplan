@@ -490,30 +490,40 @@ impl PlanPrinter {
     ) -> Result<(), TextPlanError> {
         use ::substrait::proto::rel::RelType;
 
-        // Extract the project expressions and common (clone to avoid holding the lock)
-        let (expressions, common) = if let Some(blob_lock) = &relation.blob {
+        // Extract the project expressions, common, and generated field names (clone to avoid holding the lock)
+        let (expressions, common, generated_field_names) = if let Some(blob_lock) = &relation.blob {
             if let Ok(blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
                     if let Some(RelType::Project(project_rel)) = &relation_data.relation.rel_type {
-                        (project_rel.expressions.clone(), project_rel.common.clone())
+                        let field_names: Vec<String> = relation_data.generated_field_references
+                            .iter()
+                            .map(|f| f.name().to_string())
+                            .collect();
+                        (project_rel.expressions.clone(), project_rel.common.clone(), field_names)
                     } else {
-                        (Vec::new(), None)
+                        (Vec::new(), None, Vec::new())
                     }
                 } else {
-                    (Vec::new(), None)
+                    (Vec::new(), None, Vec::new())
                 }
             } else {
-                (Vec::new(), None)
+                (Vec::new(), None, Vec::new())
             }
         } else {
-            (Vec::new(), None)
+            (Vec::new(), None, Vec::new())
         };
 
         // Print expressions (lock is released)
         let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
-        for expr in &expressions {
+        for (i, expr) in expressions.iter().enumerate() {
             let expr_text = expr_printer.print_expression(expr)?;
-            result.push_str(&format!("{}expression {};\n", indent, expr_text));
+
+            // Add NAMED clause if this expression has a corresponding generated field name
+            if i < generated_field_names.len() {
+                result.push_str(&format!("{}expression {} NAMED {};\n", indent, expr_text, generated_field_names[i]));
+            } else {
+                result.push_str(&format!("{}expression {};\n", indent, expr_text));
+            }
         }
 
         // Print emit from common
