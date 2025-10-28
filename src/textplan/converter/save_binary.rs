@@ -1060,6 +1060,16 @@ fn populate_subquery_in_rel(
     rel: &mut Rel,
     symbol_table: &SymbolTable,
 ) -> Result<(), TextPlanError> {
+    let mut used_subqueries = HashSet::new();
+    populate_subquery_in_rel_impl(rel, symbol_table, &mut used_subqueries)
+}
+
+/// Internal implementation that tracks used subqueries.
+fn populate_subquery_in_rel_impl(
+    rel: &mut Rel,
+    symbol_table: &SymbolTable,
+    used_subqueries: &mut HashSet<String>,
+) -> Result<(), TextPlanError> {
     use substrait::proto::rel::RelType;
 
     let rel_type_name = match &rel.rel_type {
@@ -1092,29 +1102,29 @@ fn populate_subquery_in_rel(
                 filter.condition.is_some()
             );
             if let Some(condition) = &mut filter.condition {
-                populate_subquery_in_expression(condition, symbol_table)?;
+                populate_subquery_in_expression(condition, symbol_table, used_subqueries)?;
             }
             if let Some(input) = &mut filter.input {
-                populate_subquery_in_rel(input, symbol_table)?;
+                populate_subquery_in_rel_impl(input, symbol_table, used_subqueries)?;
             }
         }
         Some(RelType::Project(project)) => {
             for expr in &mut project.expressions {
-                populate_subquery_in_expression(expr, symbol_table)?;
+                populate_subquery_in_expression(expr, symbol_table, used_subqueries)?;
             }
             if let Some(input) = &mut project.input {
-                populate_subquery_in_rel(input, symbol_table)?;
+                populate_subquery_in_rel_impl(input, symbol_table, used_subqueries)?;
             }
         }
         Some(RelType::Join(join)) => {
             if let Some(expr) = &mut join.expression {
-                populate_subquery_in_expression(expr, symbol_table)?;
+                populate_subquery_in_expression(expr, symbol_table, used_subqueries)?;
             }
             if let Some(left) = &mut join.left {
-                populate_subquery_in_rel(left, symbol_table)?;
+                populate_subquery_in_rel_impl(left, symbol_table)?;
             }
             if let Some(right) = &mut join.right {
-                populate_subquery_in_rel(right, symbol_table)?;
+                populate_subquery_in_rel_impl(right, symbol_table)?;
             }
         }
         Some(RelType::Read(_)) => {
@@ -1123,29 +1133,29 @@ fn populate_subquery_in_rel(
         Some(RelType::Sort(sort)) => {
             // Sort has no expressions with subqueries, but recurse into input
             if let Some(input) = &mut sort.input {
-                populate_subquery_in_rel(input, symbol_table)?;
+                populate_subquery_in_rel_impl(input, symbol_table)?;
             }
         }
         Some(RelType::Cross(cross)) => {
             // Cross has no condition, but recurse into left and right
             if let Some(left) = &mut cross.left {
-                populate_subquery_in_rel(left, symbol_table)?;
+                populate_subquery_in_rel_impl(left, symbol_table)?;
             }
             if let Some(right) = &mut cross.right {
-                populate_subquery_in_rel(right, symbol_table)?;
+                populate_subquery_in_rel_impl(right, symbol_table)?;
             }
         }
         Some(RelType::Aggregate(agg)) => {
             // Aggregate can have expressions in measures, but no subqueries typically
             // Recurse into input
             if let Some(input) = &mut agg.input {
-                populate_subquery_in_rel(input, symbol_table)?;
+                populate_subquery_in_rel_impl(input, symbol_table)?;
             }
         }
         Some(RelType::Fetch(fetch)) => {
             // Fetch has no expressions, recurse into input
             if let Some(input) = &mut fetch.input {
-                populate_subquery_in_rel(input, symbol_table)?;
+                populate_subquery_in_rel_impl(input, symbol_table)?;
             }
         }
         // Add other relation types as needed
@@ -1159,6 +1169,7 @@ fn populate_subquery_in_rel(
 fn populate_subquery_in_expression(
     expr: &mut substrait::proto::Expression,
     symbol_table: &SymbolTable,
+    used_subqueries: &mut HashSet<String>,
 ) -> Result<(), TextPlanError> {
     use substrait::proto::expression::{subquery::SubqueryType, RexType};
 
@@ -1185,9 +1196,11 @@ fn populate_subquery_in_expression(
                         println!("      Found SetComparison subquery with None right field, populating...");
 
                         // Find the subquery relation (it should have parent_query_index >= 0)
+                        // Skip symbols already used to ensure correct ordering
                         for symbol in symbol_table.symbols() {
                             if symbol.symbol_type() == SymbolType::Relation
                                 && symbol.parent_query_index() >= 0
+                                && !used_subqueries.contains(symbol.name())
                             {
                                 println!("        Building subquery relation '{}'", symbol.name());
 
@@ -1210,14 +1223,16 @@ fn populate_subquery_in_expression(
                                             )?;
 
                                             // Also recurse to populate any nested subqueries
-                                            populate_subquery_in_rel(
+                                            populate_subquery_in_rel_impl(
                                                 &mut subquery_rel,
                                                 symbol_table,
                                             )?;
 
                                             set_comp.right = Some(Box::new(subquery_rel));
+                                            used_subqueries.insert(symbol.name().to_string());
                                             println!(
-                                                "        Successfully populated subquery relation"
+                                                "        Successfully populated subquery relation '{}', marking as used",
+                                                symbol.name()
                                             );
                                             break;
                                         }
@@ -1229,7 +1244,7 @@ fn populate_subquery_in_expression(
 
                     // Recursively handle left expression
                     if let Some(left) = &mut set_comp.left {
-                        populate_subquery_in_expression(left, symbol_table)?;
+                        populate_subquery_in_expression(left, symbol_table, used_subqueries)?;
                     }
                 }
                 Some(SubqueryType::Scalar(scalar)) => {
@@ -1300,7 +1315,7 @@ fn populate_subquery_in_expression(
                                 )?;
 
                                 // Then recurse to populate any nested subqueries
-                                populate_subquery_in_rel(input_rel, symbol_table)?;
+                                populate_subquery_in_rel_impl(input_rel, symbol_table)?;
                                 println!("        Successfully populated scalar subquery inputs");
                                 found = true;
                                 break;
@@ -1309,7 +1324,7 @@ fn populate_subquery_in_expression(
                         if !found {
                             println!("        WARNING: Could not find subquery relation symbol for scalar subquery");
                             // Still recurse to populate what we can
-                            populate_subquery_in_rel(input_rel, symbol_table)?;
+                            populate_subquery_in_rel_impl(input_rel, symbol_table)?;
                         }
                     } else {
                         // Input is None - find and build the subquery relation
@@ -1373,7 +1388,7 @@ fn populate_subquery_in_expression(
                                             )?;
 
                                             // Also recurse to populate any nested subqueries
-                                            populate_subquery_in_rel(
+                                            populate_subquery_in_rel_impl(
                                                 &mut subquery_rel,
                                                 symbol_table,
                                             )?;
@@ -1427,7 +1442,7 @@ fn populate_subquery_in_expression(
                                             )?;
 
                                             // Also recurse to populate any nested subqueries
-                                            populate_subquery_in_rel(
+                                            populate_subquery_in_rel_impl(
                                                 &mut subquery_rel,
                                                 symbol_table,
                                             )?;
@@ -1446,7 +1461,7 @@ fn populate_subquery_in_expression(
 
                     // Recursively handle needle expressions
                     for needle in &mut in_pred.needles {
-                        populate_subquery_in_expression(needle, symbol_table)?;
+                        populate_subquery_in_expression(needle, symbol_table, used_subqueries)?;
                     }
                 }
                 Some(SubqueryType::SetPredicate(set_pred)) => {
@@ -1481,7 +1496,7 @@ fn populate_subquery_in_expression(
                                             )?;
 
                                             // Also recurse to populate any nested subqueries
-                                            populate_subquery_in_rel(
+                                            populate_subquery_in_rel_impl(
                                                 &mut subquery_rel,
                                                 symbol_table,
                                             )?;
@@ -1507,14 +1522,14 @@ fn populate_subquery_in_expression(
                 if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) =
                     &mut arg.arg_type
                 {
-                    populate_subquery_in_expression(inner_expr, symbol_table)?;
+                    populate_subquery_in_expression(inner_expr, symbol_table, used_subqueries)?;
                 }
             }
         }
         Some(RexType::Cast(cast)) => {
             // Recurse into the cast input expression
             if let Some(input) = &mut cast.input {
-                populate_subquery_in_expression(input, symbol_table)?;
+                populate_subquery_in_expression(input, symbol_table, used_subqueries)?;
             }
         }
         _ => {}
