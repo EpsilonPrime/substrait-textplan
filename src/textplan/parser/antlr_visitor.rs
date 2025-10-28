@@ -3183,6 +3183,50 @@ impl<'input> RelationVisitor<'input> {
         None
     }
 
+    /// Build an IfThen expression from IFTHEN function syntax
+    fn build_if_then_expression(
+        &mut self,
+        ctx: &ExpressionFunctionUseContext<'input>,
+    ) -> ::substrait::proto::Expression {
+        // IFTHEN(if1, then1, [if2, then2, ...], else)
+        // Arguments come in pairs (if, then), with the last odd argument being else
+        let expr_ctxs = ctx.expression_all();
+        let mut arguments: Vec<::substrait::proto::Expression> = Vec::new();
+
+        for expr_ctx in expr_ctxs {
+            arguments.push(self.build_expression(&expr_ctx));
+        }
+
+        let mut ifs = Vec::new();
+        let mut else_expr = None;
+
+        // Process arguments in pairs
+        let mut i = 0;
+        while i < arguments.len() {
+            if i + 1 < arguments.len() {
+                // We have a pair: if and then
+                ifs.push(::substrait::proto::expression::if_then::IfClause {
+                    r#if: Some(arguments[i].clone()),
+                    then: Some(arguments[i + 1].clone()),
+                });
+                i += 2;
+            } else {
+                // Last odd argument is the else
+                else_expr = Some(Box::new(arguments[i].clone()));
+                i += 1;
+            }
+        }
+
+        ::substrait::proto::Expression {
+            rex_type: Some(::substrait::proto::expression::RexType::IfThen(Box::new(
+                ::substrait::proto::expression::IfThen {
+                    ifs,
+                    r#else: else_expr,
+                },
+            ))),
+        }
+    }
+
     /// Build a function call expression from a function use context
     fn build_function_call(
         &mut self,
@@ -3195,6 +3239,11 @@ impl<'input> RelationVisitor<'input> {
             .unwrap_or_else(|| "unknown".to_string());
 
         println!("    Function call: {}", function_name);
+
+        // Special case: IFTHEN is not a scalar function but an IfThen expression
+        if function_name.eq_ignore_ascii_case("IFTHEN") {
+            return self.build_if_then_expression(ctx);
+        }
 
         // Look up function reference from symbol table
         let function_reference = self.lookup_function_reference(&function_name);
