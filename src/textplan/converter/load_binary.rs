@@ -359,7 +359,7 @@ fn extract_and_add_subquery_pipelines(
         })?;
 
     // Extract subquery pipeline starts
-    let subquery_starts = extract_subquery_starts(symbol_table, &relation_data.relation)?;
+    let subquery_starts = extract_subquery_starts(symbol_table, parent_symbol, &relation_data.relation)?;
 
     println!(
         "    Found {} subquery pipeline starts for '{}'",
@@ -376,6 +376,7 @@ fn extract_and_add_subquery_pipelines(
 /// Extracts subquery pipeline starts from a Rel.
 fn extract_subquery_starts(
     symbol_table: &SymbolTable,
+    parent_symbol: &Arc<SymbolInfo>,
     rel: &substrait::proto::Rel,
 ) -> Result<Vec<Arc<SymbolInfo>>, TextPlanError> {
     use substrait::proto::rel::RelType;
@@ -387,18 +388,19 @@ fn extract_subquery_starts(
             if let Some(condition) = &filter_rel.condition {
                 starts.extend(extract_subquery_starts_from_expression(
                     symbol_table,
+                    parent_symbol,
                     condition,
                 )?);
             }
         }
         Some(RelType::Project(project_rel)) => {
             for expr in &project_rel.expressions {
-                starts.extend(extract_subquery_starts_from_expression(symbol_table, expr)?);
+                starts.extend(extract_subquery_starts_from_expression(symbol_table, parent_symbol, expr)?);
             }
         }
         Some(RelType::Join(join_rel)) => {
             if let Some(expr) = &join_rel.expression {
-                starts.extend(extract_subquery_starts_from_expression(symbol_table, expr)?);
+                starts.extend(extract_subquery_starts_from_expression(symbol_table, parent_symbol, expr)?);
             }
         }
         _ => {}
@@ -410,6 +412,7 @@ fn extract_subquery_starts(
 /// Extracts subquery pipeline starts from an Expression.
 fn extract_subquery_starts_from_expression(
     symbol_table: &SymbolTable,
+    parent_symbol: &Arc<SymbolInfo>,
     expr: &substrait::proto::Expression,
 ) -> Result<Vec<Arc<SymbolInfo>>, TextPlanError> {
     use substrait::proto::expression::{subquery::SubqueryType, RexType};
@@ -418,8 +421,9 @@ fn extract_subquery_starts_from_expression(
 
     match &expr.rex_type {
         Some(RexType::Subquery(subquery)) => {
-            // Extract the subquery relation based on its type
-            let subquery_rel: Option<&substrait::proto::Rel> = match &subquery.subquery_type {
+            // Extract the subquery relation based on its type (but we don't actually need the Rel)
+            // The subquery symbols were already registered by InitialPlanVisitor with parent_query_location
+            let _subquery_rel: Option<&substrait::proto::Rel> = match &subquery.subquery_type {
                 Some(SubqueryType::Scalar(scalar)) => scalar.input.as_deref(),
                 Some(SubqueryType::InPredicate(in_pred)) => in_pred.haystack.as_deref(),
                 Some(SubqueryType::SetPredicate(set_pred)) => set_pred.tuples.as_deref(),
@@ -430,17 +434,14 @@ fn extract_subquery_starts_from_expression(
                 }
             };
 
-            if let Some(rel) = subquery_rel {
-                // Find the relation symbol for this subquery by traversing the relation tree
-                // and finding relations with parent_query_index >= 0
-                let subquery_symbols = find_subquery_relations_in_rel(symbol_table, rel)?;
+            // Find all subquery symbols that belong to this parent
+            let subquery_symbols = find_subquery_relations_for_parent(symbol_table, parent_symbol)?;
 
-                for symbol in subquery_symbols {
-                    if let Some(start) = find_pipeline_start(symbol_table, &symbol)? {
-                        println!("      Found subquery pipeline start: '{}'", start.name());
-                        if !starts.iter().any(|s| Arc::ptr_eq(s, &start)) {
-                            starts.push(start);
-                        }
+            for symbol in subquery_symbols {
+                if let Some(start) = find_pipeline_start(symbol_table, &symbol)? {
+                    println!("      Found subquery pipeline start: '{}'", start.name());
+                    if !starts.iter().any(|s| Arc::ptr_eq(s, &start)) {
+                        starts.push(start);
                     }
                 }
             }
@@ -453,6 +454,7 @@ fn extract_subquery_starts_from_expression(
                 {
                     starts.extend(extract_subquery_starts_from_expression(
                         symbol_table,
+                        parent_symbol,
                         inner_expr,
                     )?);
                 }
@@ -464,23 +466,29 @@ fn extract_subquery_starts_from_expression(
     Ok(starts)
 }
 
-/// Finds all relation symbols in the symbol table that are part of a subquery
-/// by checking if they have parent_query_index >= 0 and match the given Rel.
-fn find_subquery_relations_in_rel(
+/// Finds all relation symbols that are subqueries of the current parent.
+/// Note: This is called during load_binary phase, AFTER InitialPlanVisitor has already
+/// set parent_query_location on all subquery relations. We need to filter by which
+/// parent these subqueries belong to.
+fn find_subquery_relations_for_parent(
     symbol_table: &SymbolTable,
-    _rel: &substrait::proto::Rel,
+    parent_symbol: &Arc<SymbolInfo>,
 ) -> Result<Vec<Arc<SymbolInfo>>, TextPlanError> {
-    // Find all relations with parent_query_index >= 0
-    // These are relations that are part of a subquery
+    let parent_location_hash = parent_symbol.source_location().location_hash();
     let mut subquery_rels = Vec::new();
 
     for symbol in symbol_table.symbols() {
         if symbol.symbol_type() == crate::textplan::SymbolType::Relation
             && symbol.parent_query_index() >= 0
+            && symbol.parent_query_location().location_hash() == parent_location_hash
         {
             subquery_rels.push(symbol.clone());
         }
     }
+
+    // Sort by parent_query_index to ensure correct order
+    // (scalar subquery at index 0, set predicate at index 1, etc.)
+    subquery_rels.sort_by_key(|s| s.parent_query_index());
 
     Ok(subquery_rels)
 }
