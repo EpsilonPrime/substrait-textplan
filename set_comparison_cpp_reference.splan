@@ -1,0 +1,56 @@
+pipelines {
+  read -> project;
+  read2 -> filter -> project2 -> root;
+}
+
+read relation read {
+  source named;
+  base_schema schema;
+}
+
+project relation project {
+  expression schema.N_REGIONKEY;
+
+  emit schema.N_REGIONKEY;
+}
+
+read relation read2 {
+  source named2;
+  base_schema schema2;
+}
+
+filter relation filter {
+  filter schema2.N_REGIONKEY LT ANY SUBQUERY project;
+}
+
+project relation project2 {
+  expression schema2.N_REGIONKEY;
+
+  emit schema2.N_REGIONKEY;
+}
+
+root {
+  names = [
+    N_REGIONKEY
+  ]
+}
+
+schema schema {
+  N_REGIONKEY i64;
+}
+
+schema schema2 {
+  N_REGIONKEY i64;
+}
+
+source named_table named {
+  names = [
+    "NATION",
+  ]
+}
+
+source named_table named2 {
+  names = [
+    "NATION",
+  ]
+}

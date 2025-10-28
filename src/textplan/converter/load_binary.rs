@@ -179,25 +179,19 @@ pub fn process_plan_with_visitor(plan: &substrait::proto::Plan) -> Result<String
 
 /// Populates pipeline_start for all relations in subquery pipelines.
 ///
-/// This function finds subquery terminus relations (those with pipeline_start already set)
+/// This function finds subquery terminus relations (those with parent_query_index >= 0)
 /// and walks their continuing_pipeline chains to set pipeline_start on all relations.
 /// The continuing_pipeline connections were already set up by PipelineVisitor.
 fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) -> Result<(), TextPlanError> {
     println!("DEBUG: Populating subquery pipelines");
 
-    // Find terminus relations (those with pipeline_start already set)
+    // Find terminus relations (those with parent_query_index >= 0)
     let mut subquery_termini = Vec::new();
     for symbol in symbol_table.symbols() {
         if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
-            if let Some(blob_lock) = &symbol.blob {
-                if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                        if relation_data.pipeline_start.is_some() {
-                            println!("  Found subquery terminus: '{}'", symbol.name());
-                            subquery_termini.push(symbol.clone());
-                        }
-                    }
-                }
+            if symbol.parent_query_index() >= 0 {
+                println!("  Found subquery terminus: '{}'", symbol.name());
+                subquery_termini.push(symbol.clone());
             }
         }
     }

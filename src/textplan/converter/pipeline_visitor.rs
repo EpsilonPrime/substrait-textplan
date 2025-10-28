@@ -209,6 +209,14 @@ impl PipelineVisitor {
                     }
                 }
                 RelType::Filter(filter) => {
+                    // Traverse the filter condition to find nested subqueries
+                    if let Some(condition) = &filter.condition {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(self.current_location().field("filter").field("condition"));
+                        self.traverse_expression_for_subqueries(condition);
+                        self.set_location(prev_loc);
+                    }
+                    // Then traverse the input relation
                     if let Some(input) = &filter.input {
                         let prev_loc = self.current_location().clone();
                         self.set_location(self.current_location().field("filter").field("input"));
@@ -582,6 +590,23 @@ impl PlanProtoVisitor for PipelineVisitor {
                             );
                             relation_data.pipeline_start = Some(subquery_sym.clone());
                         });
+
+                        // Now traverse the subquery relation tree to set up continuing_pipeline connections
+                        // Get the actual relation from the subquery
+                        let subquery_rel = match &subquery.subquery_type {
+                            Some(SubqueryType::Scalar(scalar)) => scalar.input.as_ref(),
+                            Some(SubqueryType::InPredicate(pred)) => pred.haystack.as_ref(),
+                            Some(SubqueryType::SetPredicate(pred)) => pred.tuples.as_ref(),
+                            Some(SubqueryType::SetComparison(comp)) => comp.right.as_ref(),
+                            None => None,
+                        };
+
+                        if let Some(rel) = subquery_rel {
+                            let prev_loc = self.current_location().clone();
+                            self.set_location(subquery_location);
+                            self.traverse_subquery_relation(rel);
+                            self.set_location(prev_loc);
+                        }
                     }
                 }
                 _ => {}

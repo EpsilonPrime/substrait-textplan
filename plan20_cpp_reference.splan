@@ -1,0 +1,220 @@
+pipelines {
+  read -> filter -> project;
+  read2 -> filter2 -> project2 -> aggregate -> project3;
+  read4 -> cross;
+  read5 -> cross;
+  read3 -> filter3 -> project4;
+  cross -> filter4 -> project5 -> sort -> root;
+}
+
+read relation read {
+  source named;
+  base_schema schema;
+}
+
+filter relation filter {
+  filter like(schema.P_NAME, "antique%"_fixedchar<8> AS varchar?<55>)->bool?;
+}
+
+project relation project {
+  expression schema.P_PARTKEY;
+
+  emit schema.P_PARTKEY;
+}
+
+read relation read2 {
+  source named2;
+  base_schema schema2;
+}
+
+filter relation filter2 {
+  filter and(
+    equal(schema2.L_PARTKEY, schema3.PS_PARTKEY)->bool, 
+    equal(schema2.L_SUPPKEY, schema3.PS_SUPPKEY)->bool, 
+    gte(schema2.L_SHIPDATE, "1993-01-01"_date)->bool?, 
+    lt(schema2.L_SHIPDATE, 
+      add("1993-01-01"_date, {1_years, 0_months}_interval_year)->date)->bool?)->bool?;
+}
+
+project relation project2 {
+  expression schema2.L_QUANTITY;
+
+  emit schema2.L_QUANTITY;
+}
+
+aggregate relation aggregate {
+  measure {
+    measure sum(schema2.L_QUANTITY)->decimal?<19,0>@AGGREGATION_PHASE_INITIAL_TO_RESULT NAMED measurename;
+    invocation all;
+  }
+}
+
+project relation project3 {
+  expression multiply(5_decimal<2,1>, measurename)->decimal?<19,1> NAMED intermediate;
+
+  emit intermediate;
+}
+
+read relation read3 {
+  source named3;
+  base_schema schema3;
+}
+
+filter relation filter3 {
+  filter and((schema3.PS_PARTKEY) IN SUBQUERY project AS bool?, 
+    gt(schema3.PS_AVAILQTY AS decimal?<19,1>, SUBQUERY project3)->bool?)->bool?;
+}
+
+project relation project4 {
+  expression schema3.PS_SUPPKEY;
+
+  emit schema3.PS_SUPPKEY;
+}
+
+read relation read4 {
+  source named4;
+  base_schema schema4;
+}
+
+read relation read5 {
+  source named5;
+  base_schema schema5;
+}
+
+cross relation cross {
+}
+
+filter relation filter4 {
+  filter and((schema4.S_SUPPKEY) IN SUBQUERY project4 AS bool?, 
+    equal(schema4.S_NATIONKEY, schema5.N_NATIONKEY)->bool, 
+    equal(schema5.N_NAME, "KENYA"_fixedchar<5> AS fixedchar<25>)->bool?)->bool?;
+}
+
+project relation project5 {
+  expression schema4.S_NAME;
+  expression schema4.S_ADDRESS;
+
+  emit schema4.S_NAME;
+  emit schema4.S_ADDRESS;
+}
+
+sort relation sort {
+  sort schema4.S_NAME by ASC_NULLS_LAST;
+}
+
+root {
+  names = [
+    S_NAME,
+    S_ADDRESS
+  ]
+}
+
+schema schema {
+  P_PARTKEY i64;
+  P_NAME varchar?<55>;
+  P_MFGR fixedchar?<25>;
+  P_BRAND fixedchar?<10>;
+  P_TYPE varchar?<25>;
+  P_SIZE i32?;
+  P_CONTAINER fixedchar?<10>;
+  P_RETAILPRICE decimal?<19,0>;
+  P_COMMENT varchar?<23>;
+}
+
+schema schema2 {
+  L_ORDERKEY i64;
+  L_PARTKEY i64;
+  L_SUPPKEY i64;
+  L_LINENUMBER i32?;
+  L_QUANTITY decimal?<19,0>;
+  L_EXTENDEDPRICE decimal?<19,0>;
+  L_DISCOUNT decimal?<19,0>;
+  L_TAX decimal?<19,0>;
+  L_RETURNFLAG fixedchar?<1>;
+  L_LINESTATUS fixedchar?<1>;
+  L_SHIPDATE date?;
+  L_COMMITDATE date?;
+  L_RECEIPTDATE date?;
+  L_SHIPINSTRUCT fixedchar?<25>;
+  L_SHIPMODE fixedchar?<10>;
+  L_COMMENT varchar?<44>;
+}
+
+schema schema3 {
+  PS_PARTKEY i64;
+  PS_SUPPKEY i64;
+  PS_AVAILQTY i32?;
+  PS_SUPPLYCOST decimal?<19,0>;
+  PS_COMMENT varchar?<199>;
+}
+
+schema schema4 {
+  S_SUPPKEY i64;
+  S_NAME fixedchar?<25>;
+  S_ADDRESS varchar?<40>;
+  S_NATIONKEY i64;
+  S_PHONE fixedchar?<15>;
+  S_ACCTBAL decimal?<19,0>;
+  S_COMMENT varchar?<101>;
+}
+
+schema schema5 {
+  N_NATIONKEY i64;
+  N_NAME fixedchar?<25>;
+  N_REGIONKEY i64;
+  N_COMMENT varchar?<152>;
+}
+
+source named_table named {
+  names = [
+    "PART",
+  ]
+}
+
+source named_table named2 {
+  names = [
+    "LINEITEM",
+  ]
+}
+
+source named_table named3 {
+  names = [
+    "PARTSUPP",
+  ]
+}
+
+source named_table named4 {
+  names = [
+    "SUPPLIER",
+  ]
+}
+
+source named_table named5 {
+  names = [
+    "NATION",
+  ]
+}
+
+extension_space /functions_arithmetic_decimal.yaml {
+  function multiply:dec_dec as multiply;
+  function sum:dec as sum;
+}
+
+extension_space /functions_boolean.yaml {
+  function and:bool as and;
+}
+
+extension_space /functions_comparison.yaml {
+  function equal:any_any as equal;
+  function gt:any_any as gt;
+}
+
+extension_space /functions_datetime.yaml {
+  function add:date_year as add;
+  function gte:date_date as gte;
+  function lt:date_date as lt;
+}
+
+extension_space /functions_string.yaml {
+  function like:vchar_vchar as like;
+}

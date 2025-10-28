@@ -5514,19 +5514,19 @@ impl<'input> SubstraitPlanParserVisitor<'input> for SubqueryRelationVisitor<'inp
                 self.find_field_reference_by_name(&column_name, &current_rel);
 
             if let Some(index) = field_index {
-                // ONLY store field info for outer references (steps_out > 0)
-                // Local references (steps_out=0) don't need fixing
+                // Store field info for ALL field references (both local and outer)
+                // This ensures the index stays in sync when consuming in fix_expression_outer_references
+                self.expression_field_info
+                    .borrow_mut()
+                    .push((index, steps_out));
                 if steps_out > 0 {
-                    self.expression_field_info
-                        .borrow_mut()
-                        .push((index, steps_out));
                     println!(
                         "      ✓ Stored '{}' as outer reference: field_index={}, steps_out={}",
                         column_name, index, steps_out
                     );
                 } else {
                     println!(
-                        "      Skipped '{}' (local reference, field_index={})",
+                        "      ✓ Stored '{}' as local reference: field_index={}, steps_out=0",
                         column_name, index
                     );
                 }

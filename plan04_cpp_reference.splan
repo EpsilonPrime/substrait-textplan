@@ -1,0 +1,113 @@
+pipelines {
+  read -> filter;
+  read2 -> filter2 -> project -> aggregate -> sort -> root;
+}
+
+read relation read {
+  source named;
+  base_schema schema;
+}
+
+filter relation filter {
+  filter and(
+    equal(schema.L_ORDERKEY, schema2.O_ORDERKEY)->bool, 
+    lt(schema.L_COMMITDATE, schema.L_RECEIPTDATE)->bool?)->bool?;
+}
+
+read relation read2 {
+  source named2;
+  base_schema schema2;
+}
+
+filter relation filter2 {
+  filter and(
+    gte(schema2.O_ORDERDATE, "1996-10-01"_date)->bool?, 
+    lt(schema2.O_ORDERDATE, 
+      add("1996-10-01"_date, {0_years, 3_months}_interval_year)->date)->bool?, EXISTS IN SUBQUERY filter)->bool?;
+}
+
+project relation project {
+  expression schema2.O_ORDERPRIORITY;
+
+  emit schema2.O_ORDERPRIORITY;
+}
+
+aggregate relation aggregate {
+  grouping schema2.O_ORDERPRIORITY;
+  measure {
+    measure count()->i64@AGGREGATION_PHASE_INITIAL_TO_RESULT NAMED measurename;
+    invocation all;
+  }
+}
+
+sort relation sort {
+  sort schema2.O_ORDERPRIORITY by ASC_NULLS_LAST;
+}
+
+root {
+  names = [
+    O_ORDERPRIORITY,
+    ORDER_COUNT
+  ]
+}
+
+schema schema {
+  L_ORDERKEY i64;
+  L_PARTKEY i64;
+  L_SUPPKEY i64;
+  L_LINENUMBER i32?;
+  L_QUANTITY decimal?<19,0>;
+  L_EXTENDEDPRICE decimal?<19,0>;
+  L_DISCOUNT decimal?<19,0>;
+  L_TAX decimal?<19,0>;
+  L_RETURNFLAG fixedchar?<1>;
+  L_LINESTATUS fixedchar?<1>;
+  L_SHIPDATE date?;
+  L_COMMITDATE date?;
+  L_RECEIPTDATE date?;
+  L_SHIPINSTRUCT fixedchar?<25>;
+  L_SHIPMODE fixedchar?<10>;
+  L_COMMENT varchar?<44>;
+}
+
+schema schema2 {
+  O_ORDERKEY i64;
+  O_CUSTKEY i64;
+  O_ORDERSTATUS fixedchar?<1>;
+  O_TOTALPRICE decimal?<19,0>;
+  O_ORDERDATE date?;
+  O_ORDERPRIORITY fixedchar?<15>;
+  O_CLERK fixedchar?<15>;
+  O_SHIPPRIORITY i32?;
+  O_COMMENT varchar?<79>;
+}
+
+source named_table named {
+  names = [
+    "LINEITEM",
+  ]
+}
+
+source named_table named2 {
+  names = [
+    "ORDERS",
+  ]
+}
+
+extension_space /functions_aggregate_generic.yaml {
+  function count:any as count;
+}
+
+extension_space /functions_boolean.yaml {
+  function and:bool as and;
+}
+
+extension_space /functions_comparison.yaml {
+  function equal:any_any as equal;
+}
+
+extension_space /functions_datetime.yaml {
+  function add:date_year as add;
+  function gte:date_date as gte;
+  function lt:date_date as lt;
+}
