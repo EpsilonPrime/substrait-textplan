@@ -185,6 +185,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                                                     &mut input_rel,
                                                     &mut visited,
                                                 )?;
+                                                // Subqueries are now populated during add_inputs_to_relation
 
                                                 println!(
                                                     "  Root names from root symbol: {:?}",
@@ -223,6 +224,7 @@ pub fn create_plan_from_symbol_table(symbol_table: &SymbolTable) -> Result<Plan,
                                     &mut root_rel,
                                     &mut visited,
                                 )?;
+                                // Subqueries are now populated during add_inputs_to_relation
 
                                 // Add as a plan relation
                                 plan.relations.push(PlanRel {
@@ -565,6 +567,19 @@ fn count_relation_output_fields(rel: &::substrait::proto::Rel) -> usize {
     }
 }
 
+/// Helper to get sub_query_pipelines from a symbol.
+/// Matches C++ pattern: auto& symbolInfos = symbol.blob->subQueryPipelines;
+fn get_subquery_pipelines(symbol: &Arc<SymbolInfo>) -> Vec<Arc<SymbolInfo>> {
+    if let Some(blob_lock) = &symbol.blob {
+        if let Ok(blob_data) = blob_lock.lock() {
+            if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                return relation_data.sub_query_pipelines.clone();
+            }
+        }
+    }
+    Vec::new()
+}
+
 /// Recursively adds inputs to a relation by following pipeline links.
 /// Based on C++ SymbolTablePrinter::addInputsToRelation()
 fn add_inputs_to_relation(
@@ -726,6 +741,23 @@ fn add_inputs_to_relation(
                         );
                     }
                 }
+
+                // Populate subqueries in filter condition (matches C++ pattern)
+                // Get this symbol's sub_query_pipelines and consume them in expression order
+                let subquery_pipelines = get_subquery_pipelines(symbol);
+                println!("      Filter '{}' has {} subquery pipelines", symbol.name(), subquery_pipelines.len());
+                let mut consumed_index = 0;
+                if let Some(condition) = &mut filter_rel.condition {
+                    if !subquery_pipelines.is_empty() {
+                        println!("      Populating subqueries for Filter '{}'", symbol.name());
+                    }
+                    populate_subquery_in_expression(
+                        condition,
+                        symbol_table,
+                        &subquery_pipelines,
+                        &mut consumed_index,
+                    )?;
+                }
             }
             rel::RelType::Project(project_rel) => {
                 if let (Some(next), Some(next_rel)) =
@@ -735,6 +767,18 @@ fn add_inputs_to_relation(
                     if let Some(input) = &mut project_rel.input {
                         add_inputs_to_relation(symbol_table, next, input, visited)?;
                     }
+                }
+
+                // Populate subqueries in project expressions (matches C++ pattern)
+                let subquery_pipelines = get_subquery_pipelines(symbol);
+                let mut consumed_index = 0;
+                for expr in &mut project_rel.expressions {
+                    populate_subquery_in_expression(
+                        expr,
+                        symbol_table,
+                        &subquery_pipelines,
+                        &mut consumed_index,
+                    )?;
                 }
 
                 // Populate emit output mappings if this project has generated field references
@@ -974,6 +1018,18 @@ fn add_inputs_to_relation(
                         }
                     }
                 }
+
+                // Populate subqueries in join expression (matches C++ pattern)
+                let subquery_pipelines = get_subquery_pipelines(symbol);
+                let mut consumed_index = 0;
+                if let Some(expression) = &mut join_rel.expression {
+                    populate_subquery_in_expression(
+                        expression,
+                        symbol_table,
+                        &subquery_pipelines,
+                        &mut consumed_index,
+                    )?;
+                }
             }
             rel::RelType::Cross(cross_rel) => {
                 if new_pipelines.len() >= 2 && new_pipelines_rels.len() >= 2 {
@@ -1017,10 +1073,10 @@ fn add_inputs_to_relation(
 /// The binary representation of the plan.
 pub fn save_to_binary(symbol_table: &SymbolTable) -> Result<Vec<u8>, TextPlanError> {
     // Create the plan from the symbol table
-    let mut plan = create_plan_from_symbol_table(symbol_table)?;
+    let plan = create_plan_from_symbol_table(symbol_table)?;
 
-    // Populate subquery relations from the symbol tree
-    populate_subquery_relations(&mut plan, symbol_table)?;
+    // Note: Subquery relations are now populated inline during plan creation,
+    // so we don't need a separate populate_subquery_relations pass
 
     // Serialize the plan to bytes
     serialize_plan_to_binary(&plan)
@@ -1039,6 +1095,26 @@ fn populate_subquery_relations(
     println!("DEBUG: Populating subquery relations from symbol tree");
     println!("DEBUG: Plan has {} relations", plan.relations.len());
 
+    // Find the top-level relation symbols (those that feed the root)
+    let top_level_rel_symbols: Vec<Arc<SymbolInfo>> = symbol_table
+        .symbols()
+        .iter()
+        .filter(|s| s.symbol_type() == SymbolType::Relation && s.parent_query_index() < 0)
+        .cloned()
+        .collect();
+
+    println!("DEBUG: Found {} top-level relation symbols", top_level_rel_symbols.len());
+    for (i, sym) in top_level_rel_symbols.iter().enumerate() {
+        if let Some(blob_lock) = &sym.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    println!("DEBUG:   [{}] '{}' has {} sub_query_pipelines",
+                        i, sym.name(), relation_data.sub_query_pipelines.len());
+                }
+            }
+        }
+    }
+
     // Walk through all plan relations
     for (idx, plan_rel) in plan.relations.iter_mut().enumerate() {
         println!("DEBUG: Processing plan relation {}", idx);
@@ -1048,11 +1124,21 @@ fn populate_subquery_relations(
                 root.input.is_some()
             );
             if let Some(input) = &mut root.input {
-                populate_subquery_in_rel(input, symbol_table)?;
+                // Use the last top-level relation symbol (should be the actual relation that feeds root)
+                let symbol_ref = top_level_rel_symbols.last();
+                if let Some(sym) = symbol_ref {
+                    println!("DEBUG: Using top-level symbol '{}' for root input", sym.name());
+                }
+                populate_subquery_in_rel_with_symbol(input, symbol_table, symbol_ref)?;
             }
         } else if let Some(plan_rel::RelType::Rel(rel)) = &mut plan_rel.rel_type {
             println!("DEBUG: Found Rel relation");
-            populate_subquery_in_rel(rel, symbol_table)?;
+            // Use the last top-level relation symbol
+            let symbol_ref = top_level_rel_symbols.last();
+            if let Some(sym) = symbol_ref {
+                println!("DEBUG: Using top-level symbol '{}' for standalone rel", sym.name());
+            }
+            populate_subquery_in_rel_with_symbol(rel, symbol_table, symbol_ref)?;
         } else {
             println!("DEBUG: Unknown plan_rel type");
         }
@@ -1061,20 +1147,57 @@ fn populate_subquery_relations(
     Ok(())
 }
 
+/// Helper that finds the symbol for a relation and populates with its sub_query_pipelines.
+/// This function is kept for compatibility but is no longer used since subquery population
+/// is now integrated directly into add_inputs_to_relation (matching C++ pattern).
+#[allow(dead_code)]
+fn populate_subquery_in_rel_with_symbol(
+    rel: &mut Rel,
+    symbol_table: &SymbolTable,
+    known_symbol: Option<&Arc<SymbolInfo>>,
+) -> Result<(), TextPlanError> {
+    // If we don't have a known symbol, try to find it (for top-level relations)
+    // Otherwise use empty pipelines
+    let subquery_pipelines = if let Some(sym) = known_symbol {
+        // Get sub_query_pipelines from the known symbol
+        if let Some(blob_lock) = &sym.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    relation_data.sub_query_pipelines.clone()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    let mut consumed_index = 0;
+    populate_subquery_in_rel_impl(rel, symbol_table, &subquery_pipelines, &mut consumed_index)
+}
+
 /// Recursively populates subquery relations in a Rel and its nested expressions.
 fn populate_subquery_in_rel(
     rel: &mut Rel,
     symbol_table: &SymbolTable,
 ) -> Result<(), TextPlanError> {
-    let mut used_subqueries = HashSet::new();
-    populate_subquery_in_rel_impl(rel, symbol_table, &mut used_subqueries)
+    // Start with empty subquery pipelines - will be populated from relation symbols
+    let subquery_pipelines: Vec<Arc<SymbolInfo>> = Vec::new();
+    let mut consumed_index = 0;
+    populate_subquery_in_rel_impl(rel, symbol_table, &subquery_pipelines, &mut consumed_index)
 }
 
-/// Internal implementation that tracks used subqueries.
+/// Internal implementation that uses indexed access to subquery pipelines.
 fn populate_subquery_in_rel_impl(
     rel: &mut Rel,
     symbol_table: &SymbolTable,
-    used_subqueries: &mut HashSet<String>,
+    subquery_pipelines: &[Arc<SymbolInfo>],
+    consumed_index: &mut usize,
 ) -> Result<(), TextPlanError> {
     use substrait::proto::rel::RelType;
 
@@ -1108,29 +1231,29 @@ fn populate_subquery_in_rel_impl(
                 filter.condition.is_some()
             );
             if let Some(condition) = &mut filter.condition {
-                populate_subquery_in_expression(condition, symbol_table, used_subqueries)?;
+                populate_subquery_in_expression(condition, symbol_table, subquery_pipelines, consumed_index)?;
             }
             if let Some(input) = &mut filter.input {
-                populate_subquery_in_rel_impl(input, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(input, symbol_table, subquery_pipelines, consumed_index)?;
             }
         }
         Some(RelType::Project(project)) => {
             for expr in &mut project.expressions {
-                populate_subquery_in_expression(expr, symbol_table, used_subqueries)?;
+                populate_subquery_in_expression(expr, symbol_table, subquery_pipelines, consumed_index)?;
             }
             if let Some(input) = &mut project.input {
-                populate_subquery_in_rel_impl(input, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(input, symbol_table, subquery_pipelines, consumed_index)?;
             }
         }
         Some(RelType::Join(join)) => {
             if let Some(expr) = &mut join.expression {
-                populate_subquery_in_expression(expr, symbol_table, used_subqueries)?;
+                populate_subquery_in_expression(expr, symbol_table, subquery_pipelines, consumed_index)?;
             }
             if let Some(left) = &mut join.left {
-                populate_subquery_in_rel_impl(left, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(left, symbol_table, subquery_pipelines, consumed_index)?;
             }
             if let Some(right) = &mut join.right {
-                populate_subquery_in_rel_impl(right, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(right, symbol_table, subquery_pipelines, consumed_index)?;
             }
         }
         Some(RelType::Read(_)) => {
@@ -1139,29 +1262,29 @@ fn populate_subquery_in_rel_impl(
         Some(RelType::Sort(sort)) => {
             // Sort has no expressions with subqueries, but recurse into input
             if let Some(input) = &mut sort.input {
-                populate_subquery_in_rel_impl(input, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(input, symbol_table, subquery_pipelines, consumed_index)?;
             }
         }
         Some(RelType::Cross(cross)) => {
             // Cross has no condition, but recurse into left and right
             if let Some(left) = &mut cross.left {
-                populate_subquery_in_rel_impl(left, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(left, symbol_table, subquery_pipelines, consumed_index)?;
             }
             if let Some(right) = &mut cross.right {
-                populate_subquery_in_rel_impl(right, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(right, symbol_table, subquery_pipelines, consumed_index)?;
             }
         }
         Some(RelType::Aggregate(agg)) => {
             // Aggregate can have expressions in measures, but no subqueries typically
             // Recurse into input
             if let Some(input) = &mut agg.input {
-                populate_subquery_in_rel_impl(input, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(input, symbol_table, subquery_pipelines, consumed_index)?;
             }
         }
         Some(RelType::Fetch(fetch)) => {
             // Fetch has no expressions, recurse into input
             if let Some(input) = &mut fetch.input {
-                populate_subquery_in_rel_impl(input, symbol_table, used_subqueries)?;
+                populate_subquery_in_rel_impl(input, symbol_table, subquery_pipelines, consumed_index)?;
             }
         }
         // Add other relation types as needed
@@ -1171,72 +1294,12 @@ fn populate_subquery_in_rel_impl(
     Ok(())
 }
 
-/// Helper to find the next unused subquery symbol in parent_query_index order.
-/// Excludes symbols that share a pipeline_start with any used symbol.
-fn find_next_unused_subquery(
-    symbol_table: &SymbolTable,
-    used_subqueries: &HashSet<String>,
-) -> Option<Arc<SymbolInfo>> {
-    // Build set of pipeline_start names for used subqueries
-    let mut used_pipeline_starts = HashSet::new();
-    for used_name in used_subqueries {
-        if let Some(used_sym) = symbol_table.lookup_symbol_by_name(used_name) {
-            // Get the pipeline_start for this used symbol
-            if let Some(blob_lock) = &used_sym.blob {
-                if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                        if let Some(pipeline_start) = &relation_data.pipeline_start {
-                            used_pipeline_starts.insert(pipeline_start.name().to_string());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Collect all subquery symbols (relations with parent_query_index >= 0)
-    // Exclude symbols that share pipeline_start with used symbols
-    let mut subquery_symbols: Vec<Arc<SymbolInfo>> = symbol_table
-        .symbols()
-        .iter()
-        .filter(|symbol| {
-            if symbol.symbol_type() != SymbolType::Relation
-                || symbol.parent_query_index() < 0
-                || used_subqueries.contains(symbol.name())
-            {
-                return false;
-            }
-
-            // Check if this symbol shares a pipeline_start with any used symbol
-            if let Some(blob_lock) = &symbol.blob {
-                if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                        if let Some(pipeline_start) = &relation_data.pipeline_start {
-                            if used_pipeline_starts.contains(pipeline_start.name()) {
-                                return false; // Exclude - same pipeline as a used symbol
-                            }
-                        }
-                    }
-                }
-            }
-
-            true
-        })
-        .cloned()
-        .collect();
-
-    // Sort by parent_query_index to ensure correct order
-    subquery_symbols.sort_by_key(|s| s.parent_query_index());
-
-    // Return the first unused one (lowest parent_query_index)
-    subquery_symbols.into_iter().next()
-}
-
 /// Populates subquery relations in an expression.
 fn populate_subquery_in_expression(
     expr: &mut substrait::proto::Expression,
     symbol_table: &SymbolTable,
-    used_subqueries: &mut HashSet<String>,
+    subquery_pipelines: &[Arc<SymbolInfo>],
+    consumed_index: &mut usize,
 ) -> Result<(), TextPlanError> {
     use substrait::proto::expression::{subquery::SubqueryType, RexType};
 
@@ -1258,48 +1321,52 @@ fn populate_subquery_in_expression(
             // Check if the subquery relation needs to be populated
             match &mut subquery.subquery_type {
                 Some(SubqueryType::SetComparison(set_comp)) => {
-                    if set_comp.right.is_none() {
-                        // Find all subquery relations in the symbol table and build the appropriate one
-                        println!("      Found SetComparison subquery with None right field, populating...");
+                    println!(
+                        "      DEBUG: Checking SetComparison, consumed_index={}, pipelines.len()={}",
+                        *consumed_index, subquery_pipelines.len()
+                    );
 
-                        // Find the next unused subquery symbol in parent_query_index order
-                        if let Some(symbol) =
-                            find_next_unused_subquery(symbol_table, used_subqueries)
-                        {
-                            println!("        Building subquery relation '{}'", symbol.name());
+                    // Use indexed access like C++ does: auto subquerySymbol = symbolInfos[(*consumedPipelines)++];
+                    if *consumed_index < subquery_pipelines.len() {
+                        let symbol = &subquery_pipelines[*consumed_index];
+                        *consumed_index += 1;
 
-                            // Build the Rel from the symbol tree
-                            if let Some(blob_lock) = &symbol.blob {
-                                if let Ok(blob_data) = blob_lock.lock() {
-                                    if let Some(relation_data) =
-                                        blob_data.downcast_ref::<RelationData>()
-                                    {
-                                        let mut subquery_rel = relation_data.relation.clone();
-                                        drop(blob_data); // Drop lock before recursing
+                        println!("        Building SetComparison subquery relation '{}' at index {}",
+                            symbol.name(), *consumed_index - 1);
 
-                                        // Populate inputs from symbol tree
-                                        let mut visited = HashSet::new();
-                                        add_inputs_to_relation(
-                                            symbol_table,
-                                            &symbol,
-                                            &mut subquery_rel,
-                                            &mut visited,
-                                        )?;
+                        // Build the Rel from the symbol tree
+                        if let Some(blob_lock) = &symbol.blob {
+                            if let Ok(blob_data) = blob_lock.lock() {
+                                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                                    let mut subquery_rel = relation_data.relation.clone();
 
-                                        // Also recurse to populate any nested subqueries
-                                        populate_subquery_in_rel_impl(
-                                            &mut subquery_rel,
-                                            symbol_table,
-                                            used_subqueries,
-                                        )?;
+                                    // Get this subquery's sub_query_pipelines for nested subqueries
+                                    let nested_pipelines = relation_data.sub_query_pipelines.clone();
+                                    drop(blob_data); // Drop lock before recursing
 
-                                        set_comp.right = Some(Box::new(subquery_rel));
-                                        used_subqueries.insert(symbol.name().to_string());
-                                        println!(
-                                            "        Successfully populated subquery relation '{}', marking as used",
-                                            symbol.name()
-                                        );
-                                    }
+                                    // Populate inputs from symbol tree
+                                    let mut visited = HashSet::new();
+                                    add_inputs_to_relation(
+                                        symbol_table,
+                                        symbol,
+                                        &mut subquery_rel,
+                                        &mut visited,
+                                    )?;
+
+                                    // Recurse to populate any nested subqueries using this subquery's pipelines
+                                    let mut nested_index = 0;
+                                    populate_subquery_in_rel_impl(
+                                        &mut subquery_rel,
+                                        symbol_table,
+                                        &nested_pipelines,
+                                        &mut nested_index,
+                                    )?;
+
+                                    set_comp.right = Some(Box::new(subquery_rel));
+                                    println!(
+                                        "        Successfully populated SetComparison subquery relation '{}'",
+                                        symbol.name()
+                                    );
                                 }
                             }
                         }
@@ -1307,186 +1374,56 @@ fn populate_subquery_in_expression(
 
                     // Recursively handle left expression
                     if let Some(left) = &mut set_comp.left {
-                        populate_subquery_in_expression(left, symbol_table, used_subqueries)?;
+                        populate_subquery_in_expression(left, symbol_table, subquery_pipelines, consumed_index)?;
                     }
                 }
                 Some(SubqueryType::Scalar(scalar)) => {
-                    // Always populate the scalar subquery's inputs from the pipeline
-                    if let Some(input_rel) = &mut scalar.input {
-                        println!(
-                            "      Found Scalar subquery with input, populating from pipeline..."
-                        );
+                    println!(
+                        "      DEBUG: Checking Scalar subquery, consumed_index={}, pipelines.len()={}",
+                        *consumed_index, subquery_pipelines.len()
+                    );
 
-                        // Find the subquery relation symbol to get pipeline connections
-                        let mut found = false;
-                        println!("        Searching for subquery relation symbol...");
-                        for symbol in symbol_table.symbols() {
-                            if symbol.symbol_type() == SymbolType::Relation {
-                                println!(
-                                    "          Checking relation '{}' with parent_query_index={}",
-                                    symbol.name(),
-                                    symbol.parent_query_index()
-                                );
-                            }
-                            if symbol.symbol_type() == SymbolType::Relation
-                                && symbol.parent_query_index() >= 0
-                                && !used_subqueries.contains(symbol.name())
-                            {
-                                // Check if this is the terminus (pipeline_start points to itself)
-                                let is_terminus = if let Some(blob_lock) = &symbol.blob {
-                                    if let Ok(blob_data) = blob_lock.lock() {
-                                        if let Some(relation_data) =
-                                            blob_data.downcast_ref::<RelationData>()
-                                        {
-                                            if let Some(pipeline_start) =
-                                                &relation_data.pipeline_start
-                                            {
-                                                Arc::ptr_eq(pipeline_start, &symbol)
-                                                    || pipeline_start.name() == symbol.name()
-                                            } else {
-                                                true // No pipeline_start means it's standalone
-                                            }
-                                        } else {
-                                            false
-                                        }
-                                    } else {
-                                        false
-                                    }
-                                } else {
-                                    false
-                                };
+                    // Use indexed access like C++ does: auto subquerySymbol = symbolInfos[(*consumedPipelines)++];
+                    if *consumed_index < subquery_pipelines.len() {
+                        let symbol = &subquery_pipelines[*consumed_index];
+                        *consumed_index += 1;
 
-                                if !is_terminus {
+                        println!("        Building Scalar subquery relation '{}' at index {}",
+                            symbol.name(), *consumed_index - 1);
+
+                        // Build the Rel from the symbol tree
+                        if let Some(blob_lock) = &symbol.blob {
+                            if let Ok(blob_data) = blob_lock.lock() {
+                                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                                    let mut subquery_rel = relation_data.relation.clone();
+
+                                    // Get this subquery's sub_query_pipelines for nested subqueries
+                                    let nested_pipelines = relation_data.sub_query_pipelines.clone();
+                                    drop(blob_data); // Drop lock before recursing
+
+                                    // Populate inputs from symbol tree
+                                    let mut visited = HashSet::new();
+                                    add_inputs_to_relation(
+                                        symbol_table,
+                                        symbol,
+                                        &mut subquery_rel,
+                                        &mut visited,
+                                    )?;
+
+                                    // Recurse to populate any nested subqueries using this subquery's pipelines
+                                    let mut nested_index = 0;
+                                    populate_subquery_in_rel_impl(
+                                        &mut subquery_rel,
+                                        symbol_table,
+                                        &nested_pipelines,
+                                        &mut nested_index,
+                                    )?;
+
+                                    scalar.input = Some(Box::new(subquery_rel));
                                     println!(
-                                        "          Skipping non-terminus relation '{}'",
+                                        "        Successfully populated Scalar subquery relation '{}'",
                                         symbol.name()
                                     );
-                                    continue;
-                                }
-
-                                println!(
-                                    "        Populating inputs for scalar subquery relation '{}' (terminus)",
-                                    symbol.name()
-                                );
-
-                                // Populate inputs from the pipeline (this sets input and common fields)
-                                let mut visited = HashSet::new();
-                                add_inputs_to_relation(
-                                    symbol_table,
-                                    &symbol,
-                                    input_rel,
-                                    &mut visited,
-                                )?;
-
-                                // Then recurse to populate any nested subqueries
-                                populate_subquery_in_rel_impl(
-                                    input_rel,
-                                    symbol_table,
-                                    used_subqueries,
-                                )?;
-                                println!("        Successfully populated scalar subquery inputs");
-                                used_subqueries.insert(symbol.name().to_string());
-                                found = true;
-                                break;
-                            }
-                        }
-                        if !found {
-                            println!("        WARNING: Could not find subquery relation symbol for scalar subquery");
-                            // Still recurse to populate what we can
-                            populate_subquery_in_rel_impl(
-                                input_rel,
-                                symbol_table,
-                                used_subqueries,
-                            )?;
-                        }
-                    } else {
-                        // Input is None - find and build the subquery relation
-                        println!(
-                            "      Found Scalar subquery with None input field, populating..."
-                        );
-
-                        // Collect and sort subquery symbols by parent_query_index
-                        let mut subquery_symbols: Vec<Arc<SymbolInfo>> = symbol_table
-                            .symbols()
-                            .iter()
-                            .filter(|s| {
-                                s.symbol_type() == SymbolType::Relation
-                                    && s.parent_query_index() >= 0
-                                    && !used_subqueries.contains(s.name())
-                            })
-                            .cloned()
-                            .collect();
-                        subquery_symbols.sort_by_key(|s| s.parent_query_index());
-
-                        for symbol in subquery_symbols {
-                            {
-                                // Check if this is the terminus (pipeline_start points to itself)
-                                let is_terminus = if let Some(blob_lock) = &symbol.blob {
-                                    if let Ok(blob_data) = blob_lock.lock() {
-                                        if let Some(relation_data) =
-                                            blob_data.downcast_ref::<RelationData>()
-                                        {
-                                            if let Some(pipeline_start) =
-                                                &relation_data.pipeline_start
-                                            {
-                                                Arc::ptr_eq(pipeline_start, &symbol)
-                                                    || pipeline_start.name() == symbol.name()
-                                            } else {
-                                                true // No pipeline_start means it's standalone
-                                            }
-                                        } else {
-                                            false
-                                        }
-                                    } else {
-                                        false
-                                    }
-                                } else {
-                                    false
-                                };
-
-                                if !is_terminus {
-                                    continue; // Skip non-terminus relations
-                                }
-
-                                println!(
-                                    "        Building scalar subquery relation '{}' (terminus)",
-                                    symbol.name()
-                                );
-
-                                // Build the Rel from the symbol tree
-                                if let Some(blob_lock) = &symbol.blob {
-                                    if let Ok(blob_data) = blob_lock.lock() {
-                                        if let Some(relation_data) =
-                                            blob_data.downcast_ref::<RelationData>()
-                                        {
-                                            let mut subquery_rel = relation_data.relation.clone();
-                                            drop(blob_data); // Drop lock before recursing
-
-                                            // Populate inputs from symbol tree
-                                            let mut visited = HashSet::new();
-                                            add_inputs_to_relation(
-                                                symbol_table,
-                                                &symbol,
-                                                &mut subquery_rel,
-                                                &mut visited,
-                                            )?;
-
-                                            // Also recurse to populate any nested subqueries
-                                            populate_subquery_in_rel_impl(
-                                                &mut subquery_rel,
-                                                symbol_table,
-                                                used_subqueries,
-                                            )?;
-
-                                            scalar.input = Some(Box::new(subquery_rel));
-                                            used_subqueries.insert(symbol.name().to_string());
-                                            println!(
-                                                "        Successfully populated scalar subquery relation '{}', marking as used",
-                                                symbol.name()
-                                            );
-                                            break;
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -1494,53 +1431,51 @@ fn populate_subquery_in_expression(
                 }
                 Some(SubqueryType::InPredicate(in_pred)) => {
                     println!(
-                        "      DEBUG: Checking InPredicate, haystack.is_none() = {}",
-                        in_pred.haystack.is_none()
+                        "      DEBUG: Checking InPredicate, consumed_index={}, pipelines.len()={}",
+                        *consumed_index, subquery_pipelines.len()
                     );
-                    if in_pred.haystack.is_none() {
-                        // Find the subquery relation (it should have parent_query_index >= 0)
-                        println!("      Found InPredicate subquery with None haystack field, populating...");
 
-                        // Find the next unused subquery symbol in parent_query_index order
-                        if let Some(symbol) =
-                            find_next_unused_subquery(symbol_table, used_subqueries)
-                        {
-                            println!(
-                                "        Building IN predicate subquery relation '{}'",
-                                symbol.name()
-                            );
+                    // Use indexed access like C++ does: auto subquerySymbol = symbolInfos[(*consumedPipelines)++];
+                    if *consumed_index < subquery_pipelines.len() {
+                        let symbol = &subquery_pipelines[*consumed_index];
+                        *consumed_index += 1;
 
-                            // Build the Rel from the symbol tree
-                            if let Some(blob_lock) = &symbol.blob {
-                                if let Ok(blob_data) = blob_lock.lock() {
-                                    if let Some(relation_data) =
-                                        blob_data.downcast_ref::<RelationData>()
-                                    {
-                                        let mut subquery_rel = relation_data.relation.clone();
-                                        drop(blob_data); // Drop lock before recursing
+                        println!("        Building InPredicate subquery relation '{}' at index {}",
+                            symbol.name(), *consumed_index - 1);
 
-                                        // Populate inputs from symbol tree
-                                        let mut visited = HashSet::new();
-                                        add_inputs_to_relation(
-                                            symbol_table,
-                                            &symbol,
-                                            &mut subquery_rel,
-                                            &mut visited,
-                                        )?;
+                        // Build the Rel from the symbol tree
+                        if let Some(blob_lock) = &symbol.blob {
+                            if let Ok(blob_data) = blob_lock.lock() {
+                                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                                    let mut subquery_rel = relation_data.relation.clone();
 
-                                        // Also recurse to populate any nested subqueries
-                                        populate_subquery_in_rel_impl(
-                                            &mut subquery_rel,
-                                            symbol_table,
-                                            used_subqueries,
-                                        )?;
+                                    // Get this subquery's sub_query_pipelines for nested subqueries
+                                    let nested_pipelines = relation_data.sub_query_pipelines.clone();
+                                    drop(blob_data); // Drop lock before recursing
 
-                                        in_pred.haystack = Some(Box::new(subquery_rel));
-                                        used_subqueries.insert(symbol.name().to_string());
-                                        println!(
-                                            "        Successfully populated IN predicate subquery relation, marking as used"
-                                        );
-                                    }
+                                    // Populate inputs from symbol tree
+                                    let mut visited = HashSet::new();
+                                    add_inputs_to_relation(
+                                        symbol_table,
+                                        symbol,
+                                        &mut subquery_rel,
+                                        &mut visited,
+                                    )?;
+
+                                    // Recurse to populate any nested subqueries using this subquery's pipelines
+                                    let mut nested_index = 0;
+                                    populate_subquery_in_rel_impl(
+                                        &mut subquery_rel,
+                                        symbol_table,
+                                        &nested_pipelines,
+                                        &mut nested_index,
+                                    )?;
+
+                                    in_pred.haystack = Some(Box::new(subquery_rel));
+                                    println!(
+                                        "        Successfully populated InPredicate subquery relation '{}'",
+                                        symbol.name()
+                                    );
                                 }
                             }
                         }
@@ -1548,53 +1483,56 @@ fn populate_subquery_in_expression(
 
                     // Recursively handle needle expressions
                     for needle in &mut in_pred.needles {
-                        populate_subquery_in_expression(needle, symbol_table, used_subqueries)?;
+                        populate_subquery_in_expression(needle, symbol_table, subquery_pipelines, consumed_index)?;
                     }
                 }
                 Some(SubqueryType::SetPredicate(set_pred)) => {
-                    if set_pred.tuples.is_none() {
-                        // Find the subquery relation in the symbol table by looking for relations
-                        // that have parent_query_index >= 0
-                        // Find the next unused subquery symbol in parent_query_index order
-                        if let Some(symbol) =
-                            find_next_unused_subquery(symbol_table, used_subqueries)
-                        {
-                            println!(
-                                "        Building SET predicate subquery relation '{}'",
-                                symbol.name()
-                            );
+                    println!(
+                        "      DEBUG: Checking SetPredicate, consumed_index={}, pipelines.len()={}",
+                        *consumed_index, subquery_pipelines.len()
+                    );
 
-                            // Build the Rel from the symbol tree
-                            if let Some(blob_lock) = &symbol.blob {
-                                if let Ok(blob_data) = blob_lock.lock() {
-                                    if let Some(relation_data) =
-                                        blob_data.downcast_ref::<RelationData>()
-                                    {
-                                        let mut subquery_rel = relation_data.relation.clone();
-                                        drop(blob_data); // Drop lock before recursing
+                    // Use indexed access like C++ does: auto subquerySymbol = symbolInfos[(*consumedPipelines)++];
+                    if *consumed_index < subquery_pipelines.len() {
+                        let symbol = &subquery_pipelines[*consumed_index];
+                        *consumed_index += 1;
 
-                                        // Populate inputs from symbol tree
-                                        let mut visited = HashSet::new();
-                                        add_inputs_to_relation(
-                                            symbol_table,
-                                            &symbol,
-                                            &mut subquery_rel,
-                                            &mut visited,
-                                        )?;
+                        println!("        Building SetPredicate subquery relation '{}' at index {}",
+                            symbol.name(), *consumed_index - 1);
 
-                                        // Also recurse to populate any nested subqueries
-                                        populate_subquery_in_rel_impl(
-                                            &mut subquery_rel,
-                                            symbol_table,
-                                            used_subqueries,
-                                        )?;
+                        // Build the Rel from the symbol tree
+                        if let Some(blob_lock) = &symbol.blob {
+                            if let Ok(blob_data) = blob_lock.lock() {
+                                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                                    let mut subquery_rel = relation_data.relation.clone();
 
-                                        set_pred.tuples = Some(Box::new(subquery_rel));
-                                        used_subqueries.insert(symbol.name().to_string());
-                                        println!(
-                                            "        Successfully populated SET predicate subquery relation, marking as used"
-                                        );
-                                    }
+                                    // Get this subquery's sub_query_pipelines for nested subqueries
+                                    let nested_pipelines = relation_data.sub_query_pipelines.clone();
+                                    drop(blob_data); // Drop lock before recursing
+
+                                    // Populate inputs from symbol tree
+                                    let mut visited = HashSet::new();
+                                    add_inputs_to_relation(
+                                        symbol_table,
+                                        symbol,
+                                        &mut subquery_rel,
+                                        &mut visited,
+                                    )?;
+
+                                    // Recurse to populate any nested subqueries using this subquery's pipelines
+                                    let mut nested_index = 0;
+                                    populate_subquery_in_rel_impl(
+                                        &mut subquery_rel,
+                                        symbol_table,
+                                        &nested_pipelines,
+                                        &mut nested_index,
+                                    )?;
+
+                                    set_pred.tuples = Some(Box::new(subquery_rel));
+                                    println!(
+                                        "        Successfully populated SetPredicate subquery relation '{}'",
+                                        symbol.name()
+                                    );
                                 }
                             }
                         }
@@ -1609,14 +1547,14 @@ fn populate_subquery_in_expression(
                 if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) =
                     &mut arg.arg_type
                 {
-                    populate_subquery_in_expression(inner_expr, symbol_table, used_subqueries)?;
+                    populate_subquery_in_expression(inner_expr, symbol_table, subquery_pipelines, consumed_index)?;
                 }
             }
         }
         Some(RexType::Cast(cast)) => {
             // Recurse into the cast input expression
             if let Some(input) = &mut cast.input {
-                populate_subquery_in_expression(input, symbol_table, used_subqueries)?;
+                populate_subquery_in_expression(input, symbol_table, subquery_pipelines, consumed_index)?;
             }
         }
         _ => {}

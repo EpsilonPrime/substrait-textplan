@@ -1766,29 +1766,30 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
         };
 
         // Determine rightmost symbol (pipeline start)
-        // Since we process left-to-right, the left (child) has already been processed
-        // and has its pipeline_start set. We should use that.
-        // If there's no left symbol, we are the rightmost (start of pipeline).
-        let rightmost_symbol = if let Some(ref left) = left_symbol {
+        // For a terminus (no right_symbol), set pipeline_start to itself
+        // For non-terminus, try to use left's pipeline_start
+        let rightmost_symbol = if right_symbol.is_none() {
+            // This is a terminus (no parent pipeline)
+            println!("  Pipeline: {} is a terminus, setting pipeline_start to itself", relation_name);
+            Some(symbol.clone())
+        } else if let Some(ref left) = left_symbol {
+            // Has a parent, try to get pipeline_start from left
             if let Some(left_blob) = &left.blob {
                 if let Ok(left_data) = left_blob.lock() {
                     if let Some(left_rel_data) = left_data.downcast_ref::<RelationData>() {
-                        // Left is a Relation, use its pipeline_start (or left itself if it's the start)
                         left_rel_data.pipeline_start.clone().or(Some(left.clone()))
                     } else {
-                        // Left has blob but not RelationData, we are the start
                         Some(symbol.clone())
                     }
                 } else {
-                    // Failed to lock, we are the start
                     Some(symbol.clone())
                 }
             } else {
-                // Left has no blob, we are the start
                 Some(symbol.clone())
             }
         } else {
-            // No left symbol, we are the rightmost (start of pipeline)
+            // No left, we are standalone
+            println!("  Pipeline: {} is standalone, setting pipeline_start to itself", relation_name);
             Some(symbol.clone())
         };
 
@@ -2764,10 +2765,16 @@ impl<'input> RelationVisitor<'input> {
             if let Ok(mut blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                     // Set this relation's pipeline_start to itself
+                    println!("      DEBUG: Setting '{}' pipeline_start to itself", subquery_root.name());
                     relation_data.pipeline_start = Some(subquery_root.clone());
 
                     // Walk the continuing_pipeline chain
                     let mut current = relation_data.continuing_pipeline.clone();
+                    if let Some(ref cont) = current {
+                        println!("      DEBUG: '{}' has continuing_pipeline pointing to '{}'", subquery_root.name(), cont.name());
+                    } else {
+                        println!("      DEBUG: '{}' has no continuing_pipeline", subquery_root.name());
+                    }
                     while let Some(current_rel) = current {
                         println!("        Setting pipeline_start and parent_query_index={} on '{}'", subquery_index, current_rel.name());
 
@@ -3882,6 +3889,8 @@ impl<'input> RelationVisitor<'input> {
                     if let Ok(blob_data) = blob_lock.lock() {
                         if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
                             // Create the scalar subquery expression
+                            // NOTE: We clone the relation proto here, which will later be rebuilt
+                            // by save_binary to ensure nested subqueries are properly populated
                             return ::substrait::proto::Expression {
                                 rex_type: Some(::substrait::proto::expression::RexType::Subquery(Box::new(
                                     ::substrait::proto::expression::Subquery {
@@ -3959,6 +3968,10 @@ impl<'input> RelationVisitor<'input> {
                 );
                 rel_symbol.set_parent_query_location(parent_location);
                 rel_symbol.set_parent_query_index(subquery_index);
+
+                // Set pipeline_start on all relations in the subquery pipeline
+                // (following C++ PipelineVisitor pattern and matching scalar subquery handling)
+                self.set_pipeline_start_for_subquery(&rel_symbol, subquery_index);
             }
         } else {
             println!(
@@ -4026,6 +4039,10 @@ impl<'input> RelationVisitor<'input> {
                 );
                 rel_symbol.set_parent_query_location(parent_location);
                 rel_symbol.set_parent_query_index(subquery_index);
+
+                // Set pipeline_start on all relations in the subquery pipeline
+                // (following C++ PipelineVisitor pattern and matching scalar subquery handling)
+                self.set_pipeline_start_for_subquery(&rel_symbol, subquery_index);
             }
         } else {
             println!(
@@ -4200,8 +4217,15 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                     if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                         // Get mutable access to the Rel
                         if let Some(::substrait::proto::rel::RelType::Filter(ref mut filter_rel)) = relation_data.relation.rel_type {
-                            filter_rel.condition = Some(Box::new(condition));
+                            filter_rel.condition = Some(Box::new(condition.clone()));
                             println!("  Added filter condition to filter relation '{}'", relation_symbol.name());
+
+                            // Debug: count subquery expressions in condition
+                            // Note: count_subqueries function was removed
+                            // if let Some(cond_box) = &filter_rel.condition {
+                            //     let count = count_subqueries(&cond_box);
+                            //     println!("    Filter '{}' condition has {} subquery expressions", relation_symbol.name(), count);
+                            // }
                         }
                     }
                 }
@@ -4836,9 +4860,10 @@ pub struct SubqueryRelationVisitor<'input> {
 
 impl<'input> SubqueryRelationVisitor<'input> {
     /// Creates a new SubqueryRelationVisitor.
-    pub fn new(mut symbol_table: SymbolTable, error_listener: Arc<ErrorListener>) -> Self {
-        // Populate sub_query_pipelines now that RelationVisitor has created all the blobs
-        Self::populate_subquery_pipelines(&mut symbol_table);
+    pub fn new(symbol_table: SymbolTable, error_listener: Arc<ErrorListener>) -> Self {
+        // Note: We don't populate sub_query_pipelines here because parent_query_index
+        // is not set yet. It will be set during the visit, and then we'll populate
+        // sub_query_pipelines after the visit is complete.
 
         Self {
             symbol_table,
@@ -4848,6 +4873,13 @@ impl<'input> SubqueryRelationVisitor<'input> {
             expression_field_info_index: std::cell::RefCell::new(0),
             _phantom: std::marker::PhantomData,
         }
+    }
+
+    /// Call this after visiting to populate sub_query_pipelines now that parent_query_index is set.
+    pub fn finalize(&mut self) {
+        // Populate sub_query_pipelines using parent_query_location (not during visit)
+        // This is more reliable because it uses the actual terminus relations
+        Self::populate_subquery_pipelines(&mut self.symbol_table);
     }
 
     /// Populates sub_query_pipelines for all relations by finding subquery relations
@@ -4862,8 +4894,11 @@ impl<'input> SubqueryRelationVisitor<'input> {
                 continue;
             }
 
+            println!("DEBUG SUBQUERY: Checking relation '{}': parent_query_index={}", symbol.name(), symbol.parent_query_index());
+
             // Check if this relation or its pipeline_start has parent_query_index set
             let is_subquery = if symbol.parent_query_index() >= 0 {
+                println!("DEBUG SUBQUERY:   -> '{}' is a subquery (parent_query_index={})", symbol.name(), symbol.parent_query_index());
                 true
             } else if let Some(blob_lock) = &symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
@@ -4884,69 +4919,131 @@ impl<'input> SubqueryRelationVisitor<'input> {
             };
 
             if is_subquery {
-                // Get the pipeline_start (terminus) to add to parent
-                let terminus = if let Some(blob_lock) = &symbol.blob {
+                // Check if this relation is the terminus.
+                // A terminus is a relation that is NOT anyone's continuing_pipeline.
+                // In other words, nothing feeds into it - it's the end of the pipeline.
+                let mut is_terminus = true;
+                let mut pipeline_start_name = None;
+
+                if let Some(blob_lock) = &symbol.blob {
                     if let Ok(blob_data) = blob_lock.lock() {
                         if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                            relation_data
-                                .pipeline_start
-                                .clone()
-                                .unwrap_or_else(|| symbol.clone())
-                        } else {
-                            symbol.clone()
+                            pipeline_start_name = relation_data.pipeline_start.as_ref().map(|ps| ps.name().to_string());
                         }
-                    } else {
-                        symbol.clone()
                     }
-                } else {
-                    symbol.clone()
-                };
-
-                println!(
-                    "DEBUG SUBQUERY: Found subquery terminus: '{}'",
-                    terminus.name()
-                );
-                subqueries.push(terminus);
-            }
-        }
-
-        // Now find parent relations by checking which relation expressions reference these subqueries
-        // For now, we'll add all subqueries to relations that might use them
-        // A more precise implementation would parse the expressions to find actual references
-        for parent_symbol in symbol_table.symbols() {
-            if parent_symbol.symbol_type() != SymbolType::Relation {
-                continue;
-            }
-
-            // Add subqueries to this parent if they reference it
-            // For simplicity, we add all subqueries for now - the lookup will filter correctly
-            for subquery in &subqueries {
-                // Skip if this parent IS the subquery
-                if Arc::ptr_eq(parent_symbol, subquery) {
-                    continue;
                 }
 
-                // Add to parent's sub_query_pipelines
-                if let Some(blob_lock) = &parent_symbol.blob {
-                    if let Ok(mut blob_data) = blob_lock.lock() {
-                        if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
-                            // Check if not already added
-                            let already_added = relation_data
-                                .sub_query_pipelines
-                                .iter()
-                                .any(|sq| Arc::ptr_eq(sq, subquery));
+                // Check if any OTHER relation in the symbol table has this relation as continuing_pipeline
+                for other_symbol in symbol_table.symbols() {
+                    if Arc::ptr_eq(other_symbol, symbol) {
+                        continue; // Skip self
+                    }
 
-                            if !already_added {
-                                println!(
-                                    "DEBUG SUBQUERY: Adding '{}' to '{}'",
-                                    subquery.name(),
-                                    parent_symbol.name()
-                                );
-                                relation_data.sub_query_pipelines.push(subquery.clone());
+                    if let Some(other_blob) = &other_symbol.blob {
+                        if let Ok(other_data) = other_blob.lock() {
+                            if let Some(other_rel_data) = other_data.downcast_ref::<RelationData>() {
+                                if let Some(continuing) = &other_rel_data.continuing_pipeline {
+                                    if Arc::ptr_eq(continuing, symbol) {
+                                        // This relation IS someone's continuing_pipeline, so not a terminus
+                                        is_terminus = false;
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
                 }
+
+                println!("DEBUG SUBQUERY:   -> Checking if '{}' is terminus: is_terminus={}, pipeline_start={:?}",
+                    symbol.name(), is_terminus, pipeline_start_name);
+
+                if is_terminus {
+                    println!(
+                        "DEBUG SUBQUERY: Found subquery terminus: '{}' (parent_query_index={})",
+                        symbol.name(),
+                        symbol.parent_query_index()
+                    );
+                    subqueries.push(symbol.clone());
+                }
+            }
+        }
+
+        // Add each subquery to its direct parent relation using parent_query_location
+        // This matches the C++ approach where subqueries are added when encountered
+        for subquery in &subqueries {
+            // Get the parent query location from the subquery
+            let parent_location = if !subquery.parent_query_location().is_unknown() {
+                Some(subquery.parent_query_location())
+            } else {
+                // Try pipeline_start's parent_query_location
+                if let Some(blob_lock) = &subquery.blob {
+                    if let Ok(blob_data) = blob_lock.lock() {
+                        if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                            if let Some(pipeline_start) = &relation_data.pipeline_start {
+                                if !pipeline_start.parent_query_location().is_unknown() {
+                                    Some(pipeline_start.parent_query_location())
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            if let Some(parent_loc) = parent_location {
+                // Look up the parent relation by location
+                if let Some(parent_symbol) = symbol_table.lookup_symbol_by_location_and_type(
+                    parent_loc.as_ref(),
+                    SymbolType::Relation,
+                ) {
+                    println!(
+                        "DEBUG SUBQUERY: Found parent relation '{}' for subquery '{}' using location",
+                        parent_symbol.name(),
+                        subquery.name()
+                    );
+
+                    // Add to parent's sub_query_pipelines
+                    if let Some(blob_lock) = &parent_symbol.blob {
+                        if let Ok(mut blob_data) = blob_lock.lock() {
+                            if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                                // Check if not already added
+                                let already_added = relation_data
+                                    .sub_query_pipelines
+                                    .iter()
+                                    .any(|sq| Arc::ptr_eq(sq, subquery));
+
+                                if !already_added {
+                                    println!(
+                                        "DEBUG SUBQUERY: Adding '{}' to '{}'",
+                                        subquery.name(),
+                                        parent_symbol.name()
+                                    );
+                                    relation_data.sub_query_pipelines.push(subquery.clone());
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    println!(
+                        "DEBUG SUBQUERY: WARNING - Could not find parent relation for subquery '{}' at location {:?}",
+                        subquery.name(),
+                        parent_loc
+                    );
+                }
+            } else {
+                println!(
+                    "DEBUG SUBQUERY: WARNING - Subquery '{}' has no parent_query_location set",
+                    subquery.name()
+                );
             }
         }
     }
@@ -5094,64 +5191,47 @@ impl<'input> SubqueryRelationVisitor<'input> {
             symbol.parent_query_index()
         );
 
-        // Otherwise, search the symbol table to find which relation has this subquery's pipeline_start
-        // We need to search for the pipeline_start, not the current relation
-        let search_symbol = if let Some(blob_lock) = &symbol.blob {
-            if let Ok(blob_data) = blob_lock.lock() {
-                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                    relation_data.pipeline_start.clone()
+        // Use parent_query_location to directly find the parent (like C++ does)
+        // This is more reliable than searching through sub_query_pipelines which may not be populated yet
+        let parent_location = if !symbol.parent_query_location().is_unknown() {
+            Some(symbol.parent_query_location())
+        } else {
+            // Try pipeline_start's parent_query_location
+            if let Some(blob_lock) = &symbol.blob {
+                if let Ok(blob_data) = blob_lock.lock() {
+                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                        if let Some(pipeline_start) = &relation_data.pipeline_start {
+                            if !pipeline_start.parent_query_location().is_unknown() {
+                                Some(pipeline_start.parent_query_location())
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
             } else {
                 None
             }
-        } else {
-            None
         };
 
-        let search_target = search_symbol.as_ref().unwrap_or(symbol);
-        println!(
-            "          Searching for parent of pipeline '{}' (terminus of subquery)",
-            search_target.name()
-        );
-
-        // Find all potential parents that have this subquery
-        let mut potential_parents: Vec<Arc<SymbolInfo>> = Vec::new();
-        for potential_parent in self.symbol_table.symbols() {
-            if potential_parent.symbol_type() != SymbolType::Relation {
-                continue;
-            }
-
-            if let Some(blob_lock) = &potential_parent.blob {
-                if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                        // Check if pipeline_start is in the potential parent's sub_query_pipelines
-                        for subquery in &relation_data.sub_query_pipelines {
-                            if Arc::ptr_eq(subquery, search_target)
-                                || subquery.name() == search_target.name()
-                            {
-                                potential_parents.push(potential_parent.clone());
-                                break;
-                            }
-                        }
-                    }
-                }
+        if let Some(parent_loc) = parent_location {
+            if let Some(parent_symbol) = self.symbol_table.lookup_symbol_by_location_and_type(
+                parent_loc.as_ref(),
+                SymbolType::Relation,
+            ) {
+                println!("          Found parent query by location: '{}'", parent_symbol.name());
+                return Some(parent_symbol);
             }
         }
 
-        if potential_parents.is_empty() {
-            println!("          No parent query found in symbol table");
-            return None;
-        }
-
-        println!(
-            "          Found {} potential parent(s)",
-            potential_parents.len()
-        );
-        // Return the first one (we'll refine this later to find the actual correct parent)
-        // For now, this works because we populated sub_query_pipelines to all relations
-        Some(potential_parents[0].clone())
+        println!("          No parent query found using location");
+        None
     }
 
     /// Finds a field reference by name, recursively searching parent relations.

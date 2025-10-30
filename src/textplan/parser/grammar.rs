@@ -166,13 +166,152 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
         error_listener.clone(),
     );
     crate::textplan::parser::antlr_visitor::visit_plan(&mut subquery_visitor, plan_result.as_ref());
+
+    // Populate sub_query_pipelines now that parent_query_index has been set during the visit
+    subquery_visitor.finalize();
+
     symbol_table = subquery_visitor.symbol_table();
+
+    // Phase 6: Fix outer references in subquery expressions
+    // Now that parent_query_index is set, we can identify which field references
+    // should be outer references vs root references
+    println!("Fixing outer references in subquery relations");
+    fix_outer_references_in_subqueries(&mut symbol_table);
 
     // Return the parse result with the processed symbol table
     Ok(ParseResult {
         symbol_table,
         error_listener,
     })
+}
+
+/// Fixes field references in subquery relations to use outerReference instead of rootReference
+/// when they refer to parent query fields.
+fn fix_outer_references_in_subqueries(symbol_table: &mut crate::textplan::symbol_table::SymbolTable) {
+    use crate::textplan::common::structured_symbol_data::RelationData;
+    use crate::textplan::symbol_table::SymbolType;
+    use std::sync::Arc;
+
+    // Find all subquery relations (those with parent_query_index >= 0)
+    let subquery_relations: Vec<Arc<crate::textplan::symbol_table::SymbolInfo>> = symbol_table
+        .symbols()
+        .iter()
+        .filter(|s| s.symbol_type() == SymbolType::Relation && s.parent_query_index() >= 0)
+        .cloned()
+        .collect();
+
+    println!("  Found {} subquery relations to process", subquery_relations.len());
+
+    for subquery_rel in &subquery_relations {
+        println!("  Processing subquery relation '{}'", subquery_rel.name());
+
+        // Fix outer references in this relation's expressions
+        if let Some(blob_lock) = &subquery_rel.blob {
+            if let Ok(mut blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_mut::<RelationData>() {
+                    let field_count = relation_data.field_references.len();
+                    fix_outer_refs_in_rel(&mut relation_data.relation, field_count, symbol_table);
+                }
+            }
+        }
+    }
+}
+
+/// Recursively fixes outer references in a relation and its nested expressions.
+fn fix_outer_refs_in_rel(
+    rel: &mut substrait::proto::Rel,
+    subquery_field_count: usize,
+    symbol_table: &crate::textplan::symbol_table::SymbolTable,
+) {
+    use substrait::proto::rel::RelType;
+
+    match &mut rel.rel_type {
+        Some(RelType::Filter(filter)) => {
+            if let Some(condition) = &mut filter.condition {
+                fix_outer_refs_in_expression(condition, subquery_field_count, symbol_table);
+            }
+        }
+        Some(RelType::Project(project)) => {
+            for expr in &mut project.expressions {
+                fix_outer_refs_in_expression(expr, subquery_field_count, symbol_table);
+            }
+        }
+        Some(RelType::Join(join)) => {
+            if let Some(expr) = &mut join.expression {
+                fix_outer_refs_in_expression(expr, subquery_field_count, symbol_table);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Recursively fixes outer references in an expression.
+fn fix_outer_refs_in_expression(
+    expr: &mut substrait::proto::Expression,
+    subquery_field_count: usize,
+    symbol_table: &crate::textplan::symbol_table::SymbolTable,
+) {
+    use substrait::proto::expression::RexType;
+    use substrait::proto::expression::field_reference::ReferenceType;
+    use substrait::proto::expression::field_reference::RootType;
+
+    match &mut expr.rex_type {
+        Some(RexType::Selection(selection)) => {
+            // Check if this is a rootReference that should be an outerReference
+            if matches!(&selection.root_type, Some(RootType::RootReference(_))) {
+                // This is a root reference - check if it should be outer
+                if let Some(ref_type) = &selection.reference_type {
+                    if let ReferenceType::DirectReference(direct_ref) = ref_type {
+                        if let Some(substrait::proto::expression::reference_segment::ReferenceType::StructField(struct_field)) = &direct_ref.reference_type {
+                            // We need to determine if this field belongs to the current relation's schema
+                            // or to the parent relation's schema
+
+                            // For now, check based on field index compared to schema sizes
+                            // This is a simplified heuristic - ideally we'd track schema associations
+                            let field_index = struct_field.field as usize;
+
+                            // If field_index >= subquery_field_count, it's likely an outer reference
+                            // (subquery_field_count was passed as a parameter to avoid re-locking)
+                            if field_index >= subquery_field_count && subquery_field_count > 0 {
+                                println!("    Converting field[{}] from rootReference to outerReference (subquery has {} fields)",
+                                    field_index, subquery_field_count);
+
+                                // Convert to outer reference
+                                selection.root_type = Some(RootType::OuterReference(
+                                    substrait::proto::expression::field_reference::OuterReference {
+                                        steps_out: 1,
+                                    }
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Some(RexType::ScalarFunction(func)) => {
+            for arg in &mut func.arguments {
+                if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) = &mut arg.arg_type {
+                    fix_outer_refs_in_expression(inner_expr, subquery_field_count, symbol_table);
+                }
+            }
+        }
+        Some(RexType::Cast(cast)) => {
+            if let Some(input) = &mut cast.input {
+                fix_outer_refs_in_expression(input, subquery_field_count, symbol_table);
+            }
+        }
+        Some(RexType::Subquery(subquery)) => {
+            use substrait::proto::expression::subquery::SubqueryType;
+
+            // Don't recurse into nested subqueries - they'll be handled separately
+            if let Some(SubqueryType::SetComparison(set_comp)) = &mut subquery.subquery_type {
+                if let Some(left) = &mut set_comp.left {
+                    fix_outer_refs_in_expression(left, subquery_field_count, symbol_table);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Creates a new lexer for the given input text.
