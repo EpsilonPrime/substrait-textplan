@@ -172,11 +172,8 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
 
     symbol_table = subquery_visitor.symbol_table();
 
-    // Phase 6: Fix outer references in subquery expressions
-    // Now that parent_query_index is set, we can identify which field references
-    // should be outer references vs root references
-    println!("Fixing outer references in subquery relations");
-    fix_outer_references_in_subqueries(&mut symbol_table);
+    // Outer references were already fixed by SubqueryRelationVisitor during its visit pass.
+    // No need for additional fixing here.
 
     // Return the parse result with the processed symbol table
     Ok(ParseResult {
@@ -187,7 +184,9 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
 
 /// Fixes field references in subquery relations to use outerReference instead of rootReference
 /// when they refer to parent query fields.
-fn fix_outer_references_in_subqueries(symbol_table: &mut crate::textplan::symbol_table::SymbolTable) {
+fn fix_outer_references_in_subqueries(
+    symbol_table: &mut crate::textplan::symbol_table::SymbolTable,
+) {
     use crate::textplan::common::structured_symbol_data::RelationData;
     use crate::textplan::symbol_table::SymbolType;
     use std::sync::Arc;
@@ -200,7 +199,10 @@ fn fix_outer_references_in_subqueries(symbol_table: &mut crate::textplan::symbol
         .cloned()
         .collect();
 
-    println!("  Found {} subquery relations to process", subquery_relations.len());
+    println!(
+        "  Found {} subquery relations to process",
+        subquery_relations.len()
+    );
 
     for subquery_rel in &subquery_relations {
         println!("  Processing subquery relation '{}'", subquery_rel.name());
@@ -251,9 +253,9 @@ fn fix_outer_refs_in_expression(
     subquery_field_count: usize,
     symbol_table: &crate::textplan::symbol_table::SymbolTable,
 ) {
-    use substrait::proto::expression::RexType;
     use substrait::proto::expression::field_reference::ReferenceType;
     use substrait::proto::expression::field_reference::RootType;
+    use substrait::proto::expression::RexType;
 
     match &mut expr.rex_type {
         Some(RexType::Selection(selection)) => {
@@ -272,8 +274,9 @@ fn fix_outer_refs_in_expression(
 
                             // If field_index >= subquery_field_count, it's likely an outer reference
                             // (subquery_field_count was passed as a parameter to avoid re-locking)
+                            println!("      Checking field[{}] against subquery field_count={}", field_index, subquery_field_count);
                             if field_index >= subquery_field_count && subquery_field_count > 0 {
-                                println!("    Converting field[{}] from rootReference to outerReference (subquery has {} fields)",
+                                println!("      Converting field[{}] from rootReference to outerReference (subquery has {} fields)",
                                     field_index, subquery_field_count);
 
                                 // Convert to outer reference
@@ -290,7 +293,9 @@ fn fix_outer_refs_in_expression(
         }
         Some(RexType::ScalarFunction(func)) => {
             for arg in &mut func.arguments {
-                if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) = &mut arg.arg_type {
+                if let Some(substrait::proto::function_argument::ArgType::Value(inner_expr)) =
+                    &mut arg.arg_type
+                {
                     fix_outer_refs_in_expression(inner_expr, subquery_field_count, symbol_table);
                 }
             }

@@ -1770,7 +1770,10 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
         // For non-terminus, try to use left's pipeline_start
         let rightmost_symbol = if right_symbol.is_none() {
             // This is a terminus (no parent pipeline)
-            println!("  Pipeline: {} is a terminus, setting pipeline_start to itself", relation_name);
+            println!(
+                "  Pipeline: {} is a terminus, setting pipeline_start to itself",
+                relation_name
+            );
             Some(symbol.clone())
         } else if let Some(ref left) = left_symbol {
             // Has a parent, try to get pipeline_start from left
@@ -1789,7 +1792,10 @@ impl<'input> SubstraitPlanParserVisitor<'input> for PipelineVisitor<'input> {
             }
         } else {
             // No left, we are standalone
-            println!("  Pipeline: {} is standalone, setting pipeline_start to itself", relation_name);
+            println!(
+                "  Pipeline: {} is standalone, setting pipeline_start to itself",
+                relation_name
+            );
             Some(symbol.clone())
         };
 
@@ -4894,11 +4900,19 @@ impl<'input> SubqueryRelationVisitor<'input> {
                 continue;
             }
 
-            println!("DEBUG SUBQUERY: Checking relation '{}': parent_query_index={}", symbol.name(), symbol.parent_query_index());
+            println!(
+                "DEBUG SUBQUERY: Checking relation '{}': parent_query_index={}",
+                symbol.name(),
+                symbol.parent_query_index()
+            );
 
             // Check if this relation or its pipeline_start has parent_query_index set
             let is_subquery = if symbol.parent_query_index() >= 0 {
-                println!("DEBUG SUBQUERY:   -> '{}' is a subquery (parent_query_index={})", symbol.name(), symbol.parent_query_index());
+                println!(
+                    "DEBUG SUBQUERY:   -> '{}' is a subquery (parent_query_index={})",
+                    symbol.name(),
+                    symbol.parent_query_index()
+                );
                 true
             } else if let Some(blob_lock) = &symbol.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
@@ -4928,7 +4942,10 @@ impl<'input> SubqueryRelationVisitor<'input> {
                 if let Some(blob_lock) = &symbol.blob {
                     if let Ok(blob_data) = blob_lock.lock() {
                         if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                            pipeline_start_name = relation_data.pipeline_start.as_ref().map(|ps| ps.name().to_string());
+                            pipeline_start_name = relation_data
+                                .pipeline_start
+                                .as_ref()
+                                .map(|ps| ps.name().to_string());
                         }
                     }
                 }
@@ -4941,7 +4958,8 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
                     if let Some(other_blob) = &other_symbol.blob {
                         if let Ok(other_data) = other_blob.lock() {
-                            if let Some(other_rel_data) = other_data.downcast_ref::<RelationData>() {
+                            if let Some(other_rel_data) = other_data.downcast_ref::<RelationData>()
+                            {
                                 if let Some(continuing) = &other_rel_data.continuing_pipeline {
                                     if Arc::ptr_eq(continuing, symbol) {
                                         // This relation IS someone's continuing_pipeline, so not a terminus
@@ -5001,10 +5019,9 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
             if let Some(parent_loc) = parent_location {
                 // Look up the parent relation by location
-                if let Some(parent_symbol) = symbol_table.lookup_symbol_by_location_and_type(
-                    parent_loc.as_ref(),
-                    SymbolType::Relation,
-                ) {
+                if let Some(parent_symbol) = symbol_table
+                    .lookup_symbol_by_location_and_type(parent_loc.as_ref(), SymbolType::Relation)
+                {
                     println!(
                         "DEBUG SUBQUERY: Found parent relation '{}' for subquery '{}' using location",
                         parent_symbol.name(),
@@ -5221,11 +5238,14 @@ impl<'input> SubqueryRelationVisitor<'input> {
         };
 
         if let Some(parent_loc) = parent_location {
-            if let Some(parent_symbol) = self.symbol_table.lookup_symbol_by_location_and_type(
-                parent_loc.as_ref(),
-                SymbolType::Relation,
-            ) {
-                println!("          Found parent query by location: '{}'", parent_symbol.name());
+            if let Some(parent_symbol) = self
+                .symbol_table
+                .lookup_symbol_by_location_and_type(parent_loc.as_ref(), SymbolType::Relation)
+            {
+                println!(
+                    "          Found parent query by location: '{}'",
+                    parent_symbol.name()
+                );
                 return Some(parent_symbol);
             }
         }
@@ -5348,28 +5368,66 @@ impl<'input> SubqueryRelationVisitor<'input> {
         relation_symbol: &Arc<SymbolInfo>,
     ) -> Option<usize> {
         // Parse column name - can be "field" or "schema.field"
-        let (_schema_name, field_name) = if let Some(dot_pos) = column_name.rfind('.') {
+        let (schema_name, field_name) = if let Some(dot_pos) = column_name.rfind('.') {
             (&column_name[..dot_pos], &column_name[dot_pos + 1..])
         } else {
             // No schema prefix
             ("", column_name)
         };
 
-        // Search ONLY in this relation's field_references
+        // Get this relation's schema to compare against
+        let relation_schema = if let Some(blob_lock) = &relation_symbol.blob {
+            if let Ok(blob_data) = blob_lock.lock() {
+                if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
+                    relation_data.schema.clone()
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Search ONLY in this relation's field_references that belong to this relation's schema
         if let Some(blob_lock) = &relation_symbol.blob {
             if let Ok(blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
                     // Search through field_references in this relation only
-                    // Try matching against full column_name first, then just field_name
                     for (index, field_sym) in relation_data.field_references.iter().enumerate() {
-                        if field_sym.name() == column_name || field_sym.name() == field_name {
-                            return Some(index);
-                        }
-                        // Also try matching with schema prefix
-                        if let Some(schema) = field_sym.schema() {
-                            let qualified_name = format!("{}.{}", schema.name(), field_sym.name());
-                            if qualified_name == column_name {
+                        // Only match if the field's schema matches THIS relation's schema
+                        let field_belongs_to_this_relation = if !schema_name.is_empty() {
+                            // Column name has schema prefix - check if field's schema matches
+                            if let Some(field_schema) = field_sym.schema() {
+                                // Check if field's schema matches the requested schema AND this relation's schema
+                                if let Some(ref rel_schema) = relation_schema {
+                                    field_schema.name() == schema_name
+                                        && Arc::ptr_eq(&field_schema, rel_schema)
+                                } else {
+                                    // Relation has no schema, match by schema name only
+                                    field_schema.name() == schema_name
+                                }
+                            } else {
+                                // Field has no schema, can't match a schema-prefixed name
+                                false
+                            }
+                        } else {
+                            // Column name has no schema prefix - match by field name only
+                            true
+                        };
+
+                        if field_belongs_to_this_relation {
+                            if field_sym.name() == column_name || field_sym.name() == field_name {
                                 return Some(index);
+                            }
+                            // Also try matching with schema prefix
+                            if let Some(schema) = field_sym.schema() {
+                                let qualified_name =
+                                    format!("{}.{}", schema.name(), field_sym.name());
+                                if qualified_name == column_name {
+                                    return Some(index);
+                                }
                             }
                         }
                     }
