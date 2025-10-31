@@ -6,12 +6,6 @@ Tests for the Python wrapper of the Substrait TextPlan library.
 """
 
 import unittest
-import sys
-import os
-
-# Add the parent directory to the path so we can import substrait_textplan
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 import substrait_textplan
 
 
