@@ -889,7 +889,6 @@ impl<'input> MainPlanVisitor<'input> {
                         upstreams.push(pipe.clone());
                     }
                     drop(blob_data);
-                    drop(blob_lock);
 
                     // Recursively populate upstreams
                     for upstream in upstreams {
@@ -2042,7 +2041,6 @@ impl<'input> RelationVisitor<'input> {
                         let continuing = relation_data.continuing_pipeline.clone();
                         let new_pipes = relation_data.new_pipelines.clone();
                         drop(blob_data);
-                        drop(blob_lock);
 
                         if let Some(cont) = continuing {
                             self.add_expressions_to_schema(&cont);
@@ -2853,7 +2851,6 @@ impl<'input> RelationVisitor<'input> {
                         if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
                             if relation_data.field_references.is_empty() {
                                 drop(blob_data);
-                                drop(blob_lock);
                                 self.add_input_fields_to_schema(&parent);
                             }
                         }
@@ -3077,7 +3074,6 @@ impl<'input> RelationVisitor<'input> {
                     if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
                         if relation_data.field_references.is_empty() && relation_data.generated_field_references.is_empty() {
                             drop(blob_data);
-                            drop(blob_lock);
                             self.add_input_fields_to_schema(&relation_symbol);
                         }
                     }
@@ -3093,7 +3089,6 @@ impl<'input> RelationVisitor<'input> {
                         let continuing = relation_data.continuing_pipeline.clone();
                         let new_pipes = relation_data.new_pipelines.clone();
                         drop(blob_data);
-                        drop(blob_lock);
 
                         // Ensure upstream relations have their generated fields populated
                         if let Some(cont) = continuing {
@@ -4123,7 +4118,6 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                         let continuing = relation_data.continuing_pipeline.clone();
                         let new_pipes = relation_data.new_pipelines.clone();
                         drop(blob_data);
-                        drop(blob_lock);
 
                         if let Some(cont) = continuing {
                             self.add_expressions_to_schema(&cont);
@@ -4156,7 +4150,6 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                         if is_aggregate {
                             let generated_refs = relation_data.generated_field_references.clone();
                             drop(blob_data);
-                            drop(blob_lock);
 
                             // Now update outputFieldReferences
                             if let Some(blob_lock) = &relation_symbol.blob {
@@ -4774,7 +4767,6 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
                             };
 
                             drop(blob_data);
-                            drop(blob_lock);
 
                             // Add to output_field_references
                             if let Some(field_sym) = field_symbol {

@@ -61,6 +61,7 @@ pub fn symbol_table_to_text_plan(
 
 /// FFI API for loading a textplan from a string and converting it to binary protobuf
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn load_from_text(text_ptr: *const c_char) -> *mut u8 {
     if text_ptr.is_null() {
         return ptr::null_mut();
@@ -82,7 +83,7 @@ pub extern "C" fn load_from_text(text_ptr: *const c_char) -> *mut u8 {
                 std::alloc::Layout::from_size_align(result_size, 8).expect("Invalid layout");
 
             unsafe {
-                let ptr = std::alloc::alloc(layout) as *mut u8;
+                let ptr = std::alloc::alloc(layout);
                 if ptr.is_null() {
                     return ptr::null_mut();
                 }
@@ -104,6 +105,7 @@ pub extern "C" fn load_from_text(text_ptr: *const c_char) -> *mut u8 {
 
 /// FFI API for freeing memory allocated by this library
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn free_plan_bytes(ptr: *mut u8) {
     if ptr.is_null() {
         return;
@@ -122,6 +124,7 @@ pub extern "C" fn free_plan_bytes(ptr: *mut u8) {
 
 /// FFI API for loading a binary plan and converting it to textplan format
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn load_from_binary(bytes_ptr: *const u8, bytes_len: usize) -> *mut c_char {
     if bytes_ptr.is_null() {
         return ptr::null_mut();
@@ -140,6 +143,7 @@ pub extern "C" fn load_from_binary(bytes_ptr: *const u8, bytes_len: usize) -> *m
 
 /// FFI API for freeing memory allocated by this library
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn free_text_plan(text_ptr: *mut c_char) {
     if !text_ptr.is_null() {
         unsafe {
