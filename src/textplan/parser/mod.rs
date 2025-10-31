@@ -8,7 +8,7 @@ pub mod load_text;
 pub mod parse_text;
 pub mod plan_visitor;
 // ANTLR visitors
-pub mod antlr_visitor;
+pub mod visitors;
 // Generated ANTLR code
 pub mod antlr;
 

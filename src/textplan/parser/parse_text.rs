@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::textplan::common::error::TextPlanError;
 use crate::textplan::common::parse_result::ParseResult;
 use crate::textplan::parser::antlr::substraitplanparser::PlanContext;
-use crate::textplan::parser::antlr_visitor::PlanVisitor;
+use crate::textplan::parser::visitors::PlanVisitor;
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::parser::grammar;
 use crate::textplan::printer::plan_printer::{PlanPrinter, TextPlanFormat};
@@ -127,10 +127,10 @@ fn apply_type_visitor(
 
     // Create a TypeVisitor with the current symbol table
     let mut type_visitor =
-        crate::textplan::parser::antlr_visitor::TypeVisitor::new(symbol_table, error_listener);
+        crate::textplan::parser::visitors::TypeVisitor::new(symbol_table, error_listener);
 
     // Apply the visitor to the parse tree using our helper function
-    crate::textplan::parser::antlr_visitor::visit_plan(&mut type_visitor, plan_ctx);
+    crate::textplan::parser::visitors::visit_plan(&mut type_visitor, plan_ctx);
 
     // Return the updated symbol table
     type_visitor.symbol_table()
@@ -148,10 +148,10 @@ fn apply_plan_visitor(
 
     // Create a MainPlanVisitor with the symbol table from the previous phase
     let mut plan_visitor =
-        crate::textplan::parser::antlr_visitor::MainPlanVisitor::new(symbol_table, error_listener);
+        crate::textplan::parser::visitors::MainPlanVisitor::new(symbol_table, error_listener);
 
     // Apply the visitor to the parse tree using our helper function
-    crate::textplan::parser::antlr_visitor::visit_plan(&mut plan_visitor, plan_ctx);
+    crate::textplan::parser::visitors::visit_plan(&mut plan_visitor, plan_ctx);
 
     // Return the updated symbol table
     plan_visitor.symbol_table()
@@ -169,10 +169,10 @@ fn apply_pipeline_visitor(
 
     // Create a PipelineVisitor with the symbol table from the previous phase
     let mut pipeline_visitor =
-        crate::textplan::parser::antlr_visitor::PipelineVisitor::new(symbol_table, error_listener);
+        crate::textplan::parser::visitors::PipelineVisitor::new(symbol_table, error_listener);
 
     // Apply the visitor to the parse tree using our helper function
-    crate::textplan::parser::antlr_visitor::visit_plan(&mut pipeline_visitor, plan_ctx);
+    crate::textplan::parser::visitors::visit_plan(&mut pipeline_visitor, plan_ctx);
 
     // Return the updated symbol table
     pipeline_visitor.symbol_table()
@@ -190,10 +190,10 @@ fn apply_relation_visitor(
 
     // Create a RelationVisitor with the symbol table from the previous phase
     let mut relation_visitor =
-        crate::textplan::parser::antlr_visitor::RelationVisitor::new(symbol_table, error_listener);
+        crate::textplan::parser::visitors::RelationVisitor::new(symbol_table, error_listener);
 
     // Apply the visitor to the parse tree using our helper function
-    crate::textplan::parser::antlr_visitor::visit_plan(&mut relation_visitor, plan_ctx);
+    crate::textplan::parser::visitors::visit_plan(&mut relation_visitor, plan_ctx);
 
     // Return the updated symbol table
     relation_visitor.symbol_table()
@@ -210,13 +210,13 @@ fn apply_subquery_visitor(
     println!("Applying SubqueryRelationVisitor");
 
     // Create a SubqueryRelationVisitor with the symbol table from the previous phase
-    let mut subquery_visitor = crate::textplan::parser::antlr_visitor::SubqueryRelationVisitor::new(
+    let mut subquery_visitor = crate::textplan::parser::visitors::SubqueryRelationVisitor::new(
         symbol_table,
         error_listener,
     );
 
     // Apply the visitor to the parse tree using our helper function
-    crate::textplan::parser::antlr_visitor::visit_plan(&mut subquery_visitor, plan_ctx);
+    crate::textplan::parser::visitors::visit_plan(&mut subquery_visitor, plan_ctx);
 
     // Return the updated symbol table
     subquery_visitor.symbol_table()
