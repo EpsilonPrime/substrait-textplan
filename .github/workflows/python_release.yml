@@ -15,8 +15,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
     
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +38,11 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           brew install openjdk@11 protobuf
+
+      - name: Install Java for ANTLR and Protobuf (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install openjdk11 protoc -y
       
       - name: Cache ANTLR JAR
         id: cache-antlr
@@ -70,12 +75,19 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install setuptools wheel setuptools-rust
-      
+          pip install build setuptools wheel setuptools-rust
+
       - name: Build wheels
         run: |
           cd python
-          python setup.py bdist_wheel
+          python -m build --wheel
+
+      - name: Install and test wheel
+        shell: bash
+        run: |
+          pip install python/dist/*.whl
+          python -c "import substrait_textplan; print('Successfully imported substrait_textplan')"
+          python -m unittest discover python/tests/
       
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -89,30 +101,67 @@ jobs:
     needs: [build_wheels]
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+        with:
+          submodules: recursive
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      
+
+      - name: Install Java for ANTLR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-jre protobuf-compiler
+
+      - name: Cache ANTLR JAR
+        id: cache-antlr
+        uses: actions/cache@v4
+        with:
+          path: build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar
+          key: antlr-jar-${{ env.ANTLR_JAR_VERSION }}
+
+      - name: Download ANTLR JAR with Rust support
+        if: steps.cache-antlr.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p build-tools
+          curl -L -o build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar ${{ env.ANTLR_JAR_URL }}
+
+      - name: Set ANTLR_JAR environment variable
+        run: echo "ANTLR_JAR=$(pwd)/build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar" >> $GITHUB_ENV
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Generate Proto Visitors
+        run: GENERATE_PROTO_VISITORS=true cargo check
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install twine
-      
+          pip install build twine
+
+      - name: Build source distribution
+        run: |
+          cd python
+          python -m build --sdist
+
       - name: Download all wheels
         uses: actions/download-artifact@v4
         with:
           path: dist
-      
+
       - name: Move wheels to dist directory
         run: |
           mkdir -p dist_all
           find dist -name "*.whl" -exec cp {} dist_all/ \;
-      
+          cp python/dist/*.tar.gz dist_all/
+
       - name: Publish to PyPI
         env:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}

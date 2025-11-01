@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=65.0", "setuptools-rust", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "substrait-textplan"
+version = "0.1.0"
+authors = [
+    {name = "David Sisson"}
+]
+description = "Python bindings for Substrait TextPlan - a parser for Substrait textplan format"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "Apache-2.0"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Database",
+]
+keywords = ["substrait", "textplan", "query", "plan", "parser"]
+
+[project.urls]
+Homepage = "https://github.com/EpsilonPrime/substrait-textplan"
+Repository = "https://github.com/EpsilonPrime/substrait-textplan"
+Issues = "https://github.com/EpsilonPrime/substrait-textplan/issues"
+
+[tool.setuptools]
+packages = ["substrait_textplan"]
+
+[tool.setuptools.package-data]
+substrait_textplan = ["*.so", "*.dylib", "*.dll"]
