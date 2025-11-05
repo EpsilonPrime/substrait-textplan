@@ -4,7 +4,6 @@
 """Setup script for substrait-textplan Python package."""
 
 import os
-import sys
 from setuptools import setup
 from setuptools_rust import Binding, RustExtension
 

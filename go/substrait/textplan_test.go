@@ -9,10 +9,10 @@ import (
 func TestTextPlanRoundtrip(t *testing.T) {
 	// This is a simple test that checks if we can convert a text plan to binary
 	// and back to text
-	
+
 	// Skip if the shared library is not available
 	tp := New()
-	
+
 	// Simple TextPlan for testing
 	textPlan := `
 pipelines {
@@ -33,24 +33,24 @@ read relation data {
 	source simple_source;
 }
 `
-	
+
 	// Convert to binary
 	binary, err := tp.LoadFromText(textPlan)
 	if err != nil {
 		t.Skipf("Skipping test: %v (shared library might not be available)", err)
 	}
-	
+
 	// Make sure the binary data is not empty
 	if len(binary) == 0 {
 		t.Fatal("Binary data is empty")
 	}
-	
+
 	// Convert back to text
 	roundtripText, err := tp.SaveToText(binary)
 	if err != nil {
 		t.Fatalf("Failed to convert binary back to text: %v", err)
 	}
-	
+
 	// Make sure the round-tripped text is not empty
 	if len(roundtripText) == 0 {
 		t.Fatal("Round-tripped text is empty")

@@ -105,6 +105,23 @@ jobs:
     - name: Generate ANTLR Parser and Build Rust library
       run: GENERATE_ANTLR=true cargo build --lib
 
+    - name: Check Go code formatting
+      run: |
+        cd go
+        # Check if any files need formatting
+        unformatted=$(gofmt -l .)
+        if [ -n "$unformatted" ]; then
+          echo "The following files need formatting:"
+          echo "$unformatted"
+          gofmt -d .
+          exit 1
+        fi
+
+    - name: Run go vet
+      run: |
+        cd go
+        go vet ./...
+
     - name: Build Go package
       run: |
         cd go

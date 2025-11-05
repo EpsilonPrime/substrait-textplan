@@ -8,7 +8,7 @@ Python wrapper for the Substrait TextPlan library.
 import ctypes
 import os
 import platform
-from typing import Union, List, Optional
+from typing import Optional
 
 
 def _get_lib_path() -> str:
@@ -54,57 +54,64 @@ def _get_lib_path() -> str:
 
 class TextPlan:
     """Wrapper for the Substrait TextPlan library."""
-    
+
     def __init__(self):
         """Initialize the TextPlan library."""
         lib_path = _get_lib_path()
         self._lib = ctypes.CDLL(lib_path)
-        
+
         # Configure function signatures
         self._lib.load_from_text.argtypes = [ctypes.c_char_p]
         self._lib.load_from_text.restype = ctypes.POINTER(ctypes.c_uint8)
-        
+
         self._lib.free_plan_bytes.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
         self._lib.free_plan_bytes.restype = None
 
-        self._lib.save_to_text.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t]
-        self._lib.save_to_text.restype = ctypes.c_void_p  # Return as void* to avoid auto-conversion
+        self._lib.save_to_text.argtypes = [
+            ctypes.POINTER(ctypes.c_uint8),
+            ctypes.c_size_t,
+        ]
+        self._lib.save_to_text.restype = (
+            ctypes.c_void_p
+        )  # Return as void* to avoid auto-conversion
 
         self._lib.free_text_plan.argtypes = [ctypes.c_void_p]
         self._lib.free_text_plan.restype = None
-    
+
     def load_from_text(self, text: str) -> Optional[bytes]:
         """
         Load a textplan from a string and convert it to binary protobuf.
-        
+
         Args:
             text: The textplan to load.
-            
+
         Returns:
-            The binary protobuf representation of the plan, or None if an error occurred.
+            The binary protobuf representation, or None if error occurred.
         """
-        text_bytes = text.encode('utf-8')
+        text_bytes = text.encode("utf-8")
         ptr = self._lib.load_from_text(text_bytes)
-        
+
         if not ptr:
             return None
-        
+
         # First sizeof(size_t) bytes contain the length
         len_ptr = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_size_t))
         length = len_ptr.contents.value
-        
+
         # Rest is the data
-        data_ptr = ctypes.cast(ctypes.addressof(ptr.contents) + ctypes.sizeof(ctypes.c_size_t), 
-                             ctypes.POINTER(ctypes.c_uint8 * length))
-        
+        data_ptr = ctypes.cast(
+            ctypes.addressof(ptr.contents) + ctypes.sizeof(ctypes.c_size_t),
+            ctypes.POINTER(ctypes.c_uint8 * length),
+        )
+
         # Copy the data
         result = bytes(data_ptr.contents)
-        
+
         # Free the memory
         self._lib.free_plan_bytes(ptr)
-        
+
         return result
-    
+
     def save_to_text(self, data: bytes) -> Optional[str]:
         """
         Save a binary plan to textplan format.
@@ -122,7 +129,7 @@ class TextPlan:
             return None
 
         # Copy the string
-        result = ctypes.string_at(ptr).decode('utf-8')
+        result = ctypes.string_at(ptr).decode("utf-8")
 
         # Free the memory
         self._lib.free_text_plan(ptr)
@@ -133,10 +140,10 @@ class TextPlan:
 def load_from_text(text: str) -> Optional[bytes]:
     """
     Load a textplan from a string and convert it to binary protobuf.
-    
+
     Args:
         text: The textplan to load.
-        
+
     Returns:
         The binary protobuf representation of the plan, or None if an error occurred.
     """

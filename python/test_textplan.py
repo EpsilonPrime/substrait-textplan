@@ -146,5 +146,5 @@ read relation class_read {
         # or it might be valid binary if the parser is very permissive
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
