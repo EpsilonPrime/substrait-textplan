@@ -61,7 +61,10 @@ func (tp *TextPlan) LoadFromText(text string) ([]byte, error) {
 	return result, nil
 }
 
-// SaveToText loads a binary plan and converts it to textplan format
+// SaveToText converts a serialized Substrait protobuf plan to textplan format.
+//
+// Note: This function expects a serialized substrait.Plan protobuf message.
+// If you have a Plan object, serialize it first using proto.Marshal() or plan.Marshal().
 func (tp *TextPlan) SaveToText(data []byte) (string, error) {
 	if len(data) == 0 {
 		return "", errors.New("empty binary data")
@@ -89,7 +92,10 @@ func LoadFromText(text string) ([]byte, error) {
 	return tp.LoadFromText(text)
 }
 
-// SaveToText loads a binary plan and converts it to textplan format
+// SaveToText converts a serialized Substrait protobuf plan to textplan format.
+//
+// Note: This function expects a serialized substrait.Plan protobuf message.
+// If you have a Plan object, serialize it first using proto.Marshal() or plan.Marshal().
 func SaveToText(data []byte) (string, error) {
 	tp := New()
 	return tp.SaveToText(data)

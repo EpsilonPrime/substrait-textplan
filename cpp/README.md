@@ -153,17 +153,45 @@ int main() {
 int main() {
   std::string original_text = "..."; // Your textplan
 
-  // Text -> Binary
+  // Text -> Binary (serialized substrait::Plan protobuf)
   auto binary = substrait::textplan::TextPlan::LoadFromText(original_text.c_str());
 
   if (binary.has_value()) {
     // Binary -> Text
+    // Note: SaveToText expects a serialized substrait::Plan protobuf
     auto regenerated_text = substrait::textplan::TextPlan::SaveToText(*binary);
 
     if (regenerated_text.has_value()) {
       // Use the regenerated textplan
       std::cout << *regenerated_text << std::endl;
     }
+  }
+
+  return 0;
+}
+```
+
+### Converting Existing Protobuf Plans
+
+If you have an existing `substrait::Plan` object from the Substrait C++ library:
+
+```cpp
+#include "substrait_textplan.h"
+#include "substrait/plan.pb.h"
+
+int main() {
+  substrait::Plan plan;
+  // ... populate your plan ...
+
+  // Serialize the plan to a byte array
+  std::string serialized = plan.SerializeAsString();
+  std::vector<uint8_t> binary_data(serialized.begin(), serialized.end());
+
+  // Convert to textplan
+  auto text_plan = substrait::textplan::TextPlan::SaveToText(binary_data);
+
+  if (text_plan.has_value()) {
+    std::cout << *text_plan << std::endl;
   }
 
   return 0;
@@ -181,7 +209,8 @@ int main() {
   - Returns `std::nullopt` on error
 
 - `static std::optional<std::string> SaveToText(const uint8_t* data, size_t size)`
-  - Converts a binary protobuf plan to textplan format
+  - Converts a serialized Substrait protobuf plan (substrait::Plan) to textplan format
+  - Note: Expects serialized protobuf data, not a Plan object
   - Returns `std::nullopt` on error
 
 #### Instance Methods
@@ -191,7 +220,8 @@ int main() {
   - Returns `std::nullopt` on error
 
 - `std::optional<std::string> SaveToText(const std::vector<uint8_t>& data) const`
-  - Converts a binary protobuf plan to textplan format
+  - Converts a serialized Substrait protobuf plan (substrait::Plan) to textplan format
+  - Note: Expects serialized protobuf data, not a Plan object
   - Returns `std::nullopt` on error
 
 ## Integrating into Your Project

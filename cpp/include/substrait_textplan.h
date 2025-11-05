@@ -50,11 +50,15 @@ class TextPlan {
       const std::string& text) const;
 
   /**
-   * @brief Save a binary plan to textplan format
+   * @brief Convert a serialized Substrait protobuf plan to textplan format
    *
-   * @param data The binary plan to convert
+   * Note: This function expects a serialized substrait::Plan protobuf message.
+   * If you have a substrait::Plan object, serialize it first using
+   * SerializeToString() or SerializeToArray().
+   *
+   * @param data The serialized Substrait protobuf plan (substrait::Plan)
    * @return std::optional<std::string> The textplan representation of the plan,
-   * or std::nullopt if an error occurred
+   * or std::nullopt if an error occurred (e.g., invalid protobuf data)
    */
   std::optional<std::string> SaveToText(const std::vector<uint8_t>& data) const;
 
@@ -69,12 +73,18 @@ class TextPlan {
   static std::optional<std::vector<uint8_t>> LoadFromText(const char* text);
 
   /**
-   * @brief Static helper: Save a binary plan to textplan format
+   * @brief Static helper: Convert a serialized Substrait protobuf plan to
+   * textplan format
    *
-   * @param data Pointer to the binary plan data
-   * @param size Size of the binary plan data in bytes
+   * Note: This function expects a serialized substrait::Plan protobuf message.
+   * If you have a substrait::Plan object, serialize it first using
+   * SerializeToString() or SerializeToArray().
+   *
+   * @param data Pointer to the serialized Substrait protobuf plan
+   * (substrait::Plan)
+   * @param size Size of the serialized data in bytes
    * @return std::optional<std::string> The textplan representation of the plan,
-   * or std::nullopt if an error occurred
+   * or std::nullopt if an error occurred (e.g., invalid protobuf data)
    */
   static std::optional<std::string> SaveToText(
       const uint8_t* data,

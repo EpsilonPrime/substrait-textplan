@@ -114,13 +114,17 @@ class TextPlan:
 
     def save_to_text(self, data: bytes) -> Optional[str]:
         """
-        Save a binary plan to textplan format.
+        Convert a serialized Substrait protobuf plan to textplan format.
+
+        Note: This function expects a serialized substrait.Plan protobuf message.
+        If you have a Plan object, serialize it first using SerializeToString().
 
         Args:
-            data: The binary plan to convert.
+            data: The serialized Substrait protobuf plan (substrait.Plan).
 
         Returns:
-            The textplan representation of the plan, or None if an error occurred.
+            The textplan representation of the plan, or None if an error occurred
+            (e.g., invalid protobuf data).
         """
         data_array = (ctypes.c_uint8 * len(data))(*data)
         ptr = self._lib.save_to_text(data_array, len(data))
@@ -153,13 +157,17 @@ def load_from_text(text: str) -> Optional[bytes]:
 
 def save_to_text(data: bytes) -> Optional[str]:
     """
-    Save a binary plan to textplan format.
+    Convert a serialized Substrait protobuf plan to textplan format.
+
+    Note: This function expects a serialized substrait.Plan protobuf message.
+    If you have a Plan object, serialize it first using SerializeToString().
 
     Args:
-        data: The binary plan to convert.
+        data: The serialized Substrait protobuf plan (substrait.Plan).
 
     Returns:
-        The textplan representation of the plan, or None if an error occurred.
+        The textplan representation of the plan, or None if an error occurred
+        (e.g., invalid protobuf data).
     """
     tp = TextPlan()
     return tp.save_to_text(data)
