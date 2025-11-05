@@ -13,29 +13,43 @@ from typing import Union, List, Optional
 
 def _get_lib_path() -> str:
     """Get the path to the shared library."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
     system = platform.system()
     if system == "Linux":
-        lib_ext = "so"
+        lib_name = "libsubstrait_textplan.so"
     elif system == "Darwin":
-        lib_ext = "dylib"
+        lib_name = "libsubstrait_textplan.dylib"
     elif system == "Windows":
-        lib_ext = "dll"
+        lib_name = "substrait_textplan.dll"
     else:
         raise RuntimeError(f"Unsupported platform: {system}")
-    
-    # Check debug build first
-    debug_path = os.path.join(base_dir, "target", "debug", f"libsubstrait_textplan.{lib_ext}")
+
+    # First check if the library is bundled with the package (installed from wheel)
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    bundled_lib = os.path.join(package_dir, lib_name)
+    if os.path.exists(bundled_lib):
+        return bundled_lib
+
+    # For development: check cargo target directories
+    base_dir = os.path.dirname(package_dir)
+
+    # Check debug build
+    debug_path = os.path.join(base_dir, "target", "debug", lib_name)
     if os.path.exists(debug_path):
         return debug_path
-    
+
     # Check release build
-    release_path = os.path.join(base_dir, "target", "release", f"libsubstrait_textplan.{lib_ext}")
+    release_path = os.path.join(base_dir, "target", "release", lib_name)
     if os.path.exists(release_path):
         return release_path
-    
-    raise RuntimeError("Could not find the Substrait TextPlan shared library")
+
+    raise RuntimeError(
+        f"Could not find the Substrait TextPlan shared library ({lib_name}).\n"
+        f"Searched in:\n"
+        f"  - {bundled_lib} (bundled)\n"
+        f"  - {debug_path} (debug build)\n"
+        f"  - {release_path} (release build)\n"
+        f"Please build the library with: GENERATE_ANTLR=true cargo build --release"
+    )
 
 
 class TextPlan:

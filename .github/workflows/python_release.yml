@@ -11,34 +11,33 @@ env:
 
 jobs:
   build_wheels:
-    name: Build Python wheels on ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.8', '3.9', '3.10', '3.11']
-    
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      
+
       - name: Install Java for ANTLR (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-jre protobuf-compiler
+          sudo apt-get install -y default-jre
 
-      - name: Install Java for ANTLR and Protobuf (macOS)
+      - name: Install Java for ANTLR (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install openjdk@11 protobuf
-      
+          brew install openjdk@11
+
+      - name: Install Java for ANTLR (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install openjdk11 -y
+
       - name: Cache ANTLR JAR
         id: cache-antlr
         uses: actions/cache@v4
@@ -46,62 +45,57 @@ jobs:
           path: build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar
           key: antlr-jar-${{ env.ANTLR_JAR_VERSION }}
 
-      - name: Download ANTLR JAR with Rust support
-        if: steps.cache-antlr.outputs.cache-hit != 'true'
+      - name: Download ANTLR JAR with Rust support (Unix)
+        if: steps.cache-antlr.outputs.cache-hit != 'true' && runner.os != 'Windows'
         run: |
           mkdir -p build-tools
           curl -L -f -o build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar ${{ env.ANTLR_JAR_URL }}
-          echo "Downloaded ANTLR JAR to build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar"
-          # Verify the JAR file is valid
-          file build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar
+          echo "Downloaded ANTLR JAR"
           unzip -t build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar > /dev/null
           echo "Verified JAR file integrity"
 
-      - name: Verify ANTLR JAR integrity
+      - name: Download ANTLR JAR with Rust support (Windows)
+        if: steps.cache-antlr.outputs.cache-hit != 'true' && runner.os == 'Windows'
         run: |
-          if [ ! -f build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar ]; then
-            echo "ERROR: ANTLR JAR file not found"
-            exit 1
-          fi
-          # Test if the JAR is valid
-          if ! unzip -t build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar > /dev/null 2>&1; then
-            echo "ERROR: ANTLR JAR file is corrupted, re-downloading..."
-            curl -L -f -o build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar ${{ env.ANTLR_JAR_URL }}
-            unzip -t build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar > /dev/null
-            echo "Re-downloaded and verified JAR file"
-          else
-            echo "ANTLR JAR file is valid"
-          fi
+          mkdir -p build-tools
+          curl -L -o build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar ${{ env.ANTLR_JAR_URL }}
+          echo "Downloaded ANTLR JAR"
 
-      - name: Set ANTLR_JAR environment variable
+      - name: Set ANTLR_JAR environment variable (Unix)
+        if: runner.os != 'Windows'
         run: echo "ANTLR_JAR=$(pwd)/build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar" >> $GITHUB_ENV
-      
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-      
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-      
-      - name: Generate ANTLR Parser
-        run: GENERATE_ANTLR=true cargo check
-      
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install setuptools wheel setuptools-rust
-      
+
+      - name: Set ANTLR_JAR environment variable (Windows)
+        if: runner.os == 'Windows'
+        run: echo "ANTLR_JAR=${{ github.workspace }}\build-tools\antlr4-4.8-2-SNAPSHOT-complete.jar" >> $env:GITHUB_ENV
+
+      - name: Set GENERATE_ANTLR environment variable
+        run: echo "GENERATE_ANTLR=true" >> $GITHUB_ENV
+
       - name: Build wheels
-        run: |
-          cd python
-          python setup.py bdist_wheel
-      
+        uses: pypa/cibuildwheel@v2.16.5
+        env:
+          # Build for Python 3.8-3.12
+          CIBW_BUILD: "cp38-* cp39-* cp310-* cp311-* cp312-*"
+          # Skip 32-bit builds and musl (for now)
+          CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_*"
+          # Ensure Rust is available in the build environment
+          CIBW_BEFORE_ALL_LINUX: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source $HOME/.cargo/env && java -version"
+          CIBW_BEFORE_ALL_MACOS: "rustup update stable && java -version"
+          CIBW_BEFORE_ALL_WINDOWS: "rustup update stable && java -version"
+          CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH GENERATE_ANTLR=true ANTLR_JAR=${{ github.workspace }}/build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar"
+          CIBW_ENVIRONMENT_MACOS: "GENERATE_ANTLR=true ANTLR_JAR=${{ github.workspace }}/build-tools/antlr4-4.8-2-SNAPSHOT-complete.jar"
+          CIBW_ENVIRONMENT_WINDOWS: "GENERATE_ANTLR=true ANTLR_JAR=${{ github.workspace }}\\build-tools\\antlr4-4.8-2-SNAPSHOT-complete.jar"
+          # Test the wheels
+          CIBW_TEST_COMMAND: "python -m unittest discover -s {project}/python -v"
+        with:
+          package-dir: python
+
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
-          path: python/dist/*.whl
+          name: wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
           retention-days: 7
 
   publish:
@@ -109,33 +103,21 @@ jobs:
     needs: [build_wheels]
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
-    
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install twine
-      
       - name: Download all wheels
         uses: actions/download-artifact@v4
         with:
           path: dist
-      
-      - name: Move wheels to dist directory
-        run: |
-          mkdir -p dist_all
-          find dist -name "*.whl" -exec cp {} dist_all/ \;
-      
+          pattern: wheels-*
+          merge-multiple: true
+
+      - name: List downloaded files
+        run: ls -R dist
+
       - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        run: |
-          twine upload dist_all/*
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: dist/
