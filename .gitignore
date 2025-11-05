@@ -71,7 +71,7 @@ build-tools/antlr*
 src/textplan/converter/generated/base_plan_visitor.rs
 src/textplan/converter/generated/proto_descriptor.bin
 
-# Reference code
+# C++ reference code
 src/substrait/textplan
 
 # Python artifacts

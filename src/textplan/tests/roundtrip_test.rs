@@ -327,7 +327,7 @@ mod tests {
     /// Helper function for roundtrip tests: JSON → Plan → TextPlan → SymbolTable → Binary → Plan comparison.
     /// Like the C++ implementation, we ignore the version field when comparing plans.
     fn run_roundtrip_test(test_file: &str) {
-        let file_path = format!("src/substrait/textplan/data/{}", test_file);
+        let file_path = format!("testdata/{}", test_file);
         println!("\n=== Roundtrip test for: {} ===", test_file);
 
         // Step 1: Load JSON → Plan

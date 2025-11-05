@@ -16,7 +16,7 @@ mod tests {
     fn find_test_files(extension: &str) -> Vec<PathBuf> {
         // Find the source directory containing the test data
         // Use the main data directory with TPC-H files
-        let data_dir = Path::new("src/substrait/textplan/data");
+        let data_dir = Path::new("testdata");
 
         // Collect all files with the specified extension
         let mut test_files = Vec::new();

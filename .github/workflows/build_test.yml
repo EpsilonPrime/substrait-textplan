@@ -136,6 +136,9 @@ jobs:
     - name: Cache cargo dependencies
       uses: Swatinem/rust-cache@v2
 
+    - name: Generate ANTLR Parser
+      run: GENERATE_ANTLR=true cargo check
+
     - name: Build in release mode
       run: cargo build --release --verbose
 

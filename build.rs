@@ -14,7 +14,7 @@ const PROTO_ROOT: &str = "third_party/substrait/proto";
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Tell Cargo to re-run this build script if the grammars or visitor generator change
     println!("cargo:rerun-if-changed=third_party/substrait/proto"); // Still needed for visitor generator
-    println!("cargo:rerun-if-changed=src/substrait/textplan/parser/grammar");
+    println!("cargo:rerun-if-changed=grammar");
     println!("cargo:rerun-if-changed=build-tools/visitor_generator.rs");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=GENERATE_ANTLR");
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Regular ANTLR4 JAR files DO NOT support generating Rust code!
 fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
     // Path to your ANTLR grammar files
-    let grammar_dir = PathBuf::from("src/substrait/textplan/parser/grammar");
+    let grammar_dir = PathBuf::from("grammar");
 
     // Path to output the generated code
     let output_dir = PathBuf::from("src/textplan/parser/antlr");
