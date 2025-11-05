@@ -127,7 +127,8 @@ jobs:
       run: |
         cd go
         go build -v ./substrait
-        go build -v ./examples
+        cd examples
+        go build -v .
 
     - name: Test Go package
       run: |
