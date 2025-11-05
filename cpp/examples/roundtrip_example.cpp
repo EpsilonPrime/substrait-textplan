@@ -7,28 +7,24 @@
 
 int main() {
   std::string original_text = R"(
-    schema my_schema {
-      id i32;
-      name string;
-      value fp64;
-    }
+pipelines {
+  my_read -> root;
+}
 
-    source LOCAL_FILES my_source {
-      ITEMS = [
-        {
-          URI_FILE: "input.csv"
-        }
-      ]
-    }
+schema my_schema {
+  id i32;
+  name string;
+  value fp64;
+}
 
-    read RELATION my_read {
-      SOURCE my_source;
-      BASE_SCHEMA my_schema;
-    }
+source named_table my_source {
+  names = ["input_table"]
+}
 
-    ROOT {
-      NAMES = [my_read]
-    }
+read relation my_read {
+  base_schema my_schema;
+  source my_source;
+}
   )";
 
   std::cout << "Original textplan:" << std::endl;

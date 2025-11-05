@@ -21,27 +21,23 @@ int test_load_from_text_basic() {
   std::cout << "Running: test_load_from_text_basic" << std::endl;
 
   std::string text = R"(
-    schema simple_schema {
-      id i32;
-      name string;
-    }
+pipelines {
+  simple_read -> root;
+}
 
-    source LOCAL_FILES simple_source {
-      ITEMS = [
-        {
-          URI_FILE: "data.csv"
-        }
-      ]
-    }
+schema simple_schema {
+  id i32;
+  name string;
+}
 
-    read RELATION simple_read {
-      SOURCE simple_source;
-      BASE_SCHEMA simple_schema;
-    }
+source named_table simple_source {
+  names = ["test_table"]
+}
 
-    ROOT {
-      NAMES = [simple_read]
-    }
+read relation simple_read {
+  base_schema simple_schema;
+  source simple_source;
+}
   )";
 
   auto result = substrait::textplan::TextPlan::LoadFromText(text.c_str());
@@ -61,26 +57,22 @@ int test_instance_method() {
   substrait::textplan::TextPlan tp;
 
   std::string text = R"(
-    schema test_schema {
-      value i32;
-    }
+pipelines {
+  test_read -> root;
+}
 
-    source LOCAL_FILES test_source {
-      ITEMS = [
-        {
-          URI_FILE: "test.csv"
-        }
-      ]
-    }
+schema test_schema {
+  value i32;
+}
 
-    read RELATION test_read {
-      SOURCE test_source;
-      BASE_SCHEMA test_schema;
-    }
+source named_table test_source {
+  names = ["test_data"]
+}
 
-    ROOT {
-      NAMES = [test_read]
-    }
+read relation test_read {
+  base_schema test_schema;
+  source test_source;
+}
   )";
 
   auto result = tp.LoadFromText(text);
@@ -99,27 +91,23 @@ int test_roundtrip() {
   std::cout << "Running: test_roundtrip" << std::endl;
 
   std::string original_text = R"(
-    schema roundtrip_schema {
-      id i32;
-      value fp64;
-    }
+pipelines {
+  roundtrip_read -> root;
+}
 
-    source LOCAL_FILES roundtrip_source {
-      ITEMS = [
-        {
-          URI_FILE: "roundtrip.csv"
-        }
-      ]
-    }
+schema roundtrip_schema {
+  id i32;
+  value fp64;
+}
 
-    read RELATION roundtrip_read {
-      SOURCE roundtrip_source;
-      BASE_SCHEMA roundtrip_schema;
-    }
+source named_table roundtrip_source {
+  names = ["roundtrip_table"]
+}
 
-    ROOT {
-      NAMES = [roundtrip_read]
-    }
+read relation roundtrip_read {
+  base_schema roundtrip_schema;
+  source roundtrip_source;
+}
   )";
 
   // Text -> Binary
@@ -226,26 +214,22 @@ int test_move_semantics() {
   substrait::textplan::TextPlan tp2(std::move(tp1));
 
   std::string text = R"(
-    schema move_schema {
-      id i32;
-    }
+pipelines {
+  move_read -> root;
+}
 
-    source LOCAL_FILES move_source {
-      ITEMS = [
-        {
-          URI_FILE: "move.csv"
-        }
-      ]
-    }
+schema move_schema {
+  id i32;
+}
 
-    read RELATION move_read {
-      SOURCE move_source;
-      BASE_SCHEMA move_schema;
-    }
+source named_table move_source {
+  names = ["move_table"]
+}
 
-    ROOT {
-      NAMES = [move_read]
-    }
+read relation move_read {
+  base_schema move_schema;
+  source move_source;
+}
   )";
 
   auto result = tp2.LoadFromText(text);

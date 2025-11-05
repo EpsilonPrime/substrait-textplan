@@ -7,33 +7,24 @@
 
 int main() {
   std::string text = R"(
-    schema simple_schema {
-      id i32;
-      name string;
-      price fp64;
-    }
+pipelines {
+  simple_read -> root;
+}
 
-    source LOCAL_FILES simple_source {
-      ITEMS = [
-        {
-          URI_FILE: "data.csv"
-        }
-      ]
-    }
+schema simple_schema {
+  id i32;
+  name string;
+  price fp64;
+}
 
-    read RELATION simple_read {
-      SOURCE simple_source;
-      BASE_SCHEMA simple_schema;
-    }
+source named_table simple_source {
+  names = ["test_table"]
+}
 
-    filter RELATION filtered_data {
-      INPUT simple_read;
-      CONDITION greater_than(price, 100.0_fp64);
-    }
-
-    ROOT {
-      NAMES = [filtered_data]
-    }
+read relation simple_read {
+  base_schema simple_schema;
+  source simple_source;
+}
   )";
 
   std::cout << "Parsing textplan..." << std::endl;
