@@ -56,8 +56,7 @@ class TextPlan {
    * @return std::optional<std::string> The textplan representation of the plan,
    * or std::nullopt if an error occurred
    */
-  std::optional<std::string> SaveToText(
-      const std::vector<uint8_t>& data) const;
+  std::optional<std::string> SaveToText(const std::vector<uint8_t>& data) const;
 
   /**
    * @brief Static helper: Load a textplan from a string and convert it to
@@ -67,8 +66,7 @@ class TextPlan {
    * @return std::optional<std::vector<uint8_t>> The binary protobuf
    * representation of the plan, or std::nullopt if an error occurred
    */
-  static std::optional<std::vector<uint8_t>> LoadFromText(
-      const char* text);
+  static std::optional<std::vector<uint8_t>> LoadFromText(const char* text);
 
   /**
    * @brief Static helper: Save a binary plan to textplan format
@@ -78,15 +76,16 @@ class TextPlan {
    * @return std::optional<std::string> The textplan representation of the plan,
    * or std::nullopt if an error occurred
    */
-  static std::optional<std::string> SaveToText(const uint8_t* data,
-                                                size_t size);
+  static std::optional<std::string> SaveToText(
+      const uint8_t* data,
+      size_t size);
 
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace textplan
-}  // namespace substrait
+} // namespace textplan
+} // namespace substrait
 
-#endif  // SUBSTRAIT_TEXTPLAN_H
+#endif // SUBSTRAIT_TEXTPLAN_H

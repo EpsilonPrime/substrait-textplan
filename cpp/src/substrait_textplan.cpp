@@ -65,8 +65,8 @@ std::optional<std::vector<uint8_t>> TextPlan::LoadFromText(const char* text) {
   size_t length = *len_ptr;
 
   // Rest is the data
-  auto* data_ptr = reinterpret_cast<uint8_t*>(
-      reinterpret_cast<char*>(ptr) + sizeof(size_t));
+  auto* data_ptr =
+      reinterpret_cast<uint8_t*>(reinterpret_cast<char*>(ptr) + sizeof(size_t));
 
   // Copy the data to a vector
   std::vector<uint8_t> result(data_ptr, data_ptr + length);
@@ -77,8 +77,9 @@ std::optional<std::vector<uint8_t>> TextPlan::LoadFromText(const char* text) {
   return result;
 }
 
-std::optional<std::string> TextPlan::SaveToText(const uint8_t* data,
-                                                 size_t size) {
+std::optional<std::string> TextPlan::SaveToText(
+    const uint8_t* data,
+    size_t size) {
   if (data == nullptr || size == 0) {
     return std::nullopt;
   }
@@ -97,5 +98,5 @@ std::optional<std::string> TextPlan::SaveToText(const uint8_t* data,
   return result;
 }
 
-}  // namespace textplan
-}  // namespace substrait
+} // namespace textplan
+} // namespace substrait

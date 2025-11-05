@@ -41,6 +41,16 @@
 
 # Common CMake Build directory
 build/
+cmake-build-*/
+
+# C++ build artifacts
+cpp/build/
+*.cmake
+CMakeCache.txt
+CMakeFiles/
+Testing/
+CTestTestfile.cmake
+compile_commands.json
 
 # Generated code
 src/proto/substrait
@@ -76,3 +86,9 @@ src/substrait/textplan
 
 # Python artifacts
 python/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+dist/
+*.egg

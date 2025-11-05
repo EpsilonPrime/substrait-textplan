@@ -7,14 +7,13 @@
 #include "substrait_textplan.h"
 
 // Helper macro for test assertions
-#define TEST_ASSERT(condition, message)                     \
-  do {                                                      \
-    if (!(condition)) {                                     \
-      std::cerr << "Test failed: " << message << std::endl; \
-      std::cerr << "  at " << __FILE__ << ":" << __LINE__   \
-                << std::endl;                               \
-      return 1;                                             \
-    }                                                       \
+#define TEST_ASSERT(condition, message)                                        \
+  do {                                                                         \
+    if (!(condition)) {                                                        \
+      std::cerr << "Test failed: " << message << std::endl;                    \
+      std::cerr << "  at " << __FILE__ << ":" << __LINE__ << std::endl;        \
+      return 1;                                                                \
+    }                                                                          \
   } while (0)
 
 // Test 1: Basic text to binary conversion
@@ -86,8 +85,8 @@ int test_instance_method() {
 
   auto result = tp.LoadFromText(text);
 
-  TEST_ASSERT(result.has_value(),
-              "Instance LoadFromText should return a value");
+  TEST_ASSERT(
+      result.has_value(), "Instance LoadFromText should return a value");
   TEST_ASSERT(!result->empty(), "Binary plan should not be empty");
 
   std::cout << "  PASSED (binary size: " << result->size() << " bytes)"
@@ -124,7 +123,8 @@ int test_roundtrip() {
   )";
 
   // Text -> Binary
-  auto binary = substrait::textplan::TextPlan::LoadFromText(original_text.c_str());
+  auto binary =
+      substrait::textplan::TextPlan::LoadFromText(original_text.c_str());
   TEST_ASSERT(binary.has_value(), "LoadFromText should succeed");
   TEST_ASSERT(!binary->empty(), "Binary plan should not be empty");
 
@@ -133,16 +133,19 @@ int test_roundtrip() {
   // Binary -> Text
   auto regenerated_text = substrait::textplan::TextPlan::SaveToText(*binary);
   TEST_ASSERT(regenerated_text.has_value(), "SaveToText should succeed");
-  TEST_ASSERT(!regenerated_text->empty(), "Regenerated text should not be empty");
+  TEST_ASSERT(
+      !regenerated_text->empty(), "Regenerated text should not be empty");
 
   // Text -> Binary again
-  auto binary2 = substrait::textplan::TextPlan::LoadFromText(regenerated_text->c_str());
+  auto binary2 =
+      substrait::textplan::TextPlan::LoadFromText(regenerated_text->c_str());
   TEST_ASSERT(binary2.has_value(), "Second LoadFromText should succeed");
   TEST_ASSERT(!binary2->empty(), "Second binary plan should not be empty");
 
   // Both binary plans should have the same size
-  TEST_ASSERT(first_binary_size == binary2->size(),
-              "Roundtrip should preserve binary size");
+  TEST_ASSERT(
+      first_binary_size == binary2->size(),
+      "Roundtrip should preserve binary size");
 
   std::cout << "  PASSED (binary sizes: " << first_binary_size << " -> "
             << binary2->size() << " bytes)" << std::endl;
@@ -155,7 +158,8 @@ int test_null_input() {
 
   auto result = substrait::textplan::TextPlan::LoadFromText(nullptr);
 
-  TEST_ASSERT(!result.has_value(), "LoadFromText should return nullopt for null input");
+  TEST_ASSERT(
+      !result.has_value(), "LoadFromText should return nullopt for null input");
 
   std::cout << "  PASSED" << std::endl;
   return 0;
@@ -167,10 +171,12 @@ int test_invalid_textplan() {
 
   std::string invalid_text = "This is not a valid textplan at all!";
 
-  auto result = substrait::textplan::TextPlan::LoadFromText(invalid_text.c_str());
+  auto result =
+      substrait::textplan::TextPlan::LoadFromText(invalid_text.c_str());
 
-  TEST_ASSERT(!result.has_value(),
-              "LoadFromText should return nullopt for invalid input");
+  TEST_ASSERT(
+      !result.has_value(),
+      "LoadFromText should return nullopt for invalid input");
 
   std::cout << "  PASSED" << std::endl;
   return 0;
@@ -182,8 +188,9 @@ int test_empty_input() {
 
   auto result = substrait::textplan::TextPlan::LoadFromText("");
 
-  TEST_ASSERT(!result.has_value(),
-              "LoadFromText should return nullopt for empty input");
+  TEST_ASSERT(
+      !result.has_value(),
+      "LoadFromText should return nullopt for empty input");
 
   std::cout << "  PASSED" << std::endl;
   return 0;
@@ -194,11 +201,11 @@ int test_save_to_text_empty() {
   std::cout << "Running: test_save_to_text_empty" << std::endl;
 
   std::vector<uint8_t> empty_data;
-  auto result = substrait::textplan::TextPlan::SaveToText(empty_data.data(),
-                                                           empty_data.size());
+  auto result = substrait::textplan::TextPlan::SaveToText(
+      empty_data.data(), empty_data.size());
 
-  TEST_ASSERT(!result.has_value(),
-              "SaveToText should return nullopt for empty data");
+  TEST_ASSERT(
+      !result.has_value(), "SaveToText should return nullopt for empty data");
 
   std::cout << "  PASSED" << std::endl;
   return 0;
