@@ -52,11 +52,11 @@ class TextPlan:
         
         self._lib.free_plan_bytes.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
         self._lib.free_plan_bytes.restype = None
-        
-        self._lib.load_from_binary.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t]
-        self._lib.load_from_binary.restype = ctypes.c_char_p
-        
-        self._lib.free_text_plan.argtypes = [ctypes.c_char_p]
+
+        self._lib.save_to_text.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t]
+        self._lib.save_to_text.restype = ctypes.c_void_p  # Return as void* to avoid auto-conversion
+
+        self._lib.free_text_plan.argtypes = [ctypes.c_void_p]
         self._lib.free_text_plan.restype = None
     
     def load_from_text(self, text: str) -> Optional[bytes]:
@@ -91,28 +91,28 @@ class TextPlan:
         
         return result
     
-    def load_from_binary(self, data: bytes) -> Optional[str]:
+    def save_to_text(self, data: bytes) -> Optional[str]:
         """
-        Load a binary plan and convert it to textplan format.
-        
+        Save a binary plan to textplan format.
+
         Args:
-            data: The binary plan to load.
-            
+            data: The binary plan to convert.
+
         Returns:
             The textplan representation of the plan, or None if an error occurred.
         """
         data_array = (ctypes.c_uint8 * len(data))(*data)
-        ptr = self._lib.load_from_binary(data_array, len(data))
-        
+        ptr = self._lib.save_to_text(data_array, len(data))
+
         if not ptr:
             return None
-        
+
         # Copy the string
         result = ctypes.string_at(ptr).decode('utf-8')
-        
+
         # Free the memory
         self._lib.free_text_plan(ptr)
-        
+
         return result
 
 
@@ -130,15 +130,15 @@ def load_from_text(text: str) -> Optional[bytes]:
     return tp.load_from_text(text)
 
 
-def load_from_binary(data: bytes) -> Optional[str]:
+def save_to_text(data: bytes) -> Optional[str]:
     """
-    Load a binary plan and convert it to textplan format.
-    
+    Save a binary plan to textplan format.
+
     Args:
-        data: The binary plan to load.
-        
+        data: The binary plan to convert.
+
     Returns:
         The textplan representation of the plan, or None if an error occurred.
     """
     tp = TextPlan()
-    return tp.load_from_binary(data)
+    return tp.save_to_text(data)

@@ -39,7 +39,7 @@ pub fn parse_text_plan(text: &str) -> ParseResult {
 ///
 /// The textplan representation of the plan, or an error.
 pub fn binary_to_text_plan(bytes: &[u8]) -> Result<String, TextPlanError> {
-    textplan::converter::load_binary::load_from_binary(bytes)
+    textplan::converter::save_text::save_to_text(bytes)
 }
 
 /// Serializes a symbol table to a textplan string.
@@ -122,17 +122,17 @@ pub extern "C" fn free_plan_bytes(ptr: *mut u8) {
     }
 }
 
-/// FFI API for loading a binary plan and converting it to textplan format
+/// FFI API for saving a binary plan to textplan format
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn load_from_binary(bytes_ptr: *const u8, bytes_len: usize) -> *mut c_char {
+pub extern "C" fn save_to_text(bytes_ptr: *const u8, bytes_len: usize) -> *mut c_char {
     if bytes_ptr.is_null() {
         return ptr::null_mut();
     }
 
     let bytes = unsafe { std::slice::from_raw_parts(bytes_ptr, bytes_len) };
 
-    match textplan::converter::load_from_binary(bytes) {
+    match textplan::converter::save_to_text(bytes) {
         Ok(text_plan) => match CString::new(text_plan) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),

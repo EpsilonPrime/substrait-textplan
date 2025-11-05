@@ -61,8 +61,6 @@ impl<'input> SubqueryRelationVisitor<'input> {
     /// Populates sub_query_pipelines for all relations by finding subquery relations
     /// and adding them to their parent relations.
     fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) {
-        println!("DEBUG SUBQUERY: Populating sub_query_pipelines in SubqueryRelationVisitor");
-
         // Find all subquery relations (those with parent_query_index >= 0)
         let mut subqueries: Vec<Arc<SymbolInfo>> = Vec::new();
         for symbol in symbol_table.symbols() {
@@ -142,15 +140,7 @@ impl<'input> SubqueryRelationVisitor<'input> {
                     }
                 }
 
-                println!("DEBUG SUBQUERY:   -> Checking if '{}' is terminus: is_terminus={}, pipeline_start={:?}",
-                    symbol.name(), is_terminus, pipeline_start_name);
-
                 if is_terminus {
-                    println!(
-                        "DEBUG SUBQUERY: Found subquery terminus: '{}' (parent_query_index={})",
-                        symbol.name(),
-                        symbol.parent_query_index()
-                    );
                     subqueries.push(symbol.clone());
                 }
             }

@@ -15,20 +15,24 @@ func TestTextPlanRoundtrip(t *testing.T) {
 	
 	// Simple TextPlan for testing
 	textPlan := `
-	schema simple_schema {
-		id i32;
-		name string;
-	}
+pipelines {
+	data -> root;
+}
 
-	source named_table simple_source {
-		names = ["test_table"]
-	}
+schema simple_schema {
+	id i32;
+	name string;
+}
 
-	read relation data {
-		base_schema simple_schema;
-		source simple_source;
-	}
-	`
+source named_table simple_source {
+	names = ["test_table"]
+}
+
+read relation data {
+	base_schema simple_schema;
+	source simple_source;
+}
+`
 	
 	// Convert to binary
 	binary, err := tp.LoadFromText(textPlan)
@@ -42,7 +46,7 @@ func TestTextPlanRoundtrip(t *testing.T) {
 	}
 	
 	// Convert back to text
-	roundtripText, err := tp.LoadFromBinary(binary)
+	roundtripText, err := tp.SaveToText(binary)
 	if err != nil {
 		t.Fatalf("Failed to convert binary back to text: %v", err)
 	}
@@ -57,7 +61,7 @@ func TestTextPlanRoundtrip(t *testing.T) {
 
 	// Verify that key elements are present in the round-tripped text
 	// We don't do an exact match because the format might change a bit
-	for _, element := range []string{"relation", "schema", "simple_schema", "data"} {
+	for _, element := range []string{"relation", "schema", "pipelines", "root"} {
 		if !contains(roundtripText, element) {
 			t.Errorf("Round-tripped text does not contain '%s'", element)
 		}

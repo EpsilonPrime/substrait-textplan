@@ -124,10 +124,8 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
     // Process the parse tree in multiple phases using our visitors
     // Phase 1: Type visitor
     println!("Applying TypeVisitor");
-    let mut type_visitor = crate::textplan::parser::visitors::TypeVisitor::new(
-        symbol_table,
-        error_listener.clone(),
-    );
+    let mut type_visitor =
+        crate::textplan::parser::visitors::TypeVisitor::new(symbol_table, error_listener.clone());
     crate::textplan::parser::visitors::visit_plan(&mut type_visitor, plan_result.as_ref());
     symbol_table = type_visitor.symbol_table();
 

@@ -951,4 +951,3 @@ impl<'input> SubstraitPlanParserVisitor<'input> for MainPlanVisitor<'input> {
     // We use the default implementation for other visitor methods,
     // which will call visit_children to traverse the tree
 }
-

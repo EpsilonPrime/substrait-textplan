@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! Load a binary Substrait plan and convert it to a textplan.
+//! Save a binary Substrait plan to textplan format.
 
 use crate::proto;
 use crate::textplan::common::error::TextPlanError;
@@ -12,16 +12,16 @@ use crate::textplan::symbol_table::SymbolTable;
 use crate::textplan::SymbolInfo;
 use std::sync::Arc;
 
-/// Loads a binary Substrait plan and converts it to a textplan.
+/// Saves a binary Substrait plan to textplan format.
 ///
 /// # Arguments
 ///
-/// * `bytes` - The binary plan to load.
+/// * `bytes` - The binary plan to convert.
 ///
 /// # Returns
 ///
 /// The textplan representation of the plan.
-pub fn load_from_binary(bytes: &[u8]) -> Result<String, TextPlanError> {
+pub fn save_to_text(bytes: &[u8]) -> Result<String, TextPlanError> {
     // Deserialize the binary data to a Plan
     let plan = proto::load_plan_from_binary(bytes)?;
 
@@ -183,8 +183,6 @@ pub fn process_plan_with_visitor(plan: &substrait::proto::Plan) -> Result<String
 /// and walks their continuing_pipeline chains to set pipeline_start on all relations.
 /// The continuing_pipeline connections were already set up by PipelineVisitor.
 fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) -> Result<(), TextPlanError> {
-    println!("DEBUG: Populating subquery pipelines");
-
     // Find terminus relations (those with parent_query_index >= 0)
     let mut subquery_termini = Vec::new();
     for symbol in symbol_table.symbols() {
@@ -202,7 +200,6 @@ fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) -> Result<(), Tex
     }
 
     // Now fix outer references in subquery relations
-    println!("DEBUG: Fixing outer references in subquery relations");
     for symbol in symbol_table.symbols() {
         if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
             if symbol.parent_query_index() >= 0 {

@@ -75,7 +75,7 @@ func convertBinaryToText(inputFile, outputFile string) {
 	tp := substrait.New()
 
 	// Convert binary to TextPlan
-	textData, err := tp.LoadFromBinary(binaryData)
+	textData, err := tp.SaveToText(binaryData)
 	if err != nil {
 		log.Fatalf("Failed to convert binary to TextPlan: %v", err)
 	}

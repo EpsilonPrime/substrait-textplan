@@ -524,10 +524,8 @@ impl PlanProtoVisitor for PipelineVisitor {
             self.current_location().path_string()
         );
         if let Some(rex_type) = &expression.rex_type {
-            println!("DEBUG PIPELINE: rex_type is Some");
             match rex_type {
                 substrait::expression::RexType::Subquery(subquery) => {
-                    println!("DEBUG PIPELINE: Found Subquery expression!");
                     use substrait::expression::subquery::SubqueryType;
 
                     // Determine the subquery relation location based on subquery type

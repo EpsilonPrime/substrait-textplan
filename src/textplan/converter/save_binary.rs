@@ -1096,9 +1096,6 @@ fn populate_subquery_relations(
     plan: &mut Plan,
     symbol_table: &SymbolTable,
 ) -> Result<(), TextPlanError> {
-    println!("DEBUG: Populating subquery relations from symbol tree");
-    println!("DEBUG: Plan has {} relations", plan.relations.len());
-
     // Find the top-level relation symbols (those that feed the root)
     let top_level_rel_symbols: Vec<Arc<SymbolInfo>> = symbol_table
         .symbols()
@@ -1128,7 +1125,6 @@ fn populate_subquery_relations(
 
     // Walk through all plan relations
     for (idx, plan_rel) in plan.relations.iter_mut().enumerate() {
-        println!("DEBUG: Processing plan relation {}", idx);
         if let Some(plan_rel::RelType::Root(root)) = &mut plan_rel.rel_type {
             println!(
                 "DEBUG: Found Root relation, has input: {}",
@@ -1146,7 +1142,6 @@ fn populate_subquery_relations(
                 populate_subquery_in_rel_with_symbol(input, symbol_table, symbol_ref)?;
             }
         } else if let Some(plan_rel::RelType::Rel(rel)) = &mut plan_rel.rel_type {
-            println!("DEBUG: Found Rel relation");
             // Use the last top-level relation symbol
             let symbol_ref = top_level_rel_symbols.last();
             if let Some(sym) = symbol_ref {
@@ -1157,7 +1152,6 @@ fn populate_subquery_relations(
             }
             populate_subquery_in_rel_with_symbol(rel, symbol_table, symbol_ref)?;
         } else {
-            println!("DEBUG: Unknown plan_rel type");
         }
     }
 

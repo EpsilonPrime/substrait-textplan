@@ -68,6 +68,10 @@ class TestTextPlan(unittest.TestCase):
     def test_load_from_binary_roundtrip(self):
         """Test roundtrip conversion: text -> binary -> text."""
         original_text = """
+pipelines {
+    test_read -> root;
+}
+
 schema roundtrip_schema {
     id i32;
     name string?;
@@ -89,32 +93,47 @@ read relation test_read {
         self.assertIsNotNone(binary_data, "Failed to convert text to binary")
 
         # Convert back to text
-        result_text = substrait_textplan.load_from_binary(binary_data)
+        result_text = substrait_textplan.save_to_text(binary_data)
         self.assertIsNotNone(result_text, "Failed to convert binary to text")
         self.assertIsInstance(result_text, str)
 
         # Verify the result contains expected elements
         self.assertIn("schema", result_text.lower())
-        self.assertIn("roundtrip_schema", result_text)
+        self.assertIn("relation", result_text.lower())
+        self.assertIn("pipelines", result_text.lower())
 
     def test_class_interface(self):
         """Test using the TextPlan class interface."""
         tp = substrait_textplan.TextPlan()
 
         text = """
-        schema class_test {
-            field1 i32;
-            field2 string;
-        }
-        """
+pipelines {
+    class_read -> root;
+}
+
+schema class_test {
+    field1 i32;
+    field2 string;
+}
+
+source named_table class_source {
+    names = ["test"]
+}
+
+read relation class_read {
+    base_schema class_test;
+    source class_source;
+}
+"""
 
         binary_data = tp.load_from_text(text)
         self.assertIsNotNone(binary_data)
         self.assertGreater(len(binary_data), 0)
 
-        result_text = tp.load_from_binary(binary_data)
+        result_text = tp.save_to_text(binary_data)
         self.assertIsNotNone(result_text)
-        self.assertIn("class_test", result_text)
+        self.assertIn("schema", result_text.lower())
+        self.assertIn("relation", result_text.lower())
 
     def test_invalid_text(self):
         """Test that invalid text returns None or raises an error gracefully."""

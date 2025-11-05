@@ -18,19 +18,19 @@ use crate::textplan::symbol_table::SymbolTable;
 
 // Module declarations
 mod base;
-mod type_visitor;
 mod main_visitor;
 mod pipeline_visitor;
 mod relation_visitor;
 mod subquery_visitor;
+mod type_visitor;
 
 // Re-exports
 pub use base::BasePlanVisitor;
-pub use type_visitor::TypeVisitor;
 pub use main_visitor::MainPlanVisitor;
 pub use pipeline_visitor::PipelineVisitor;
 pub use relation_visitor::RelationVisitor;
 pub use subquery_visitor::SubqueryRelationVisitor;
+pub use type_visitor::TypeVisitor;
 
 /// Helper function to convert ANTLR token to TextLocation
 pub fn token_to_location<'a>(

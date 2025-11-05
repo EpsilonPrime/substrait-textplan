@@ -896,15 +896,12 @@ impl<'input> RelationVisitor<'input> {
             if let Ok(mut blob_data) = blob_lock.lock() {
                 if let Some(relation_data) = blob_data.downcast_mut::<crate::textplan::common::structured_symbol_data::RelationData>() {
                     // Set this relation's pipeline_start to itself
-                    println!("      DEBUG: Setting '{}' pipeline_start to itself", subquery_root.name());
                     relation_data.pipeline_start = Some(subquery_root.clone());
 
                     // Walk the continuing_pipeline chain
                     let mut current = relation_data.continuing_pipeline.clone();
                     if let Some(ref cont) = current {
-                        println!("      DEBUG: '{}' has continuing_pipeline pointing to '{}'", subquery_root.name(), cont.name());
                     } else {
-                        println!("      DEBUG: '{}' has no continuing_pipeline", subquery_root.name());
                     }
                     while let Some(current_rel) = current {
                         println!("        Setting pipeline_start and parent_query_index={} on '{}'", subquery_index, current_rel.name());
@@ -998,7 +995,6 @@ impl<'input> RelationVisitor<'input> {
                             // Search through field_references
                             for (index, field_sym) in relation_data.field_references.iter().enumerate() {
                                 if self.field_matches(field_sym, field_name, schema_name, column_name) {
-                                    println!("      DEBUG: Found '{}' at index {} in parent '{}'", column_name, index, parent.name());
                                     return index;
                                 }
                             }
@@ -1008,7 +1004,6 @@ impl<'input> RelationVisitor<'input> {
                             for (index, field_sym) in relation_data.generated_field_references.iter().enumerate() {
                                 if self.field_matches(field_sym, field_name, schema_name, column_name) {
                                     let actual_index = field_ref_size + index;
-                                    println!("      DEBUG: Found '{}' at index {} in parent '{}' (generated)", column_name, actual_index, parent.name());
                                     return actual_index;
                                 }
                             }
@@ -1049,8 +1044,6 @@ impl<'input> RelationVisitor<'input> {
 
         // If there's a schema prefix, check if it belongs to current or parent relation
         if let Some(current_rel) = self.current_relation_scope() {
-            println!("      DEBUG: current relation is '{}'", current_rel.name());
-
             if let Some(schema_symbol) = self.symbol_table().lookup_symbol_by_name(schema_name) {
                 println!(
                     "      DEBUG: found schema symbol '{}'",
@@ -1062,79 +1055,61 @@ impl<'input> RelationVisitor<'input> {
                     if let Ok(blob_data) = blob_lock.lock() {
                         if let Some(relation_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
                             if let Some(current_schema) = &relation_data.schema {
-                                println!("      DEBUG: current relation schema is '{}'", current_schema.name());
                                 if Arc::ptr_eq(current_schema, &schema_symbol) {
                                     // Schema belongs to current relation - not an outer reference
-                                    println!("      DEBUG: schema matches current relation, not an outer ref");
                                     return 0;
                                 }
                             } else {
-                                println!("      DEBUG: current relation has no schema");
                             }
 
                             // Schema doesn't match current relation - check if we're in a subquery
                             // Get parent query location
-                            println!("      DEBUG: checking parent_query_index = {}", current_rel.parent_query_index());
                             let parent_query_location = if current_rel.parent_query_index() >= 0 {
-                                println!("      DEBUG: using current relation's parent_query_location");
                                 Some(current_rel.parent_query_location())
                             } else if let Some(pipeline_start) = &relation_data.pipeline_start {
-                                println!("      DEBUG: checking pipeline_start '{}', parent_index = {}",
-                                    pipeline_start.name(), pipeline_start.parent_query_index());
                                 if pipeline_start.parent_query_index() >= 0 {
                                     Some(pipeline_start.parent_query_location())
                                 } else {
                                     None
                                 }
                             } else {
-                                println!("      DEBUG: no pipeline_start");
                                 None
                             };
 
                             if let Some(parent_location) = parent_query_location {
-                                println!("      DEBUG: found parent query, looking up parent relation");
                                 // We're in a subquery - check if schema belongs to parent
                                 if let Some(parent_rel) = self.symbol_table().lookup_symbol_by_location_and_type(
                                     parent_location.as_ref(),
                                     SymbolType::Relation,
                                 ) {
-                                    println!("      DEBUG: parent relation is '{}'", parent_rel.name());
                                     if let Some(parent_blob_lock) = &parent_rel.blob {
                                         if let Ok(parent_blob_data) = parent_blob_lock.lock() {
                                             if let Some(parent_relation_data) = parent_blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::RelationData>() {
                                                 if let Some(parent_schema) = &parent_relation_data.schema {
-                                                    println!("      DEBUG: parent schema is '{}'", parent_schema.name());
                                                     if Arc::ptr_eq(parent_schema, &schema_symbol) {
                                                         // Schema belongs to parent - this is an outer reference!
                                                         println!("      ✓✓✓ '{}' IS AN OUTER REFERENCE (steps_out=1)", column_name);
                                                         return 1;
                                                     } else {
-                                                        println!("      DEBUG: parent schema doesn't match field schema");
                                                     }
                                                 } else {
-                                                    println!("      DEBUG: parent relation has no schema");
                                                 }
                                             }
                                         }
                                     }
                                 } else {
-                                    println!("      DEBUG: couldn't find parent relation");
                                 }
                             } else {
-                                println!("      DEBUG: not in a subquery (no parent_query_location)");
                             }
                         }
                     }
                 }
             } else {
-                println!("      DEBUG: schema symbol '{}' not found", schema_name);
             }
         } else {
-            println!("      DEBUG: no current relation scope");
         }
 
         // Not an outer reference
-        println!("      DEBUG: '{}' is NOT an outer reference", column_name);
         0
     }
 
@@ -2967,4 +2942,3 @@ impl<'input> SubstraitPlanParserVisitor<'input> for RelationVisitor<'input> {
     // We use the default implementation for other visitor methods,
     // which will call visit_children to traverse the tree
 }
-

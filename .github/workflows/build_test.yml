@@ -74,6 +74,16 @@ jobs:
     - name: Check formatting
       run: cargo fmt -- --check
 
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Test Python bindings
+      run: |
+        cd python
+        python -m unittest discover -v
+
   build_release:
     name: Build Release
     runs-on: ${{ matrix.os }}

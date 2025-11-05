@@ -1029,7 +1029,6 @@ impl<'a> ExpressionPrinter<'a> {
                 );
 
                 // Debug: list all relations with parent query info
-                println!("DEBUG PRINTER: All relations:");
                 for symbol in self.symbol_table.symbols() {
                     if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
                         let parent_loc = symbol.parent_query_location();
@@ -1050,7 +1049,6 @@ impl<'a> ExpressionPrinter<'a> {
                 self.current_scope_index += 1;
 
                 if let Some(sym) = symbol {
-                    println!("DEBUG PRINTER: Found subquery relation: {}", sym.name());
                     result.push_str(&sym.name());
                 } else {
                     return Err(TextPlanError::InvalidExpression(

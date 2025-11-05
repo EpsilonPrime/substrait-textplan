@@ -74,8 +74,6 @@ impl PlanPrinter {
     pub fn print_plan(&mut self, symbol_table: &SymbolTable) -> Result<String, TextPlanError> {
         let mut result = String::new();
 
-        println!("DEBUG PRINTER: Starting print_plan");
-
         // First, clear any cached data from previous runs
         self.relation_text_cache.clear();
 
@@ -88,7 +86,6 @@ impl PlanPrinter {
             ));
         }
 
-        println!("DEBUG PRINTER: About to output pipelines section");
         // Output pipelines section first
         let pipelines_text = self.output_pipelines_section(symbol_table)?;
         if !pipelines_text.is_empty() {
@@ -97,11 +94,9 @@ impl PlanPrinter {
             result.push('\n');
         }
 
-        println!("DEBUG PRINTER: About to process root relations");
         // Print ROOT relations with output names
         self.process_root_relations(symbol_table, &mut result)?;
 
-        println!("DEBUG PRINTER: About to process relations");
         // Process all other relations
         self.process_relations(symbol_table, &mut result)?;
 
@@ -864,10 +859,8 @@ impl PlanPrinter {
         visited.insert(relation_name.clone());
 
         // Get the relation data
-        println!("DEBUG PRINTER: About to lock blob for '{}'", relation_name);
         if let Some(relation_data_lock) = &info.blob {
             if let Ok(relation_data) = relation_data_lock.lock() {
-                println!("DEBUG PRINTER: Lock acquired for '{}'", relation_name);
                 if let Some(relation_data) = relation_data.downcast_ref::<RelationData>() {
                     pipeline.push(info.name().to_string());
 
@@ -889,10 +882,8 @@ impl PlanPrinter {
                     }
                 }
             } else {
-                println!("DEBUG PRINTER: Failed to lock blob for '{}'", relation_name);
             }
         } else {
-            println!("DEBUG PRINTER: No blob for '{}'", relation_name);
         }
 
         println!(

@@ -10,9 +10,9 @@ use std::sync::Arc;
 use crate::textplan::common::error::TextPlanError;
 use crate::textplan::common::parse_result::ParseResult;
 use crate::textplan::parser::antlr::substraitplanparser::PlanContext;
-use crate::textplan::parser::visitors::PlanVisitor;
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::parser::grammar;
+use crate::textplan::parser::visitors::PlanVisitor;
 use crate::textplan::printer::plan_printer::{PlanPrinter, TextPlanFormat};
 use crate::textplan::symbol_table::SymbolTable;
 

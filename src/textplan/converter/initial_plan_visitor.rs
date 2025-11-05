@@ -828,10 +828,6 @@ impl PlanProtoVisitor for InitialPlanVisitor {
 
     fn pre_process_rel(&mut self, obj: &substrait::Rel) {
         let location_path = self.current_location().path_string();
-        println!(
-            "DEBUG INIT: pre_process_rel pushing path: '{}'",
-            location_path
-        );
         self.current_relation_scope.push(Arc::new(location_path));
         self.current_relation_locations
             .push(self.current_location().clone());

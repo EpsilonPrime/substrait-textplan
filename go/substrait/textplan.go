@@ -9,7 +9,7 @@ package substrait
 // #include <string.h>
 // void* load_from_text(const char* text);
 // void free_plan_bytes(void* ptr);
-// char* load_from_binary(const uint8_t* bytes, size_t bytes_len);
+// char* save_to_text(const uint8_t* bytes, size_t bytes_len);
 // void free_text_plan(char* text_ptr);
 import "C"
 import (
@@ -57,15 +57,15 @@ func (tp *TextPlan) LoadFromText(text string) ([]byte, error) {
 	return result, nil
 }
 
-// LoadFromBinary loads a binary plan and converts it to textplan format
-func (tp *TextPlan) LoadFromBinary(data []byte) (string, error) {
+// SaveToText loads a binary plan and converts it to textplan format
+func (tp *TextPlan) SaveToText(data []byte) (string, error) {
 	if len(data) == 0 {
 		return "", errors.New("empty binary data")
 	}
 
-	cPtr := C.load_from_binary((*C.uint8_t)(unsafe.Pointer(&data[0])), C.size_t(len(data)))
+	cPtr := C.save_to_text((*C.uint8_t)(unsafe.Pointer(&data[0])), C.size_t(len(data)))
 	if cPtr == nil {
-		return "", errors.New("failed to load binary plan")
+		return "", errors.New("failed to convert binary plan to text")
 	}
 
 	// Convert C string to Go string
@@ -85,10 +85,10 @@ func LoadFromText(text string) ([]byte, error) {
 	return tp.LoadFromText(text)
 }
 
-// LoadFromBinary loads a binary plan and converts it to textplan format
-func LoadFromBinary(data []byte) (string, error) {
+// SaveToText loads a binary plan and converts it to textplan format
+func SaveToText(data []byte) (string, error) {
 	tp := New()
-	return tp.LoadFromBinary(data)
+	return tp.SaveToText(data)
 }
 
 // Initialize the library automatically
