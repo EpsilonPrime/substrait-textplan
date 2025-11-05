@@ -99,7 +99,10 @@ pub extern "C" fn load_from_text(text_ptr: *const c_char) -> *mut u8 {
                 ptr
             }
         }
-        Err(_) => ptr::null_mut(),
+        Err(e) => {
+            eprintln!("Error loading textplan: {}", e);
+            ptr::null_mut()
+        }
     }
 }
 

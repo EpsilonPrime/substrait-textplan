@@ -171,12 +171,6 @@ impl PlanPrinter {
         _symbol_table: &SymbolTable,
         result: &mut String,
     ) -> Result<(), TextPlanError> {
-        // Start the ROOT block
-        result.push_str("ROOT {\n");
-
-        // Get the indentation for this level
-        let indent = " ".repeat(self.indent_size);
-
         // Extract root names from the blob (stored as Vec<String>)
         let names = if let Some(blob_lock) = &root.blob {
             if let Ok(blob_data) = blob_lock.lock() {
@@ -191,6 +185,18 @@ impl PlanPrinter {
         } else {
             Vec::new()
         };
+
+        // If there are no root names, skip the ROOT block entirely
+        // (the parser doesn't accept empty ROOT blocks, and an empty ROOT is meaningless)
+        if names.is_empty() {
+            return Ok(());
+        }
+
+        // Start the ROOT block
+        result.push_str("ROOT {\n");
+
+        // Get the indentation for this level
+        let indent = " ".repeat(self.indent_size);
 
         // Add the names of the root relations
         result.push_str(&format!("{}NAMES = [", indent));
