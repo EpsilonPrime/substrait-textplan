@@ -102,11 +102,8 @@ jobs:
     - name: Cache cargo dependencies
       uses: Swatinem/rust-cache@v2
 
-    - name: Generate ANTLR Parser
-      run: GENERATE_ANTLR=true cargo check
-
-    - name: Build Rust library
-      run: cargo build
+    - name: Generate ANTLR Parser and Build Rust library
+      run: GENERATE_ANTLR=true cargo build --lib
 
     - name: Build Go package
       run: |
