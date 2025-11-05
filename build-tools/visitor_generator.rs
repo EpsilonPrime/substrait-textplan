@@ -167,9 +167,11 @@ impl VisitorGenerator {
 //! GENERATED CODE - DO NOT MODIFY
 //! Generated visitor for Substrait protocol buffers.
 
-use ::substrait::proto as substrait;
-use ::substrait::proto::extensions;
+extern crate substrait;
+
 use crate::textplan::common::ProtoLocation;
+use substrait::proto;
+use substrait::proto::extensions;
 
 #[allow(deprecated,unused_variables,unreachable_patterns)]
 
@@ -341,7 +343,7 @@ pub trait Traversable {
             fixed_package_parts = fixed_package_parts.split_off(1);
             package_name = "extensions";
         } else {
-            package_name = "substrait";
+            package_name = "proto";
         }
         let intervening_packages = if fixed_package_parts.is_empty() {
             "".to_string()

@@ -216,6 +216,36 @@ fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Format all generated ANTLR files with rustfmt
+    println!("cargo:warning=Formatting generated ANTLR code");
+    if let Ok(entries) = fs::read_dir(&output_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                let fmt_output = Command::new("rustfmt").arg(&path).output();
+                match fmt_output {
+                    Ok(output) if output.status.success() => {
+                        println!("cargo:warning=Formatted {}", path.display());
+                    }
+                    Ok(output) => {
+                        println!(
+                            "cargo:warning=rustfmt failed for {}: {}",
+                            path.display(),
+                            output.status
+                        );
+                    }
+                    Err(e) => {
+                        println!(
+                            "cargo:warning=Could not run rustfmt on {} (not installed?): {}",
+                            path.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -269,6 +299,29 @@ fn generate_visitor_code() -> Result<(), Box<dyn std::error::Error>> {
     // Run the visitor generator directly
     println!("cargo:warning=Output path: {}", output_path.display());
     visitor_generator::generate(proto_descriptor, &output_path)?;
+
+    // Format the generated code with rustfmt
+    println!("cargo:warning=Formatting generated visitor code");
+    let fmt_output = Command::new("rustfmt").arg(&output_path).output();
+
+    match fmt_output {
+        Ok(output) if output.status.success() => {
+            println!("cargo:warning=Generated code formatted successfully");
+        }
+        Ok(output) => {
+            println!("cargo:warning=rustfmt failed: {}", output.status);
+            println!(
+                "cargo:warning=STDERR: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        Err(e) => {
+            println!(
+                "cargo:warning=Could not run rustfmt (not installed?): {}",
+                e
+            );
+        }
+    }
 
     Ok(())
 }
