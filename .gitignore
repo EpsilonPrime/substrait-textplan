@@ -16,14 +16,6 @@
 *.dylib
 *.dll
 
-# Fortran module files
-*.mod
-*.smod
-
-# But allow Go module files
-!go.mod
-!go.sum
-
 # Compiled Static libraries
 *.lai
 *.la
