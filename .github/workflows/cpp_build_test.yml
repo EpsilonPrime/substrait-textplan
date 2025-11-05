@@ -1,26 +1,26 @@
-name: Go Build and Test
+name: C++ Build and Test
 
 on:
   push:
     branches: [ main ]
     paths:
-      - 'go/**'
+      - 'cpp/**'
       - 'src/**'
       - 'build.rs'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'grammar/**'
-      - '.github/workflows/go_build_test.yml'
+      - '.github/workflows/cpp_build_test.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'go/**'
+      - 'cpp/**'
       - 'src/**'
       - 'build.rs'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'grammar/**'
-      - '.github/workflows/go_build_test.yml'
+      - '.github/workflows/cpp_build_test.yml'
   workflow_dispatch:
 
 env:
@@ -29,33 +29,28 @@ env:
 
 jobs:
   build_and_test:
-    name: Build and Test Go
+    name: Build and Test C++
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        go-version: ['1.19', '1.20']
+        build_type: [Debug, Release]
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: ${{ matrix.go-version }}
-
-    - name: Install Java for ANTLR (Ubuntu)
+    - name: Install dependencies (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y default-jre protobuf-compiler
+        sudo apt-get install -y default-jre protobuf-compiler cmake build-essential clang-format
 
-    - name: Install Java for ANTLR and Protobuf (macOS)
+    - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install openjdk@11 protobuf
+        brew install openjdk@11 protobuf cmake clang-format
 
     - name: Cache ANTLR JAR
       id: cache-antlr
@@ -103,40 +98,52 @@ jobs:
       uses: Swatinem/rust-cache@v2
 
     - name: Generate ANTLR Parser and Build Rust library
-      run: GENERATE_ANTLR=true cargo build --lib
+      run: GENERATE_ANTLR=true cargo build --lib --release
 
-    - name: Check Go code formatting
+    - name: Set library path environment variable (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
       run: |
-        cd go
-        # Check if any files need formatting
-        unformatted=$(gofmt -l .)
-        if [ -n "$unformatted" ]; then
-          echo "The following files need formatting:"
-          echo "$unformatted"
-          gofmt -d .
-          exit 1
-        fi
+        echo "SUBSTRAIT_TEXTPLAN_LIB_DIR=$(pwd)/target/release" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$(pwd)/target/release:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
-    - name: Run go vet
+    - name: Set library path environment variable (macOS)
+      if: matrix.os == 'macos-latest'
       run: |
-        cd go
-        go vet ./substrait
-        go vet ./examples
+        echo "SUBSTRAIT_TEXTPLAN_LIB_DIR=$(pwd)/target/release" >> $GITHUB_ENV
+        echo "DYLD_LIBRARY_PATH=$(pwd)/target/release:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
 
-    - name: Build Go package
+    - name: Check C++ code formatting
       run: |
-        cd go
-        go build -v ./substrait
-        cd examples
-        go build -v .
+        find cpp -name "*.cpp" -o -name "*.h" | xargs clang-format --dry-run --Werror
 
-    - name: Test Go package
+    - name: Configure CMake
       run: |
-        cd go
-        go test -v ./substrait
+        cd cpp
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
-    - name: Go mod tidy
+    - name: Build C++ wrapper and tests
       run: |
-        cd go
-        go mod tidy
-        git diff --exit-code go.mod go.sum
+        cd cpp/build
+        cmake --build . --config ${{ matrix.build_type }}
+
+    - name: List build artifacts (Debug)
+      run: |
+        echo "Build directory contents:"
+        ls -la cpp/build/
+        echo "Tests directory contents:"
+        ls -la cpp/build/tests/ || echo "Tests directory not found"
+        echo "Examples directory contents:"
+        ls -la cpp/build/examples/ || echo "Examples directory not found"
+
+    - name: Run C++ tests
+      run: |
+        cd cpp/build
+        ctest --output-on-failure -C ${{ matrix.build_type }}
+
+    - name: Run examples
+      run: |
+        cd cpp/build/examples
+        ./simple_example
+        ./roundtrip_example

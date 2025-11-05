@@ -119,13 +119,20 @@ int main() {
         }
     )";
 
-    auto binary_plan = substrait::textplan::TextPlan::LoadFromText(text);
-    if (binary_plan.empty()) {
+    auto binary_plan = substrait::textplan::TextPlan::LoadFromText(text.c_str());
+    if (!binary_plan.has_value()) {
         std::cerr << "Error parsing plan" << std::endl;
         return 1;
     }
 
-    std::cout << "Successfully parsed plan: " << binary_plan.size() << " bytes" << std::endl;
+    std::cout << "Successfully parsed plan: " << binary_plan->size() << " bytes" << std::endl;
+
+    // Convert back to text (binary_plan contains serialized substrait::Plan protobuf)
+    auto text_plan = substrait::textplan::TextPlan::SaveToText(*binary_plan);
+    if (text_plan.has_value()) {
+        std::cout << "Textplan:\n" << *text_plan << std::endl;
+    }
+
     return 0;
 }
 ```

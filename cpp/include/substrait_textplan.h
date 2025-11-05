@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: Apache-2.0
+
+#ifndef SUBSTRAIT_TEXTPLAN_H
+#define SUBSTRAIT_TEXTPLAN_H
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace substrait {
+namespace textplan {
+
+/**
+ * @brief C++ wrapper for the Substrait TextPlan library
+ *
+ * This class provides a C++ interface to the Rust-based Substrait TextPlan
+ * library, which allows parsing and converting between text and binary
+ * Substrait plan formats.
+ */
+class TextPlan {
+ public:
+  /**
+   * @brief Construct a new TextPlan object
+   */
+  TextPlan();
+
+  /**
+   * @brief Destroy the TextPlan object
+   */
+  ~TextPlan();
+
+  // Delete copy constructor and assignment operator
+  TextPlan(const TextPlan&) = delete;
+  TextPlan& operator=(const TextPlan&) = delete;
+
+  // Allow move semantics
+  TextPlan(TextPlan&&) noexcept;
+  TextPlan& operator=(TextPlan&&) noexcept;
+
+  /**
+   * @brief Parse a textplan string and convert it to a serialized Substrait
+   * protobuf
+   *
+   * @param text The textplan string to parse
+   * @return std::optional<std::vector<uint8_t>> The serialized substrait::Plan
+   * protobuf message, or std::nullopt if parsing failed
+   */
+  std::optional<std::vector<uint8_t>> LoadFromText(
+      const std::string& text) const;
+
+  /**
+   * @brief Convert a serialized Substrait protobuf plan to textplan format
+   *
+   * Note: This function expects a serialized substrait::Plan protobuf message.
+   * If you have a substrait::Plan object, serialize it first using
+   * SerializeToString() or SerializeToArray().
+   *
+   * @param data The serialized Substrait protobuf plan (substrait::Plan)
+   * @return std::optional<std::string> The textplan representation of the plan,
+   * or std::nullopt if an error occurred (e.g., invalid protobuf data)
+   */
+  std::optional<std::string> SaveToText(const std::vector<uint8_t>& data) const;
+
+  /**
+   * @brief Static helper: Parse a textplan string and convert it to a
+   * serialized Substrait protobuf
+   *
+   * @param text The textplan string to parse
+   * @return std::optional<std::vector<uint8_t>> The serialized substrait::Plan
+   * protobuf message, or std::nullopt if parsing failed
+   */
+  static std::optional<std::vector<uint8_t>> LoadFromText(const char* text);
+
+  /**
+   * @brief Static helper: Convert a serialized Substrait protobuf plan to
+   * textplan format
+   *
+   * Note: This function expects a serialized substrait::Plan protobuf message.
+   * If you have a substrait::Plan object, serialize it first using
+   * SerializeToString() or SerializeToArray().
+   *
+   * @param data Pointer to the serialized Substrait protobuf plan
+   * (substrait::Plan)
+   * @param size Size of the serialized data in bytes
+   * @return std::optional<std::string> The textplan representation of the plan,
+   * or std::nullopt if an error occurred (e.g., invalid protobuf data)
+   */
+  static std::optional<std::string> SaveToText(
+      const uint8_t* data,
+      size_t size);
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+} // namespace textplan
+} // namespace substrait
+
+#endif // SUBSTRAIT_TEXTPLAN_H

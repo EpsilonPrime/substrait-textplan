@@ -3,8 +3,24 @@ name: Build and Test
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'python/**'
+      - 'build.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'grammar/**'
+      - '.github/workflows/build_test.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'python/**'
+      - 'build.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'grammar/**'
+      - '.github/workflows/build_test.yml'
 
 env:
   CARGO_TERM_COLOR: always
@@ -101,6 +117,20 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
+
+    - name: Install Python formatting tools
+      run: |
+        pip install black==24.* flake8==7.*
+
+    - name: Check Python code formatting with black
+      run: |
+        cd python
+        black --check --diff *.py
+
+    - name: Check Python code style with flake8
+      run: |
+        cd python
+        flake8 *.py --max-line-length=88 --extend-ignore=E203,W503,E402,F841
 
     - name: Test Python bindings
       run: |
