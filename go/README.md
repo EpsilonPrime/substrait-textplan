@@ -4,19 +4,58 @@ This package provides Go bindings for the Substrait TextPlan library. It allows 
 
 ## Prerequisites
 
-Before using this package, you need to have the Substrait TextPlan library built and available on your system. The library should be built from the Rust code in the parent directory.
+This package uses CGO to interface with the Substrait TextPlan Rust library. You must have the following installed:
 
-```bash
-# Build the Substrait TextPlan library
-cd ..
-cargo build
-```
+1. **Go 1.19 or later**
+2. **Rust toolchain** (for building the native library)
+3. **C compiler** (required by CGO)
+4. **Java JRE** (for ANTLR grammar generation)
 
 ## Installation
 
+### Step 1: Build the Rust Library
+
+First, build the Substrait TextPlan Rust library:
+
 ```bash
-go get github.com/substrait-io/substrait-textplan/go/substrait
+# Clone the repository
+git clone https://github.com/EpsilonPrime/substrait-textplan.git
+cd substrait-textplan
+
+# Build the Rust library (this generates ANTLR parsers and builds the native library)
+GENERATE_ANTLR=true cargo build --release
 ```
+
+### Step 2: Install the Library
+
+The shared library needs to be accessible to the Go runtime. Options:
+
+**Option A: Set library path (recommended for development)**
+```bash
+# On Linux
+export LD_LIBRARY_PATH=$PWD/target/release:$LD_LIBRARY_PATH
+
+# On macOS
+export DYLD_LIBRARY_PATH=$PWD/target/release:$DYLD_LIBRARY_PATH
+```
+
+**Option B: Install system-wide**
+```bash
+# On Linux
+sudo cp target/release/libsubstrait_textplan.so /usr/local/lib/
+sudo ldconfig
+
+# On macOS
+sudo cp target/release/libsubstrait_textplan.dylib /usr/local/lib/
+```
+
+### Step 3: Get the Go Package
+
+```bash
+go get github.com/EpsilonPrime/substrait-textplan/go/substrait
+```
+
+**Note**: The Go package expects the Rust library to be available at runtime. Make sure to follow Step 1 and Step 2 before using the package.
 
 ## Usage
 
@@ -27,7 +66,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/substrait-io/substrait-textplan/go/substrait"
+	"github.com/EpsilonPrime/substrait-textplan/go/substrait"
 )
 
 func main() {

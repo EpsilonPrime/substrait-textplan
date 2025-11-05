@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package substrait provides a Go wrapper for the Substrait TextPlan library
+//
+//go:generate go run build.go
 package substrait
 
-// #cgo LDFLAGS: -L${SRCDIR}/../../target/debug -lsubstrait_textplan
+// #cgo LDFLAGS: -L${SRCDIR}/../../target/release -L${SRCDIR}/../../target/debug -L/usr/local/lib -lsubstrait_textplan
+// #cgo darwin LDFLAGS: -Wl,-rpath,${SRCDIR}/../../target/release -Wl,-rpath,${SRCDIR}/../../target/debug -Wl,-rpath,/usr/local/lib
+// #cgo linux LDFLAGS: -Wl,-rpath,${SRCDIR}/../../target/release -Wl,-rpath,${SRCDIR}/../../target/debug -Wl,-rpath,/usr/local/lib
 // #include <stdlib.h>
 // #include <stdint.h>
 // #include <string.h>

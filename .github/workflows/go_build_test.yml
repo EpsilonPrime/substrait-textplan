@@ -111,12 +111,13 @@ jobs:
     - name: Build Go package
       run: |
         cd go
-        go build ./...
+        go build -v ./substrait
+        go build -v ./examples
 
     - name: Test Go package
       run: |
         cd go
-        go test -v ./...
+        go test -v ./substrait
 
     - name: Go mod tidy
       run: |

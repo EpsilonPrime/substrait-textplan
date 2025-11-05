@@ -9,7 +9,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/substrait-io/substrait-textplan/go/substrait"
+	"github.com/EpsilonPrime/substrait-textplan/go/substrait"
 )
 
 func main() {
