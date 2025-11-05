@@ -501,19 +501,16 @@ impl PlanProtoVisitor for PipelineVisitor {
         // Workaround: The generated visitor doesn't traverse FunctionArgument.arg_type
         // We need to manually traverse expressions inside function arguments to find subqueries
         if let Some(arg_type) = &arg.arg_type {
-            match arg_type {
-                substrait::function_argument::ArgType::Value(expr) => {
-                    // Save current location and update for the value field
-                    let prev_location = self.current_location().clone();
-                    self.set_location(self.current_location().field("value"));
+            if let substrait::function_argument::ArgType::Value(expr) = arg_type {
+                // Save current location and update for the value field
+                let prev_location = self.current_location().clone();
+                self.set_location(self.current_location().field("value"));
 
-                    // Manually traverse this specific expression and its children
-                    // This is safe because the generated visitor doesn't do this traversal
-                    self.traverse_expression_for_subqueries(expr);
+                // Manually traverse this specific expression and its children
+                // This is safe because the generated visitor doesn't do this traversal
+                self.traverse_expression_for_subqueries(expr);
 
-                    self.set_location(prev_location);
-                }
-                _ => {}
+                self.set_location(prev_location);
             }
         }
     }
@@ -524,92 +521,88 @@ impl PlanProtoVisitor for PipelineVisitor {
             self.current_location().path_string()
         );
         if let Some(rex_type) = &expression.rex_type {
-            match rex_type {
-                substrait::expression::RexType::Subquery(subquery) => {
-                    use substrait::expression::subquery::SubqueryType;
+            if let substrait::expression::RexType::Subquery(subquery) = rex_type {
+                use substrait::expression::subquery::SubqueryType;
 
-                    // Determine the subquery relation location based on subquery type
-                    let subquery_rel_path = match &subquery.subquery_type {
-                        Some(SubqueryType::Scalar(_)) => "subquery.scalar.input",
-                        Some(SubqueryType::InPredicate(_)) => "subquery.in_predicate.haystack",
-                        Some(SubqueryType::SetPredicate(_)) => "subquery.set_predicate.tuples",
-                        Some(SubqueryType::SetComparison(_)) => "subquery.set_comparison.right",
-                        None => return, // No subquery type set
-                    };
+                // Determine the subquery relation location based on subquery type
+                let subquery_rel_path = match &subquery.subquery_type {
+                    Some(SubqueryType::Scalar(_)) => "subquery.scalar.input",
+                    Some(SubqueryType::InPredicate(_)) => "subquery.in_predicate.haystack",
+                    Some(SubqueryType::SetPredicate(_)) => "subquery.set_predicate.tuples",
+                    Some(SubqueryType::SetComparison(_)) => "subquery.set_comparison.right",
+                    None => return, // No subquery type set
+                };
 
-                    // Build the location for the subquery relation
-                    let mut subquery_location = self.current_location().clone();
-                    for field_name in subquery_rel_path.split('.') {
-                        subquery_location = subquery_location.field(field_name);
-                    }
+                // Build the location for the subquery relation
+                let mut subquery_location = self.current_location().clone();
+                for field_name in subquery_rel_path.split('.') {
+                    subquery_location = subquery_location.field(field_name);
+                }
 
-                    // Look up the subquery relation symbol (the terminus)
-                    let subquery_symbol = self.symbol_table.lookup_symbol_by_location_and_type(
-                        &subquery_location,
-                        SymbolType::Relation,
-                    );
+                // Look up the subquery relation symbol (the terminus)
+                let subquery_symbol = self
+                    .symbol_table
+                    .lookup_symbol_by_location_and_type(&subquery_location, SymbolType::Relation);
 
-                    if let Some(subquery_sym) = subquery_symbol {
-                        // Add the subquery to the current relation's sub_query_pipelines
-                        if let Some(current_rel) = &self.current_relation_scope {
-                            current_rel.with_blob::<RelationData, _, _>(|relation_data| {
-                                println!(
-                                    "DEBUG PIPELINE: Adding subquery '{}' to relation '{}'",
-                                    subquery_sym.name(),
-                                    current_rel.name()
-                                );
-                                relation_data.sub_query_pipelines.push(subquery_sym.clone());
-                            });
-
-                            // Set parent query index to mark this as a subquery
-                            // Only set if not already set (InitialPlanVisitor sets the proper index)
-                            if subquery_sym.parent_query_index() < 0 {
-                                println!(
-                                    "DEBUG PIPELINE: Setting parent_query_index for '{}' (parent: '{}') to 0",
-                                    subquery_sym.name(),
-                                    current_rel.name()
-                                );
-                                self.symbol_table.set_parent_query_index(&subquery_sym, 0);
-                            } else {
-                                println!(
-                                    "DEBUG PIPELINE: parent_query_index for '{}' (parent: '{}') already set to {}",
-                                    subquery_sym.name(),
-                                    current_rel.name(),
-                                    subquery_sym.parent_query_index()
-                                );
-                            }
-                        }
-
-                        // Set pipeline_start on the terminus (subquery relation itself)
-                        // The rest of the pipeline will be populated by populate_subquery_pipelines()
-                        // after all relations have been visited and continuing_pipeline is set up
-                        subquery_sym.with_blob::<RelationData, _, _>(|relation_data| {
+                if let Some(subquery_sym) = subquery_symbol {
+                    // Add the subquery to the current relation's sub_query_pipelines
+                    if let Some(current_rel) = &self.current_relation_scope {
+                        current_rel.with_blob::<RelationData, _, _>(|relation_data| {
                             println!(
-                                "DEBUG PIPELINE: Setting pipeline_start on terminus '{}' to itself",
-                                subquery_sym.name()
+                                "DEBUG PIPELINE: Adding subquery '{}' to relation '{}'",
+                                subquery_sym.name(),
+                                current_rel.name()
                             );
-                            relation_data.pipeline_start = Some(subquery_sym.clone());
+                            relation_data.sub_query_pipelines.push(subquery_sym.clone());
                         });
 
-                        // Now traverse the subquery relation tree to set up continuing_pipeline connections
-                        // Get the actual relation from the subquery
-                        let subquery_rel = match &subquery.subquery_type {
-                            Some(SubqueryType::Scalar(scalar)) => scalar.input.as_ref(),
-                            Some(SubqueryType::InPredicate(pred)) => pred.haystack.as_ref(),
-                            Some(SubqueryType::SetPredicate(pred)) => pred.tuples.as_ref(),
-                            Some(SubqueryType::SetComparison(comp)) => comp.right.as_ref(),
-                            None => None,
-                        };
-
-                        if let Some(rel) = subquery_rel {
-                            let prev_loc = self.current_location().clone();
-                            self.set_location(subquery_location);
-                            self.traverse_subquery_relation(rel);
-                            self.set_location(prev_loc);
+                        // Set parent query index to mark this as a subquery
+                        // Only set if not already set (InitialPlanVisitor sets the proper index)
+                        if subquery_sym.parent_query_index() < 0 {
+                            println!(
+                                "DEBUG PIPELINE: Setting parent_query_index for '{}' (parent: '{}') to 0",
+                                subquery_sym.name(),
+                                current_rel.name()
+                            );
+                            self.symbol_table.set_parent_query_index(&subquery_sym, 0);
+                        } else {
+                            println!(
+                                "DEBUG PIPELINE: parent_query_index for '{}' (parent: '{}') already set to {}",
+                                subquery_sym.name(),
+                                current_rel.name(),
+                                subquery_sym.parent_query_index()
+                            );
                         }
                     }
+
+                    // Set pipeline_start on the terminus (subquery relation itself)
+                    // The rest of the pipeline will be populated by populate_subquery_pipelines()
+                    // after all relations have been visited and continuing_pipeline is set up
+                    subquery_sym.with_blob::<RelationData, _, _>(|relation_data| {
+                        println!(
+                            "DEBUG PIPELINE: Setting pipeline_start on terminus '{}' to itself",
+                            subquery_sym.name()
+                        );
+                        relation_data.pipeline_start = Some(subquery_sym.clone());
+                    });
+
+                    // Now traverse the subquery relation tree to set up continuing_pipeline connections
+                    // Get the actual relation from the subquery
+                    let subquery_rel = match &subquery.subquery_type {
+                        Some(SubqueryType::Scalar(scalar)) => scalar.input.as_ref(),
+                        Some(SubqueryType::InPredicate(pred)) => pred.haystack.as_ref(),
+                        Some(SubqueryType::SetPredicate(pred)) => pred.tuples.as_ref(),
+                        Some(SubqueryType::SetComparison(comp)) => comp.right.as_ref(),
+                        None => None,
+                    };
+
+                    if let Some(rel) = subquery_rel {
+                        let prev_loc = self.current_location().clone();
+                        self.set_location(subquery_location);
+                        self.traverse_subquery_relation(rel);
+                        self.set_location(prev_loc);
+                    }
                 }
-                _ => {}
             }
         }
     }

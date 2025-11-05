@@ -60,6 +60,9 @@ Thumbs.db
 # Antlr4 artifacts
 *.interp
 *.tokens
+src/textplan/parser/antlr/*.rs
+src/textplan/parser/antlr/src/
+!src/textplan/parser/antlr/mod.rs
 
 vendor/
 build-tools/antlr*

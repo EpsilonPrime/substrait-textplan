@@ -679,8 +679,7 @@ impl PlanPrinter {
             let mut expr_printer = ExpressionPrinter::new(symbol_table, Some(relation));
             for sort_field in &sorts {
                 // Print the expression
-                let expr_text =
-                    expr_printer.print_expression(&sort_field.expr.as_ref().unwrap())?;
+                let expr_text = expr_printer.print_expression(sort_field.expr.as_ref().unwrap())?;
 
                 // Print the direction (following C++ format: "by DIRECTION_NAME")
                 use ::substrait::proto::sort_field::SortKind;
@@ -881,9 +880,7 @@ impl PlanPrinter {
                         );
                     }
                 }
-            } else {
             }
-        } else {
         }
 
         println!(
@@ -1114,7 +1111,7 @@ impl PlanPrinter {
                                         blob_data.downcast_ref::<::substrait::proto::Type>()
                                     {
                                         // Use ExpressionPrinter to format the type
-                                        let mut expr_printer =
+                                        let expr_printer =
                                             ExpressionPrinter::new(symbol_table, None);
                                         let type_text = expr_printer.print_type(field_type)?;
                                         result.push_str(&format!(
@@ -1324,7 +1321,7 @@ impl PlanPrinter {
                             let uri_ref = func_data.extension_uri_reference;
                             functions_by_uri
                                 .entry(uri_ref)
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .push((func_data.name.clone(), symbol.name().to_string()));
                         }
                     }

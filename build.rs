@@ -196,10 +196,8 @@ fn generate_antlr_code() -> Result<(), Box<dyn std::error::Error>> {
     // List the generated files
     println!("cargo:warning=Generated files:");
     if let Ok(entries) = fs::read_dir(&output_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                println!("cargo:warning=- {}", entry.path().display());
-            }
+        for entry in entries.flatten() {
+            println!("cargo:warning=- {}", entry.path().display());
         }
     }
 

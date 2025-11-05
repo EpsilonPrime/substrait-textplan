@@ -664,15 +664,12 @@ impl PlanProtoVisitor for InitialPlanVisitor {
         use crate::textplan::converter::generated::base_plan_visitor::Traversable;
 
         if let Some(arg_type) = &arg.arg_type {
-            match arg_type {
-                substrait::function_argument::ArgType::Value(expr) => {
-                    // Manually traverse the expression
-                    let prev_location = self.current_location().clone();
-                    self.set_location(self.current_location().field("value"));
-                    expr.traverse(self);
-                    self.set_location(prev_location);
-                }
-                _ => {}
+            if let substrait::function_argument::ArgType::Value(expr) = arg_type {
+                // Manually traverse the expression
+                let prev_location = self.current_location().clone();
+                self.set_location(self.current_location().field("value"));
+                expr.traverse(self);
+                self.set_location(prev_location);
             }
         }
     }
@@ -695,7 +692,7 @@ impl PlanProtoVisitor for InitialPlanVisitor {
             SymbolType::ExtensionSpace,
             /* subtype */ None,
             Some(Arc::new(Mutex::new(ExtensionSpaceData::new(
-                obj.extension_uri_anchor.clone(),
+                obj.extension_uri_anchor,
             ))) as Arc<Mutex<dyn Any + Send + Sync>>),
         );
     }
@@ -715,8 +712,8 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                                                     /* subtype */ None,
                                                     Some(Arc::new(Mutex::new(FunctionData::new(
                                                         ef.name.clone(),
-                                                        Some(ef.extension_uri_reference.clone()),
-                                                        ef.function_anchor.clone()),
+                                                        Some(ef.extension_uri_reference),
+                                                        ef.function_anchor),
                                                     )) as Arc<Mutex<dyn Any + Send + Sync>>)
                     );
                 }
@@ -753,75 +750,69 @@ impl PlanProtoVisitor for InitialPlanVisitor {
                 );
             }
 
-            match rex_type {
-                substrait::expression::RexType::Subquery(subquery) => {
-                    println!(
-                        "DEBUG INIT: Found subquery expression at location: {}",
-                        self.current_location().path_string()
-                    );
-                    use substrait::expression::subquery::SubqueryType;
+            if let substrait::expression::RexType::Subquery(subquery) = rex_type {
+                println!(
+                    "DEBUG INIT: Found subquery expression at location: {}",
+                    self.current_location().path_string()
+                );
+                use substrait::expression::subquery::SubqueryType;
 
-                    // Determine the field path to the subquery relation
-                    let subquery_field_path = match &subquery.subquery_type {
-                        Some(SubqueryType::Scalar(_)) => "subquery.scalar.input",
-                        Some(SubqueryType::InPredicate(_)) => "subquery.in_predicate.haystack",
-                        Some(SubqueryType::SetPredicate(_)) => "subquery.set_predicate.tuples",
-                        Some(SubqueryType::SetComparison(_)) => "subquery.set_comparison.right",
-                        None => return, // No subquery type, nothing to do
-                    };
+                // Determine the field path to the subquery relation
+                let subquery_field_path = match &subquery.subquery_type {
+                    Some(SubqueryType::Scalar(_)) => "subquery.scalar.input",
+                    Some(SubqueryType::InPredicate(_)) => "subquery.in_predicate.haystack",
+                    Some(SubqueryType::SetPredicate(_)) => "subquery.set_predicate.tuples",
+                    Some(SubqueryType::SetComparison(_)) => "subquery.set_comparison.right",
+                    None => return, // No subquery type, nothing to do
+                };
 
-                    // Build the full location by extending current location with the path to the relation
-                    let mut rel_location = self.current_location().clone();
-                    for field_name in subquery_field_path.split('.') {
-                        rel_location = rel_location.field(field_name);
+                // Build the full location by extending current location with the path to the relation
+                let mut rel_location = self.current_location().clone();
+                for field_name in subquery_field_path.split('.') {
+                    rel_location = rel_location.field(field_name);
+                }
+
+                // Look up the subquery relation symbol by its location
+                println!(
+                    "DEBUG INIT: Looking for subquery relation at location: {}",
+                    rel_location.path_string()
+                );
+
+                if let Some(symbol) = self
+                    .symbol_table
+                    .lookup_symbol_by_location_and_type(&rel_location, SymbolType::Relation)
+                {
+                    // Set the parent query location to the current relation's location
+                    // We stored the actual ProtoLocation in current_relation_locations
+                    if let Some(parent_rel_location) = self.current_relation_locations.last() {
+                        let parent_hash = parent_rel_location.location_hash();
+                        println!(
+                            "DEBUG INIT: Setting parent_query_location for '{}' to hash {}",
+                            symbol.name(),
+                            parent_hash
+                        );
+                        self.symbol_table
+                            .set_parent_query_location(&symbol, parent_rel_location.box_clone());
+
+                        // Get the next subquery index for this parent relation
+                        let current_index = *self.subquery_indices.entry(parent_hash).or_insert(0);
+                        println!(
+                            "DEBUG INIT: Setting parent_query_index for '{}' to {}",
+                            symbol.name(),
+                            current_index
+                        );
+                        self.symbol_table
+                            .set_parent_query_index(&symbol, current_index as i32);
+
+                        // Increment for next subquery in same parent
+                        *self.subquery_indices.get_mut(&parent_hash).unwrap() += 1;
                     }
-
-                    // Look up the subquery relation symbol by its location
+                } else {
                     println!(
-                        "DEBUG INIT: Looking for subquery relation at location: {}",
+                        "DEBUG INIT: FAILED to find subquery relation at location: {}",
                         rel_location.path_string()
                     );
-
-                    if let Some(symbol) = self
-                        .symbol_table
-                        .lookup_symbol_by_location_and_type(&rel_location, SymbolType::Relation)
-                    {
-                        // Set the parent query location to the current relation's location
-                        // We stored the actual ProtoLocation in current_relation_locations
-                        if let Some(parent_rel_location) = self.current_relation_locations.last() {
-                            let parent_hash = parent_rel_location.location_hash();
-                            println!(
-                                "DEBUG INIT: Setting parent_query_location for '{}' to hash {}",
-                                symbol.name(),
-                                parent_hash
-                            );
-                            self.symbol_table.set_parent_query_location(
-                                &symbol,
-                                parent_rel_location.box_clone(),
-                            );
-
-                            // Get the next subquery index for this parent relation
-                            let current_index =
-                                *self.subquery_indices.entry(parent_hash).or_insert(0);
-                            println!(
-                                "DEBUG INIT: Setting parent_query_index for '{}' to {}",
-                                symbol.name(),
-                                current_index
-                            );
-                            self.symbol_table
-                                .set_parent_query_index(&symbol, current_index as i32);
-
-                            // Increment for next subquery in same parent
-                            *self.subquery_indices.get_mut(&parent_hash).unwrap() += 1;
-                        }
-                    } else {
-                        println!(
-                            "DEBUG INIT: FAILED to find subquery relation at location: {}",
-                            rel_location.path_string()
-                        );
-                    }
                 }
-                _ => {}
             }
         }
     }

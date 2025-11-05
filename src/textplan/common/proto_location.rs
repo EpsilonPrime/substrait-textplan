@@ -232,7 +232,7 @@ impl Default for ProtoLocation {
 #[macro_export]
 macro_rules! proto_location {
     ($obj:expr) => {
-        crate::textplan::common::proto_location::ProtoLocation::new(&$obj)
+        $crate::textplan::common::proto_location::ProtoLocation::new(&$obj)
     };
 }
 

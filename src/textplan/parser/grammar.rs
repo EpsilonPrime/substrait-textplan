@@ -12,7 +12,6 @@ use antlr_rust::{
 };
 use std::fs;
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::Arc;
 
 /// Options for the ANTLR parser.
@@ -63,7 +62,7 @@ pub fn parse_string(text: &str) -> Result<ParseResult, String> {
     let error_listener = Arc::new(ErrorListener::new());
 
     // Create a token factory - this needs to outlive the lexer
-    let tf = CommonTokenFactory::default();
+    let tf = CommonTokenFactory;
 
     // Create a lexer
     let lexer_result = create_lexer(text, error_listener.clone(), &tf);

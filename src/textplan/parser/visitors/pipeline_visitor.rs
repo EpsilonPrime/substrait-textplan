@@ -17,7 +17,7 @@ use crate::textplan::parser::antlr::substraitplanparservisitor::SubstraitPlanPar
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::symbol_table::{RelationType, SymbolInfo, SymbolTable, SymbolType};
 
-use super::{token_to_location, PlanVisitor, TypeVisitor};
+use super::{token_to_location, PlanVisitor};
 
 /// The PipelineVisitor processes pipeline definitions.
 ///

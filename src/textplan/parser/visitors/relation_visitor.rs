@@ -2,9 +2,8 @@
 
 //! Relation visitor for processing relation definitions and expressions.
 
-use std::any::Any;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use antlr_rust::parser_rule_context::ParserRuleContext;
 use antlr_rust::rule_context::RuleContext;
@@ -18,9 +17,9 @@ use crate::textplan::parser::antlr::substraitplanparser::*;
 use crate::textplan::parser::antlr::substraitplanparservisitor::SubstraitPlanParserVisitor;
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::symbol_table::{RelationType, SymbolInfo, SymbolTable, SymbolType};
-use ::substrait::proto::{rel::RelType, Rel};
+use ::substrait::proto::rel::RelType;
 
-use super::{extract_from_string, token_to_location, PlanVisitor, TypeVisitor};
+use super::{token_to_location, PlanVisitor, TypeVisitor};
 
 /// The RelationVisitor processes relation definitions and expressions.
 ///
@@ -901,7 +900,6 @@ impl<'input> RelationVisitor<'input> {
                     // Walk the continuing_pipeline chain
                     let mut current = relation_data.continuing_pipeline.clone();
                     if let Some(ref cont) = current {
-                    } else {
                     }
                     while let Some(current_rel) = current {
                         println!("        Setting pipeline_start and parent_query_index={} on '{}'", subquery_index, current_rel.name());
@@ -1059,7 +1057,6 @@ impl<'input> RelationVisitor<'input> {
                                     // Schema belongs to current relation - not an outer reference
                                     return 0;
                                 }
-                            } else {
                             }
 
                             // Schema doesn't match current relation - check if we're in a subquery
@@ -1090,23 +1087,17 @@ impl<'input> RelationVisitor<'input> {
                                                         // Schema belongs to parent - this is an outer reference!
                                                         println!("      ✓✓✓ '{}' IS AN OUTER REFERENCE (steps_out=1)", column_name);
                                                         return 1;
-                                                    } else {
                                                     }
-                                                } else {
                                                 }
                                             }
                                         }
                                     }
-                                } else {
                                 }
-                            } else {
                             }
                         }
                     }
                 }
-            } else {
             }
-        } else {
         }
 
         // Not an outer reference
@@ -1865,11 +1856,9 @@ impl<'input> RelationVisitor<'input> {
         use ::substrait::proto::expression::subquery::set_comparison::{ComparisonOp, ReductionOp};
 
         // Extract left expression
-        let left_expr = if let Some(expr) = ctx.expression() {
-            Some(Box::new(self.build_expression(&expr)))
-        } else {
-            None
-        };
+        let left_expr = ctx
+            .expression()
+            .map(|expr| Box::new(self.build_expression(&expr)));
 
         // Extract comparison operator
         let comp_op_text = ctx

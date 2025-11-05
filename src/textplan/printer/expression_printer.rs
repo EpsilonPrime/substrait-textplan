@@ -816,7 +816,7 @@ impl<'a> ExpressionPrinter<'a> {
                         "DEBUG PRINTER: Found scalar subquery relation: {}",
                         sym.name()
                     );
-                    result.push_str(&sym.name());
+                    result.push_str(sym.name());
                 } else {
                     return Err(TextPlanError::InvalidExpression(
                         "Could not find scalar subquery relation symbol".to_string(),
@@ -876,7 +876,7 @@ impl<'a> ExpressionPrinter<'a> {
                 self.current_scope_index += 1;
 
                 if let Some(sym) = symbol {
-                    result.push_str(&sym.name());
+                    result.push_str(sym.name());
                 } else {
                     return Err(TextPlanError::InvalidExpression(
                         "Could not find IN predicate subquery relation symbol".to_string(),
@@ -942,7 +942,7 @@ impl<'a> ExpressionPrinter<'a> {
                         "DEBUG PRINTER: Found SET predicate subquery relation: {}",
                         sym.name()
                     );
-                    result.push_str(&sym.name());
+                    result.push_str(sym.name());
                 } else {
                     println!(
                         "DEBUG PRINTER: Could NOT find SET predicate subquery with parent hash: {}, index: {}",
@@ -1049,7 +1049,7 @@ impl<'a> ExpressionPrinter<'a> {
                 self.current_scope_index += 1;
 
                 if let Some(sym) = symbol {
-                    result.push_str(&sym.name());
+                    result.push_str(sym.name());
                 } else {
                     return Err(TextPlanError::InvalidExpression(
                         "Could not find subquery relation symbol".to_string(),

@@ -52,7 +52,7 @@ fn convert_plan_to_text(plan: &substrait::proto::Plan) -> Result<String, TextPla
             textplan.push_str(&format!("// Producer: {}\n", version.producer));
         }
     }
-    textplan.push_str("\n");
+    textplan.push('\n');
 
     // Add extension URIs if present
     if !plan.extension_uris.is_empty() {
@@ -60,7 +60,7 @@ fn convert_plan_to_text(plan: &substrait::proto::Plan) -> Result<String, TextPla
         for uri in &plan.extension_uris {
             textplan.push_str(&format!("// - {}: {}\n", uri.extension_uri_anchor, uri.uri));
         }
-        textplan.push_str("\n");
+        textplan.push('\n');
     }
 
     // Add extensions if present
@@ -92,7 +92,7 @@ fn convert_plan_to_text(plan: &substrait::proto::Plan) -> Result<String, TextPla
                 }
             }
         }
-        textplan.push_str("\n");
+        textplan.push('\n');
     }
 
     // Process the plan using the PipelineVisitor to build a symbol table
@@ -186,11 +186,11 @@ fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) -> Result<(), Tex
     // Find terminus relations (those with parent_query_index >= 0)
     let mut subquery_termini = Vec::new();
     for symbol in symbol_table.symbols() {
-        if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
-            if symbol.parent_query_index() >= 0 {
-                println!("  Found subquery terminus: '{}'", symbol.name());
-                subquery_termini.push(symbol.clone());
-            }
+        if symbol.symbol_type() == crate::textplan::SymbolType::Relation
+            && symbol.parent_query_index() >= 0
+        {
+            println!("  Found subquery terminus: '{}'", symbol.name());
+            subquery_termini.push(symbol.clone());
         }
     }
 
@@ -201,11 +201,11 @@ fn populate_subquery_pipelines(symbol_table: &mut SymbolTable) -> Result<(), Tex
 
     // Now fix outer references in subquery relations
     for symbol in symbol_table.symbols() {
-        if symbol.symbol_type() == crate::textplan::SymbolType::Relation {
-            if symbol.parent_query_index() >= 0 {
-                println!("  Fixing outer references in '{}'", symbol.name());
-                fix_outer_references_in_subquery_relation(symbol_table, &symbol)?;
-            }
+        if symbol.symbol_type() == crate::textplan::SymbolType::Relation
+            && symbol.parent_query_index() >= 0
+        {
+            println!("  Fixing outer references in '{}'", symbol.name());
+            fix_outer_references_in_subquery_relation(symbol_table, symbol)?;
         }
     }
 

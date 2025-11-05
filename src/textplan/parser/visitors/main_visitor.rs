@@ -160,11 +160,7 @@ impl<'input> MainPlanVisitor<'input> {
             // Get the anchor from the extension space blob
             if let Some(blob_lock) = &ext_space.blob {
                 if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(ext_data) = blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::ExtensionSpaceData>() {
-                        Some(ext_data.anchor_reference())
-                    } else {
-                        None
-                    }
+                    blob_data.downcast_ref::<crate::textplan::common::structured_symbol_data::ExtensionSpaceData>().map(|ext_data| ext_data.anchor_reference())
                 } else {
                     None
                 }
@@ -442,17 +438,13 @@ impl<'input> MainPlanVisitor<'input> {
                 "read" => (
                     RelationType::Read,
                     Rel {
-                        rel_type: Some(RelType::Read(Box::new(
-                            ::substrait::proto::ReadRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Read(Box::default())),
                     },
                 ),
                 "project" => (
                     RelationType::Project,
                     Rel {
-                        rel_type: Some(RelType::Project(Box::new(
-                            ::substrait::proto::ProjectRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Project(Box::default())),
                     },
                 ),
                 "join" => (
@@ -486,9 +478,7 @@ impl<'input> MainPlanVisitor<'input> {
                 "fetch" => (
                     RelationType::Fetch,
                     Rel {
-                        rel_type: Some(RelType::Fetch(Box::new(
-                            ::substrait::proto::FetchRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Fetch(Box::default())),
                     },
                 ),
                 "aggregate" => {
@@ -513,17 +503,13 @@ impl<'input> MainPlanVisitor<'input> {
                 "sort" => (
                     RelationType::Sort,
                     Rel {
-                        rel_type: Some(RelType::Sort(Box::new(
-                            ::substrait::proto::SortRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Sort(Box::default())),
                     },
                 ),
                 "filter" => (
                     RelationType::Filter,
                     Rel {
-                        rel_type: Some(RelType::Filter(Box::new(
-                            ::substrait::proto::FilterRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Filter(Box::default())),
                     },
                 ),
                 "set" => (
@@ -571,25 +557,19 @@ impl<'input> MainPlanVisitor<'input> {
                 "exchange" => (
                     RelationType::Exchange,
                     Rel {
-                        rel_type: Some(RelType::Exchange(Box::new(
-                            ::substrait::proto::ExchangeRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Exchange(Box::default())),
                     },
                 ),
                 "ddl" => (
                     RelationType::Ddl,
                     Rel {
-                        rel_type: Some(RelType::Ddl(Box::new(
-                            ::substrait::proto::DdlRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Ddl(Box::default())),
                     },
                 ),
                 "write" => (
                     RelationType::Write,
                     Rel {
-                        rel_type: Some(RelType::Write(Box::new(
-                            ::substrait::proto::WriteRel::default(),
-                        ))),
+                        rel_type: Some(RelType::Write(Box::default())),
                     },
                 ),
                 "extension_leaf" => (
@@ -603,9 +583,7 @@ impl<'input> MainPlanVisitor<'input> {
                 "extension_single" => (
                     RelationType::ExtensionSingle,
                     Rel {
-                        rel_type: Some(RelType::ExtensionSingle(Box::new(
-                            ::substrait::proto::ExtensionSingleRel::default(),
-                        ))),
+                        rel_type: Some(RelType::ExtensionSingle(Box::default())),
                     },
                 ),
                 "extension_multi" => (

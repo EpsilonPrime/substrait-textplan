@@ -35,7 +35,7 @@ pub fn save_to_json(plan: &Plan) -> Result<String, TextPlanError> {
 pub fn save_to_json_file<P: AsRef<Path>>(plan: &Plan, file_path: P) -> Result<(), TextPlanError> {
     let json_str = save_to_json(plan)?;
 
-    fs::write(&file_path, json_str).map_err(|e| TextPlanError::IoError(e))
+    fs::write(&file_path, json_str).map_err(TextPlanError::IoError)
 }
 
 /// Saves a symbol table to JSON format by first converting it to a Plan.

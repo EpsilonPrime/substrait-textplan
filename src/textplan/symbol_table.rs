@@ -279,7 +279,7 @@ impl SymbolInfo {
     {
         self.blob.as_ref().and_then(|b| {
             let mut guard = b.lock().ok()?;
-            guard.downcast_mut::<T>().map(|value| f(value))
+            guard.downcast_mut::<T>().map(f)
         })
     }
 }
@@ -376,10 +376,7 @@ impl SymbolTable {
         // Add it to the locations map using the location hash
         let location_hash = symbol.source_location().location_hash();
 
-        self.locations
-            .entry(location_hash)
-            .or_insert_with(Vec::new)
-            .push(index);
+        self.locations.entry(location_hash).or_default().push(index);
 
         symbol
     }
@@ -454,10 +451,7 @@ impl SymbolTable {
             // Add it to the locations map using the location hash
             let location_hash = mut_symbol.permanent_location().location_hash();
 
-            self.locations
-                .entry(location_hash)
-                .or_insert_with(Vec::new)
-                .push(index);
+            self.locations.entry(location_hash).or_default().push(index);
         }
     }
 

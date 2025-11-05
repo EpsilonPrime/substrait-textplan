@@ -33,7 +33,7 @@ pub fn load_text_file(filename: &str) -> Option<String> {
     };
 
     let mut content = String::new();
-    if let Err(_) = file.read_to_string(&mut content) {
+    if file.read_to_string(&mut content).is_err() {
         return None;
     }
 

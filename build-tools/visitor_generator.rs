@@ -209,7 +209,7 @@ pub trait PlanProtoVisitor {
 "#,
         );
 
-        output.push_str("\n");
+        output.push('\n');
 
         for full_name in &self.top_level_messages {
             if let Some(_message) = self.message_types.get(full_name) {
@@ -232,7 +232,7 @@ pub trait PlanProtoVisitor {
             }
         }
 
-        output.push_str("\n");
+        output.push('\n');
 
         for full_name in &self.top_level_messages {
             if let Some(_message) = self.message_types.get(full_name) {
@@ -320,7 +320,7 @@ pub trait Traversable {
             None => message_name, // Return the entire string if no period is found
         };
         // Convert camel case to snake case for method name
-        to_snake_case(&method_name)
+        to_snake_case(method_name)
     }
 
     /// Get the Rust path for a message type
@@ -353,7 +353,7 @@ pub trait Traversable {
             "{}::{}{}",
             package_name,
             intervening_packages,
-            fix_pascal_case(&message_name)
+            fix_pascal_case(message_name)
         )
     }
 
@@ -363,7 +363,7 @@ pub trait Traversable {
         let method_name = self.get_method_name_fragment(full_name);
         let rust_type_path = self.get_rust_type_path(full_name);
 
-        static METHOD_TEMPLATE: &'static str = r#"
+        static METHOD_TEMPLATE: &str = r#"
 {-indent}fn pre_process_{name}(&mut self, obj: &{type_path}) \{}
 "#;
         let mut tt = TinyTemplate::new();
@@ -391,7 +391,7 @@ pub trait Traversable {
         let method_name = self.get_method_name_fragment(full_name);
         let rust_type_path = self.get_rust_type_path(full_name);
 
-        static METHOD_TEMPLATE: &'static str = r#"
+        static METHOD_TEMPLATE: &str = r#"
 {-indent}fn post_process_{name}(&mut self, obj: &{type_path}) \{}
 "#;
         let mut tt = TinyTemplate::new();
@@ -451,7 +451,7 @@ pub trait Traversable {
         let method_name = self.get_method_name_fragment(full_name);
         let rust_type_path = self.get_rust_type_path(full_name);
 
-        static METHOD_TEMPLATE: &'static str = r#"
+        static METHOD_TEMPLATE: &str = r#"
 impl Traversable for {type_path} \{
 {indent}fn traverse<V: PlanProtoVisitor>(&self, visitor: &mut V) \{
 {indent}    // Save current location
@@ -634,7 +634,7 @@ impl Traversable for {type_path} \{
         }
 
         let oneof_name = message.oneof_decl[oneof_index as usize].name();
-        let oneof_type_name = to_pascal_case(&oneof_name);
+        let oneof_type_name = to_pascal_case(oneof_name);
         output.push_str(&format!(
             "{}    if let Some({}) = &self.{} {{\n",
             indent_str,
@@ -651,7 +651,7 @@ impl Traversable for {type_path} \{
             if rel_msg.oneof_index != Some(oneof_index) {
                 continue;
             }
-            let rel_variant = to_pascal_case(&rel_msg.name());
+            let rel_variant = to_pascal_case(rel_msg.name());
 
             output.push_str(&format!(
                 "{}            {}::{}::{}(value) => {{\n",

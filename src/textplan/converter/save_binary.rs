@@ -358,7 +358,7 @@ fn populate_read_rel(
                         // Only keep actual table names (uppercase identifiers)
                         if !name.is_empty()
                             && name != "names"  // Filter out the 'names' keyword
-                            && name.chars().next().map_or(false, |c| c.is_alphabetic())
+                            && name.chars().next().is_some_and(|c| c.is_alphabetic())
                         {
                             table_names.push(name.to_string());
                         }
@@ -1151,7 +1151,6 @@ fn populate_subquery_relations(
                 );
             }
             populate_subquery_in_rel_with_symbol(rel, symbol_table, symbol_ref)?;
-        } else {
         }
     }
 

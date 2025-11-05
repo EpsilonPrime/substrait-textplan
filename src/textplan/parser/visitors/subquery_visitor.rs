@@ -2,7 +2,6 @@
 
 //! Subquery visitor for processing subquery relations and outer references.
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use antlr_rust::parser_rule_context::ParserRuleContext;
@@ -12,13 +11,12 @@ use antlr_rust::tree::{ParseTree, ParseTreeVisitor};
 use antlr_rust::TidExt;
 
 use crate::textplan::common::structured_symbol_data::RelationData;
-use crate::textplan::common::text_location::TextLocation;
 use crate::textplan::parser::antlr::substraitplanparser::*;
 use crate::textplan::parser::antlr::substraitplanparservisitor::SubstraitPlanParserVisitor;
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::symbol_table::{SymbolInfo, SymbolTable, SymbolType};
 
-use super::{token_to_location, PlanVisitor, TypeVisitor};
+use super::{token_to_location, PlanVisitor};
 
 /// The SubqueryRelationVisitor processes subquery relations and fixes outer references.
 ///
@@ -628,12 +626,10 @@ impl<'input> SubqueryRelationVisitor<'input> {
 
             if let Some(blob_lock) = &relation_symbol.blob {
                 // First: extract the relation proto (clone it out)
-                let mut relation_proto = if let Ok(blob_data) = blob_lock.lock() {
-                    if let Some(relation_data) = blob_data.downcast_ref::<RelationData>() {
-                        Some(relation_data.relation.clone())
-                    } else {
-                        None
-                    }
+                let relation_proto = if let Ok(blob_data) = blob_lock.lock() {
+                    blob_data
+                        .downcast_ref::<RelationData>()
+                        .map(|relation_data| relation_data.relation.clone())
                 } else {
                     None
                 };

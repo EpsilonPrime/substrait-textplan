@@ -8,7 +8,6 @@ use antlr_rust::parser_rule_context::ParserRuleContext;
 use antlr_rust::rule_context::RuleContext;
 use antlr_rust::token::{GenericToken, Token};
 use antlr_rust::tree::{ParseTree, ParseTreeVisitor};
-use antlr_rust::TidExt;
 
 use crate::textplan::parser::antlr::substraitplanparser::*;
 use crate::textplan::parser::antlr::substraitplanparservisitor::SubstraitPlanParserVisitor;

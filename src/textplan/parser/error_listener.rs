@@ -50,6 +50,12 @@ pub struct ErrorListener {
     errors: Arc<Mutex<Vec<ParseError>>>,
 }
 
+impl Default for ErrorListener {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ErrorListener {
     /// Creates a new error listener.
     pub fn new() -> Self {

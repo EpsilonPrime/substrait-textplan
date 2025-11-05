@@ -11,7 +11,6 @@ use std::sync::Arc;
 use antlr_rust::token::{GenericToken, Token};
 
 use crate::textplan::common::text_location::TextLocation;
-use crate::textplan::parser::antlr::substraitplanparser::*;
 use crate::textplan::parser::antlr::substraitplanparservisitor::SubstraitPlanParserVisitor;
 use crate::textplan::parser::error_listener::ErrorListener;
 use crate::textplan::symbol_table::SymbolTable;
