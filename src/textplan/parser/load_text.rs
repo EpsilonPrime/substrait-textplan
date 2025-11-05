@@ -50,13 +50,12 @@ fn validate_textplan_syntax(text: &str) -> Option<String> {
             suggestions.push("Keywords should be lowercase".to_string());
         }
 
-        // Check for missing pipelines section when there's content but no ROOT
-        let has_schema = lower.contains("schema");
-        let has_source = lower.contains("source");
+        // Check for missing pipelines section ONLY when there are relations
+        // (schema-only or type-only textplans don't need pipelines)
         let has_relation = lower.contains("relation");
 
-        if !has_pipelines && !has_root_block && (has_schema || has_source || has_relation) {
-            suggestions.push("Missing 'pipelines { }' or 'ROOT { }' section".to_string());
+        if has_relation && !has_pipelines && !has_root_block {
+            suggestions.push("Relations require 'pipelines { }' or 'ROOT { }' section".to_string());
         }
 
         // Check for LOCAL_FILES (old syntax that printer doesn't use)
