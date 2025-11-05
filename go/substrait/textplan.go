@@ -34,7 +34,8 @@ func New() *TextPlan {
 	return &TextPlan{}
 }
 
-// LoadFromText loads a textplan from a string and converts it to binary protobuf
+// LoadFromText parses a textplan string and converts it to a serialized Substrait protobuf.
+// Returns the serialized substrait.Plan protobuf message.
 func (tp *TextPlan) LoadFromText(text string) ([]byte, error) {
 	cText := C.CString(text)
 	defer C.free(unsafe.Pointer(cText))
@@ -86,7 +87,8 @@ func (tp *TextPlan) SaveToText(data []byte) (string, error) {
 
 // Helper functions for easier use
 
-// LoadFromText loads a textplan from a string and converts it to binary protobuf
+// LoadFromText parses a textplan string and converts it to a serialized Substrait protobuf.
+// Returns the serialized substrait.Plan protobuf message.
 func LoadFromText(text string) ([]byte, error) {
 	tp := New()
 	return tp.LoadFromText(text)

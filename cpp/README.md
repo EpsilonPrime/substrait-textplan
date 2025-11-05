@@ -205,8 +205,8 @@ int main() {
 #### Static Methods
 
 - `static std::optional<std::vector<uint8_t>> LoadFromText(const char* text)`
-  - Converts a textplan string to binary protobuf format
-  - Returns `std::nullopt` on error
+  - Parses a textplan string and returns a serialized substrait::Plan protobuf message
+  - Returns `std::nullopt` if parsing fails
 
 - `static std::optional<std::string> SaveToText(const uint8_t* data, size_t size)`
   - Converts a serialized Substrait protobuf plan (substrait::Plan) to textplan format
@@ -216,8 +216,8 @@ int main() {
 #### Instance Methods
 
 - `std::optional<std::vector<uint8_t>> LoadFromText(const std::string& text) const`
-  - Converts a textplan string to binary protobuf format
-  - Returns `std::nullopt` on error
+  - Parses a textplan string and returns a serialized substrait::Plan protobuf message
+  - Returns `std::nullopt` if parsing fails
 
 - `std::optional<std::string> SaveToText(const std::vector<uint8_t>& data) const`
   - Converts a serialized Substrait protobuf plan (substrait::Plan) to textplan format

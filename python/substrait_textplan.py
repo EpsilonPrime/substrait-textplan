@@ -80,13 +80,13 @@ class TextPlan:
 
     def load_from_text(self, text: str) -> Optional[bytes]:
         """
-        Load a textplan from a string and convert it to binary protobuf.
+        Parse a textplan string and convert it to a serialized Substrait protobuf.
 
         Args:
-            text: The textplan to load.
+            text: The textplan string to parse.
 
         Returns:
-            The binary protobuf representation, or None if error occurred.
+            The serialized substrait.Plan protobuf message, or None if parsing failed.
         """
         text_bytes = text.encode("utf-8")
         ptr = self._lib.load_from_text(text_bytes)
@@ -143,13 +143,13 @@ class TextPlan:
 
 def load_from_text(text: str) -> Optional[bytes]:
     """
-    Load a textplan from a string and convert it to binary protobuf.
+    Parse a textplan string and convert it to a serialized Substrait protobuf.
 
     Args:
-        text: The textplan to load.
+        text: The textplan string to parse.
 
     Returns:
-        The binary protobuf representation of the plan, or None if an error occurred.
+        The serialized substrait.Plan protobuf message, or None if parsing failed.
     """
     tp = TextPlan()
     return tp.load_from_text(text)

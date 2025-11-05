@@ -40,11 +40,12 @@ class TextPlan {
   TextPlan& operator=(TextPlan&&) noexcept;
 
   /**
-   * @brief Load a textplan from a string and convert it to binary protobuf
+   * @brief Parse a textplan string and convert it to a serialized Substrait
+   * protobuf
    *
    * @param text The textplan string to parse
-   * @return std::optional<std::vector<uint8_t>> The binary protobuf
-   * representation of the plan, or std::nullopt if an error occurred
+   * @return std::optional<std::vector<uint8_t>> The serialized substrait::Plan
+   * protobuf message, or std::nullopt if parsing failed
    */
   std::optional<std::vector<uint8_t>> LoadFromText(
       const std::string& text) const;
@@ -63,12 +64,12 @@ class TextPlan {
   std::optional<std::string> SaveToText(const std::vector<uint8_t>& data) const;
 
   /**
-   * @brief Static helper: Load a textplan from a string and convert it to
-   * binary protobuf
+   * @brief Static helper: Parse a textplan string and convert it to a
+   * serialized Substrait protobuf
    *
    * @param text The textplan string to parse
-   * @return std::optional<std::vector<uint8_t>> The binary protobuf
-   * representation of the plan, or std::nullopt if an error occurred
+   * @return std::optional<std::vector<uint8_t>> The serialized substrait::Plan
+   * protobuf message, or std::nullopt if parsing failed
    */
   static std::optional<std::vector<uint8_t>> LoadFromText(const char* text);
 
