@@ -50,8 +50,8 @@ int main() {
 
   // Step 2: Convert binary back to text
   std::cout << "\nStep 2: Converting binary back to textplan..." << std::endl;
-  auto regenerated_text =
-      substrait::textplan::TextPlan::SaveToText(*binary_plan);
+  auto regenerated_text = substrait::textplan::TextPlan::SaveToText(
+      binary_plan->data(), binary_plan->size());
 
   if (!regenerated_text.has_value()) {
     std::cerr << "Error: Failed to convert binary to textplan" << std::endl;

@@ -131,7 +131,8 @@ int test_roundtrip() {
   size_t first_binary_size = binary->size();
 
   // Binary -> Text
-  auto regenerated_text = substrait::textplan::TextPlan::SaveToText(*binary);
+  auto regenerated_text =
+      substrait::textplan::TextPlan::SaveToText(binary->data(), binary->size());
   TEST_ASSERT(regenerated_text.has_value(), "SaveToText should succeed");
   TEST_ASSERT(
       !regenerated_text->empty(), "Regenerated text should not be empty");
