@@ -37,7 +37,7 @@ jobs:
         rust: [stable]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
 
@@ -146,7 +146,7 @@ jobs:
         rust: [stable]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         submodules: recursive
 
